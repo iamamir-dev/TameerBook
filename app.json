@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "TameerBook",
+    "slug": "TameerBook",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "tameerbook",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F0E7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TameerBook receipts ke liye photos tak rasai chahta hai.",
+          "cameraPermission": "TameerBook receipt ki tasveer lene ke liye camera istemal karta hai."
+        }
+      ]
+    ]
+  }
+}
