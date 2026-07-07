@@ -2,6 +2,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -27,13 +28,15 @@ import {
   addDocument,
   addParty,
   addTransaction,
+  type AccountWithBalance,
   type CategoryRow,
+  isInsufficientFunds,
+  listAccountsWithBalance,
   listCategories,
   listParties,
   type PartyRow,
-  type PaymentMode,
 } from '@/db';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -59,13 +62,6 @@ const MATERIAL_ITEMS = [
   'Misc',
 ];
 
-const MODES: { mode: PaymentMode; labelKey: TranslationKey }[] = [
-  { mode: 'CASH', labelKey: 'modeCash' },
-  { mode: 'BANK', labelKey: 'modeBank' },
-  { mode: 'JAZZCASH', labelKey: 'modeJazzcash' },
-  { mode: 'CREDIT', labelKey: 'modeCredit' },
-];
-
 const ADD_PARTY_ID = '__add__';
 
 export function MaterialEntryScreen(): React.JSX.Element {
@@ -79,21 +75,25 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const refreshProjects = useProjectsStore((s) => s.refresh);
   const lastProjectId = useEntryStore((s) => s.lastProjectId);
   const setLastProjectId = useEntryStore((s) => s.setLastProjectId);
+  const lastAccountId = useEntryStore((s) => s.lastAccountId);
+  const setLastAccountId = useEntryStore((s) => s.setLastAccountId);
 
   const [items, setItems] = useState<CategoryRow[]>([]);
   const [parties, setParties] = useState<PartyRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [itemId, setItemId] = useState<string | null>(null);
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
   const [rate, setRate] = useState('');
-  const [mode, setMode] = useState<PaymentMode>('CASH');
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [partyId, setPartyId] = useState<string | null>(null);
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [projectSheet, setProjectSheet] = useState(false);
   const [itemSheet, setItemSheet] = useState(false);
+  const [accountSheet, setAccountSheet] = useState(false);
   const [partySheet, setPartySheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState('');
@@ -108,6 +108,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
       })
       .catch(() => undefined);
     loadParties().catch(() => undefined);
+    listAccountsWithBalance().then(setAccounts).catch(() => undefined);
   }, [loadParties]);
 
   useFocusEffect(
@@ -122,8 +123,16 @@ export function MaterialEntryScreen(): React.JSX.Element {
     if (fallback) setProjectId(fallback.project.id);
   }, [projects, lastProjectId, projectId]);
 
+  // Default the account to last-used (or the first account).
+  useEffect(() => {
+    if (accountId || accounts.length === 0) return;
+    const fallback = accounts.find((a) => a.id === lastAccountId) ?? accounts[0];
+    if (fallback) setAccountId(fallback.id);
+  }, [accounts, lastAccountId, accountId]);
+
   const total = (Number(qty) || 0) * (Number(rate) || 0);
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const itemLabel = (c: CategoryRow) =>
     c.name_en === 'Misc' ? t('feeOther') : language === 'ur' ? c.name_ur : c.name_en;
   const selectedItem = items.find((c) => c.id === itemId) ?? null;
@@ -137,18 +146,34 @@ export function MaterialEntryScreen(): React.JSX.Element {
     [parties, t]
   );
 
+  const accountOptions: SelectOption[] = useMemo(
+    () =>
+      accounts.map((a) => ({
+        id: a.id,
+        label: a.name,
+        subtitle: formatRupees(a.balance),
+        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
+      })),
+    [accounts]
+  );
+
   const onSave = async () => {
     if (!projectId || !itemId || total <= 0) return;
+    if (!accountId) {
+      setAccountSheet(true);
+      return;
+    }
     setSaving(true);
     try {
       const desc = `${selectedItem ? itemLabel(selectedItem) : ''} ${qty}${unit ? ' ' + unit : ''} @ ${rate}`.trim();
       const txn = await addTransaction({
-        projectId,
         direction: 'OUT',
-        categoryId: itemId,
         amount: total,
         date: todayISO().slice(0, 10),
-        mode,
+        accountId,
+        projectId,
+        phase: 'CONSTRUCTION',
+        categoryId: itemId,
         partyId,
         description: desc,
       });
@@ -156,8 +181,12 @@ export function MaterialEntryScreen(): React.JSX.Element {
         await addDocument({ entityType: 'transaction', entityId: txn.id, fileUri: receiptUri, mime: 'image/jpeg' });
       }
       setLastProjectId(projectId);
+      setLastAccountId(accountId);
       await refreshProjects();
       navigation.goBack();
+    } catch (e) {
+      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
+      else throw e;
     } finally {
       setSaving(false);
     }
@@ -190,7 +219,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <AppHeader title={t('material')} onBack={() => navigation.goBack()} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
           keyboardShouldPersistTaps="handled"
@@ -241,19 +270,14 @@ export function MaterialEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          {/* Paid / Udhaar */}
-          <View style={styles.modeRow}>
-            {MODES.map((m) => {
-              const active = m.mode === mode;
-              return (
-                <Pressable key={m.mode} onPress={() => setMode(m.mode)} accessibilityRole="button" style={[styles.modeBtn, active && styles.modeBtnActive]}>
-                  <AppText size="sm" weight="bold" color={active ? 'onPrimary' : 'textSecondary'}>
-                    {t(m.labelKey)}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
+          {/* Account  where the money moves */}
+          <Pressable onPress={() => setAccountSheet(true)} style={styles.chip} accessibilityRole="button">
+            <AppIcon name={selectedAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
+            <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+              {selectedAccount ? `${selectedAccount.name} · ${formatRupees(selectedAccount.balance)}` : t('selectAccount')}
+            </AppText>
+            <AppIcon name="forward" size={18} color="textSecondary" />
+          </Pressable>
 
           {/* Bill photo */}
           {receiptUri ? (
@@ -276,7 +300,18 @@ export function MaterialEntryScreen(): React.JSX.Element {
             />
           )}
 
-          <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} />
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={onSave}
+            loading={saving}
+            disabled={
+              !projectId ||
+              !itemId ||
+              total <= 0 ||
+              (!!selectedAccount && total > selectedAccount.balance)
+            }
+          />
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -297,6 +332,15 @@ export function MaterialEntryScreen(): React.JSX.Element {
         onSelect={(o) => setItemId(o.id)}
       />
       <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accountOptions}
+        selectedId={accountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setAccountId(o.id)}
+      />
+      <SelectSheet
         visible={partySheet}
         onClose={() => setPartySheet(false)}
         options={partyOptions}
@@ -305,6 +349,10 @@ export function MaterialEntryScreen(): React.JSX.Element {
         onSelect={(o) => (o.id === ADD_PARTY_ID ? setAddPartyOpen(true) : setPartyId(o.id))}
       />
       <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
@@ -314,6 +362,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
           <FloatingLabelInput label={t('supplier')} value={newPartyName} onChangeText={setNewPartyName} />
           <AppButton label={t('save')} icon="check" onPress={onAddParty} />
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -346,18 +395,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
     },
-    modeRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    modeBtn: {
-      flex: 1,
-      minHeight: theme.touch.minTarget,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.card,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-    },
-    modeBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     thumb: { width: 40, height: 40, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {

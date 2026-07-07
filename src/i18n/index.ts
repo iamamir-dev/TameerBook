@@ -11,7 +11,7 @@ export type TranslationKey = keyof TranslationKeys;
 export const dictionaries: Record<Language, TranslationKeys> = { en, ur };
 
 /**
- * Translate a key for a specific language. Pure — no React, no store. Useful
+ * Translate a key for a specific language. Pure  no React, no store. Useful
  * for one-off lookups (e.g. building a list of options).
  */
 export const translate = (language: Language, key: TranslationKey): string =>

@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, AppIcon, AppText, type IconKey } from '@/components/ui';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { ColorPalette, Theme } from '@/theme/theme';
@@ -23,6 +22,7 @@ const TILES: { type: ReportType; labelKey: TranslationKey; icon: IconKey; tone: 
   { type: 'expense', labelKey: 'rptExpense', icon: 'moneyOut', tone: 'danger' },
   { type: 'investment', labelKey: 'rptInvestment', icon: 'investors', tone: 'gold' },
   { type: 'roi', labelKey: 'rptRoi', icon: 'activity', tone: 'primary' },
+  { type: 'accounts', labelKey: 'accountsTitle', icon: 'bank', tone: 'accent' },
 ];
 
 export function ReportsScreen(): React.JSX.Element {
@@ -34,10 +34,10 @@ export function ReportsScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('reports')} />
+      <AppHeader title={t('reports')} onBack={() => navigation.goBack()} />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
         <View style={styles.grid}>
           {TILES.map((tile) => (

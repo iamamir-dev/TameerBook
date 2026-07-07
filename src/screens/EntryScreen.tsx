@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -36,36 +37,38 @@ import {
   addDocument,
   addParty,
   addTransaction,
+  type AccountWithBalance,
   type CategoryRow,
   type CategoryType,
+  isInsufficientFunds,
+  listAccountsWithBalance,
   listCategories,
   listParties,
   type PartyRow,
-  type PaymentMode,
-  type TxnDirection,
 } from '@/db';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { SYSTEM_CATEGORY_NAMES } from '@/db/schema';
+import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type EntryRoute = RouteProp<RootStackParamList, 'Entry'>;
 
-const MODES_OUT: { mode: PaymentMode; labelKey: TranslationKey }[] = [
-  { mode: 'CASH', labelKey: 'modeCash' },
-  { mode: 'BANK', labelKey: 'modeBank' },
-  { mode: 'JAZZCASH', labelKey: 'modeJazzcash' },
-  { mode: 'CREDIT', labelKey: 'modeCredit' },
-];
-const MODES_IN = MODES_OUT.slice(0, 3);
-
 const ADD_PARTY_ID = '__add__';
+const NO_PROJECT_ID = '__none__';
+const SYSTEM_CATS = new Set<string>(SYSTEM_CATEGORY_NAMES);
 
+/**
+ * The generic income/expense entry. Every entry posts to an ACCOUNT (the
+ * cash-flow source of truth); linking a project is optional  personal /
+ * general money works too.
+ */
 export function EntryScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t, language } = useTranslation();
@@ -78,23 +81,21 @@ export function EntryScreen(): React.JSX.Element {
   const refreshProjects = useProjectsStore((s) => s.refresh);
   const lastProjectId = useEntryStore((s) => s.lastProjectId);
   const setLastProjectId = useEntryStore((s) => s.setLastProjectId);
-  const lastMode = useEntryStore((s) => s.lastMode);
-  const setLastMode = useEntryStore((s) => s.setLastMode);
+  const lastAccountId = useEntryStore((s) => s.lastAccountId);
+  const setLastAccountId = useEntryStore((s) => s.setLastAccountId);
 
   const catType: CategoryType = direction === 'OUT' ? 'EXPENSE' : 'INCOME';
-  const modes = direction === 'OUT' ? MODES_OUT : MODES_IN;
 
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [parties, setParties] = useState<PartyRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
 
   const [projectId, setProjectId] = useState<string | null>(prefill?.projectId ?? null);
   const [amount, setAmount] = useState(prefill?.amount ?? 0);
   const [categoryId, setCategoryId] = useState<string | null>(prefill?.categoryId ?? null);
   const [note, setNote] = useState(prefill?.note ?? '');
   const [partyId, setPartyId] = useState<string | null>(prefill?.partyId ?? null);
-  const [mode, setMode] = useState<PaymentMode>(
-    prefill?.mode ?? (lastMode === 'CREDIT' && direction === 'IN' ? 'CASH' : lastMode)
-  );
+  const [accountId, setAccountId] = useState<string | null>(prefill?.accountId ?? null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
 
@@ -103,6 +104,7 @@ export function EntryScreen(): React.JSX.Element {
   const [toast, setToast] = useState<string | null>(null);
   const [projectSheet, setProjectSheet] = useState(false);
   const [partySheet, setPartySheet] = useState(false);
+  const [accountSheet, setAccountSheet] = useState(false);
   const [dateSheet, setDateSheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState('');
@@ -113,10 +115,11 @@ export function EntryScreen(): React.JSX.Element {
 
   useEffect(() => {
     listCategories(catType)
-      // The "Udhaar Payment" category is system-managed (used by repayments).
-      .then((cats) => setCategories(cats.filter((c) => c.name_en !== 'Udhaar Payment')))
+      // System categories are posted by business logic, not manual entry.
+      .then((cats) => setCategories(cats.filter((c) => !SYSTEM_CATS.has(c.name_en))))
       .catch(() => undefined);
     loadParties().catch(() => undefined);
+    listAccountsWithBalance().then(setAccounts).catch(() => undefined);
   }, [catType, loadParties]);
 
   useFocusEffect(
@@ -125,14 +128,22 @@ export function EntryScreen(): React.JSX.Element {
     }, [refreshProjects])
   );
 
-  // Default the project to last-used (or the first project).
+  // Default the account to last-used (or the first account).
   useEffect(() => {
-    if (projectId) return;
-    const fallback = projects.find((p) => p.project.id === lastProjectId) ?? projects[0];
+    if (accountId || accounts.length === 0) return;
+    const fallback = accounts.find((a) => a.id === lastAccountId) ?? accounts[0];
+    if (fallback) setAccountId(fallback.id);
+  }, [accounts, lastAccountId, accountId]);
+
+  // Default the project to last-used (project stays optional).
+  useEffect(() => {
+    if (projectId || prefill?.projectId) return;
+    const fallback = projects.find((p) => p.project.id === lastProjectId);
     if (fallback) setProjectId(fallback.project.id);
-  }, [projects, lastProjectId, projectId]);
+  }, [projects, lastProjectId, projectId, prefill?.projectId]);
 
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   const catName = useCallback(
     (c: CategoryRow) => (language === 'ur' ? c.name_ur : c.name_en),
@@ -159,6 +170,25 @@ export function EntryScreen(): React.JSX.Element {
   );
   const selectedParty = parties.find((p) => p.id === partyId) ?? null;
 
+  const accountOptions: SelectOption[] = useMemo(
+    () =>
+      accounts.map((a) => ({
+        id: a.id,
+        label: a.name,
+        subtitle: formatRupees(a.balance),
+        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
+      })),
+    [accounts]
+  );
+
+  const projectOptions: SelectOption[] = useMemo(
+    () => [
+      { id: NO_PROJECT_ID, label: t('noProject'), icon: 'close' as IconKey },
+      ...projects.map((p) => ({ id: p.project.id, label: p.project.name, icon: 'project' as IconKey })),
+    ],
+    [projects, t]
+  );
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 1600);
@@ -169,16 +199,20 @@ export function EntryScreen(): React.JSX.Element {
       showToast(t('enterAmount'));
       return;
     }
-    if (!projectId) return;
+    if (!accountId) {
+      setAccountSheet(true);
+      return;
+    }
     setSaving(true);
     try {
       const txn = await addTransaction({
-        projectId,
         direction,
-        categoryId,
         amount,
         date,
-        mode,
+        accountId,
+        projectId,
+        phase: projectId ? 'GENERAL' : null,
+        categoryId,
         partyId,
         description: note || null,
       });
@@ -190,17 +224,21 @@ export function EntryScreen(): React.JSX.Element {
           mime: 'image/jpeg',
         });
       }
-      setLastProjectId(projectId);
-      setLastMode(mode);
+      if (projectId) setLastProjectId(projectId);
+      setLastAccountId(accountId);
       await refreshProjects();
+      setAccounts(await listAccountsWithBalance());
       showToast(t('savedToast'));
-      // Reset for the next rapid entry (keep project + mode).
+      // Reset for the next rapid entry (keep project + account).
       setAmount(0);
       setNote('');
       setCategoryId(null);
       setPartyId(null);
       setReceiptUri(null);
       setResetKey((k) => k + 1);
+    } catch (e) {
+      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
+      else throw e;
     } finally {
       setSaving(false);
     }
@@ -221,21 +259,6 @@ export function EntryScreen(): React.JSX.Element {
     setAddPartyOpen(false);
   };
 
-  // No projects yet — guide the user to create one first.
-  if (projects.length === 0) {
-    return (
-      <View style={styles.screen}>
-        <AppHeader title={t(direction === 'OUT' ? 'kharcha' : 'aamdani')} onBack={() => navigation.goBack()} />
-        <View style={styles.empty}>
-          <AppText size="md" color="textSecondary" center>
-            {t('noProjectsDetail')}
-          </AppText>
-          <AppButton label={t('newProject')} icon="add" fullWidth={false} onPress={() => navigation.navigate('NewProject')} />
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <AppHeader
@@ -243,17 +266,17 @@ export function EntryScreen(): React.JSX.Element {
         onBack={() => navigation.goBack()}
       />
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Project chip */}
-          <Pressable onPress={() => setProjectSheet(true)} style={styles.projectChip} accessibilityRole="button">
-            <AppIcon name="project" size={18} color="primary" />
+          {/* Account chip  where the money moves */}
+          <Pressable onPress={() => setAccountSheet(true)} style={styles.projectChip} accessibilityRole="button">
+            <AppIcon name={selectedAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
             <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
-              {selectedProject?.name ?? t('selectProject')}
+              {selectedAccount ? `${selectedAccount.name} · ${formatRupees(selectedAccount.balance)}` : t('selectAccount')}
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
@@ -291,6 +314,21 @@ export function EntryScreen(): React.JSX.Element {
           {/* Note */}
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
+          {/* Project (optional) */}
+          <Pressable onPress={() => setProjectSheet(true)} style={styles.rowChip} accessibilityRole="button">
+            <AppIcon name="project" size={18} color="primary" />
+            <AppText
+              size="sm"
+              weight="semibold"
+              numberOfLines={1}
+              style={styles.flex}
+              color={selectedProject ? 'textPrimary' : 'textSecondary'}
+            >
+              {selectedProject?.name ?? t('selectProject')}
+            </AppText>
+            <AppIcon name="forward" size={18} color="textSecondary" />
+          </Pressable>
+
           {/* Party */}
           <Pressable onPress={() => setPartySheet(true)} style={styles.rowChip} accessibilityRole="button">
             <AppIcon name="investor" size={18} color="primary" />
@@ -299,29 +337,6 @@ export function EntryScreen(): React.JSX.Element {
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
-
-          {/* Payment mode */}
-          <AppText size="sm" weight="bold" color="textSecondary">
-            {t('paymentMode')}
-          </AppText>
-          <View style={styles.modeRow}>
-            {modes.map((m) => {
-              const active = m.mode === mode;
-              return (
-                <Pressable
-                  key={m.mode}
-                  onPress={() => setMode(m.mode)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={[styles.modeBtn, active && styles.modeBtnActive]}
-                >
-                  <AppText size="sm" weight="bold" color={active ? 'onPrimary' : 'textSecondary'}>
-                    {t(m.labelKey)}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
 
           {/* Date */}
           <Pressable onPress={() => setDateSheet(true)} style={styles.rowChip} accessibilityRole="button">
@@ -347,7 +362,17 @@ export function EntryScreen(): React.JSX.Element {
 
           {/* Save */}
           <View style={styles.saveBtn}>
-            <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} />
+            <AppButton
+              label={t('save')}
+              icon="check"
+              onPress={onSave}
+              loading={saving}
+              disabled={
+                amount <= 0 ||
+                !accountId ||
+                (direction === 'OUT' && !!selectedAccount && amount > selectedAccount.balance)
+              }
+            />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -368,12 +393,21 @@ export function EntryScreen(): React.JSX.Element {
 
       {/* Sheets */}
       <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accountOptions}
+        selectedId={accountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setAccountId(o.id)}
+      />
+      <SelectSheet
         visible={projectSheet}
         onClose={() => setProjectSheet(false)}
-        options={projects.map((p) => ({ id: p.project.id, label: p.project.name, icon: 'project' as IconKey }))}
-        selectedId={projectId ?? undefined}
+        options={projectOptions}
+        selectedId={projectId ?? NO_PROJECT_ID}
         title={t('selectProject')}
-        onSelect={(o) => setProjectId(o.id)}
+        onSelect={(o) => setProjectId(o.id === NO_PROJECT_ID ? null : o.id)}
       />
       <SelectSheet
         visible={partySheet}
@@ -395,6 +429,10 @@ export function EntryScreen(): React.JSX.Element {
 
       {/* Add-party modal */}
       <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
@@ -404,6 +442,7 @@ export function EntryScreen(): React.JSX.Element {
           <FloatingLabelInput label={t('party')} value={newPartyName} onChangeText={setNewPartyName} />
           <AppButton label={t('save')} icon="check" onPress={onAddParty} />
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -414,7 +453,6 @@ const makeStyles = (theme: Theme) =>
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
-    empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg, padding: theme.spacing.xl },
     projectChip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -457,18 +495,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
-    modeRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    modeBtn: {
-      flex: 1,
-      minHeight: theme.touch.minTarget,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.card,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-    },
-    modeBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     receiptRow: {
       flexDirection: 'row',
       alignItems: 'center',

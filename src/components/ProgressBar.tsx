@@ -13,7 +13,7 @@ interface ProgressBarProps {
   tone?: ColorKey;
 }
 
-/** Slim rounded progress bar — accent fill on a neutral track. */
+/** Slim rounded progress bar  accent fill on a neutral track. */
 export function ProgressBar({ percent, tone = 'accent' }: ProgressBarProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);

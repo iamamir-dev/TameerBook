@@ -1,15 +1,55 @@
+/**
+ * Business-logic self-tests (run from DevTools). Implements the plan's test
+ * matrix: accounts (T-ACC), entries (T-ENT), plots (T-PLOT), labor (T-LAB),
+ * sale (T-SALE), project cost (T-PROJ), settlement + donation (T-SET),
+ * udhaar (T-UDH) and the reconciliation invariant (T-REG).
+ *
+ * Tests run against the live dev DB; every row they create is tracked and
+ * deleted afterwards, so they leave no residue.
+ */
 import { getDatabase } from './database';
 import {
-  addCapitalEntry,
+  addAccount,
   addInvestor,
+  addLaborer,
+  addPlotExpense,
+  addPlotPayment,
   addProjectInvestor,
+  addSaleCost,
+  addSaleReceipt,
   addTransaction,
+  attachLaborerToProject,
+  computeSettlement,
+  createPlot,
   createProject,
-  getCashBankBalance,
-  getProjectCapitalSummary,
-  getProjectTotals,
+  createUdhaar,
+  getAccountBalance,
+  getConstructionSummary,
+  getLaborBalance,
+  getPlotSummary,
+  getProjectCost,
+  getProjectSettlementSummary,
+  getSaleSummary,
+  getTotalBalance,
   getTransaction,
+  getUdhaarBalance,
+  giveUdhaar,
+  listAccountsWithBalance,
+  markAttendance,
+  payLaborer,
+  returnUdhaar,
+  settleProject,
+  transferBetween,
+  upsertSale,
   voidTransaction,
+  addInvestment,
+  getUdhaar,
+  createCompany,
+  getActiveCompanyId,
+  getCompanyAssets,
+  listPlots,
+  listUdhaar,
+  setActiveCompany,
 } from './repositories';
 
 export interface TestResult {
@@ -18,138 +58,713 @@ export interface TestResult {
   detail: string;
 }
 
-const near = (a: number, b: number, eps = 0.001) => Math.abs(a - b) < eps;
+const near = (a: number, b: number, eps = 0.01) => Math.abs(a - b) < eps;
+const D = '2026-06-06';
 
-/** Remove all rows created under a test project (dev-only raw cleanup). */
-async function cleanupProject(projectId: string, investorIds: string[]): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync(
-    `DELETE FROM capital_ledger WHERE project_investor_id IN
-       (SELECT id FROM project_investors WHERE project_id = ?)`,
-    projectId
-  );
-  await db.runAsync('DELETE FROM project_investors WHERE project_id = ?', projectId);
-  await db.runAsync('DELETE FROM transactions WHERE project_id = ?', projectId);
-  await db.runAsync('DELETE FROM milestones WHERE project_id = ?', projectId);
-  await db.runAsync('DELETE FROM projects WHERE id = ?', projectId);
-  for (const id of investorIds) {
-    await db.runAsync('DELETE FROM investors WHERE id = ?', id);
+type Check = readonly [string, boolean];
+
+function report(name: string, checks: readonly Check[]): TestResult {
+  const failed = checks.filter(([, ok]) => !ok).map(([d]) => d);
+  return {
+    name,
+    passed: failed.length === 0,
+    detail: failed.length ? `failed: ${failed.join(', ')}` : `${checks.length} checks ok`,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Tracked cleanup  every test registers what it creates                    */
+/* -------------------------------------------------------------------------- */
+
+class Cleanup {
+  accounts: string[] = [];
+  plots: string[] = [];
+  projects: string[] = [];
+  investors: string[] = [];
+  laborers: string[] = [];
+  udhaar: string[] = [];
+
+  async run(): Promise<void> {
+    const db = await getDatabase();
+    for (const id of this.projects) {
+      await db.runAsync(
+        `DELETE FROM capital_ledger WHERE project_investor_id IN
+           (SELECT id FROM project_investors WHERE project_id = ?)`,
+        id
+      );
+      await db.runAsync('DELETE FROM project_investors WHERE project_id = ?', id);
+      await db.runAsync(
+        'DELETE FROM sale_receipts WHERE sale_id IN (SELECT id FROM sales WHERE project_id = ?)',
+        id
+      );
+      await db.runAsync('DELETE FROM sales WHERE project_id = ?', id);
+      // Transactions FIRST (they reference project_laborers via labor_id).
+      await db.runAsync('DELETE FROM transactions WHERE project_id = ?', id);
+      await db.runAsync(
+        `DELETE FROM labor_attendance WHERE project_laborer_id IN
+           (SELECT id FROM project_laborers WHERE project_id = ?)`,
+        id
+      );
+      await db.runAsync('DELETE FROM project_laborers WHERE project_id = ?', id);
+      await db.runAsync('DELETE FROM milestones WHERE project_id = ?', id);
+      // Unlink any plot still pointing at this project before deleting it.
+      await db.runAsync('UPDATE plots SET project_id = NULL WHERE project_id = ?', id);
+      await db.runAsync('DELETE FROM projects WHERE id = ?', id);
+    }
+    for (const id of this.plots) {
+      await db.runAsync('DELETE FROM transactions WHERE plot_id = ?', id);
+      await db.runAsync('DELETE FROM plots WHERE id = ?', id);
+    }
+    for (const id of this.udhaar) {
+      await db.runAsync('DELETE FROM transactions WHERE udhaar_id = ?', id);
+      await db.runAsync('DELETE FROM udhaar WHERE id = ?', id);
+    }
+    for (const id of this.accounts) {
+      await db.runAsync('DELETE FROM transactions WHERE account_id = ?', id);
+      await db.runAsync('DELETE FROM accounts WHERE id = ?', id);
+    }
+    for (const id of this.laborers) await db.runAsync('DELETE FROM laborers WHERE id = ?', id);
+    for (const id of this.investors) await db.runAsync('DELETE FROM investors WHERE id = ?', id);
   }
 }
 
-/** Proves voidTransaction appends a reversal and excludes the original. */
-async function testVoidCreatesReversal(): Promise<TestResult> {
-  const name = 'void creates reversal (never deletes)';
-  const project = await createProject({ name: 'DBTEST void' }, { withDefaultMilestones: false });
+/* -------------------------------------------------------------------------- */
+/*  T-ACC  accounts & cash flow                                              */
+/* -------------------------------------------------------------------------- */
+
+async function testAccountBalances(): Promise<TestResult> {
+  const c = new Cleanup();
   try {
-    const txn = await addTransaction({
+    const hbl = await addAccount({ name: 'DBTEST HBL', type: 'BANK', openingBalance: 100_000 });
+    const cash = await addAccount({ name: 'DBTEST Cash', type: 'CASH', openingBalance: 0 });
+    c.accounts.push(hbl.id, cash.id);
+
+    const checks: Check[] = [];
+    checks.push(['opening balance 100000', near(await getAccountBalance(hbl.id), 100_000)]);
+
+    // Expense OUT 5000
+    const exp = await addTransaction({ direction: 'OUT', amount: 5000, date: D, accountId: hbl.id });
+    checks.push(['expense → 95000', near(await getAccountBalance(hbl.id), 95_000)]);
+
+    // Income IN 20000
+    await addTransaction({ direction: 'IN', amount: 20_000, date: D, accountId: hbl.id });
+    checks.push(['income → 115000', near(await getAccountBalance(hbl.id), 115_000)]);
+
+    // Transfer 10000 HBL → Cash: both move, total unchanged
+    const totalBefore =
+      (await getAccountBalance(hbl.id)) + (await getAccountBalance(cash.id));
+    await transferBetween({ fromAccountId: hbl.id, toAccountId: cash.id, amount: 10_000, date: D });
+    checks.push(['transfer: from 105000', near(await getAccountBalance(hbl.id), 105_000)]);
+    checks.push(['transfer: to 10000', near(await getAccountBalance(cash.id), 10_000)]);
+    const totalAfter = (await getAccountBalance(hbl.id)) + (await getAccountBalance(cash.id));
+    checks.push(['transfer: total unchanged', near(totalBefore, totalAfter)]);
+
+    // Isolation: an OUT on Cash doesn't touch HBL
+    await addTransaction({ direction: 'OUT', amount: 500, date: D, accountId: cash.id });
+    checks.push(['isolation: HBL still 105000', near(await getAccountBalance(hbl.id), 105_000)]);
+
+    // Void restores balance
+    await voidTransaction(exp.id);
+    checks.push(['void restores → 110000', near(await getAccountBalance(hbl.id), 110_000)]);
+    const original = await getTransaction(exp.id);
+    checks.push(['void flags original', original?.is_void === 1]);
+
+    return report('T-ACC accounts & transfers', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-PLOT  the owner's exact example                                        */
+/* -------------------------------------------------------------------------- */
+
+async function testPlotMath(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST P-Acc', type: 'CASH', openingBalance: 5000 });
+    c.accounts.push(acc.id);
+    const plot = await createPlot({ name: 'DBTEST Plot', dealPrice: 1000, sellerName: 'Saleem' });
+    c.plots.push(plot.id);
+
+    const checks: Check[] = [];
+    let s = await getPlotSummary(plot.id);
+    checks.push(['deal 1000 / paid 0 / remaining 1000', near(s.dealPrice, 1000) && near(s.paidToSeller, 0) && near(s.remaining, 1000)]);
+
+    await addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 50, date: D, accountId: acc.id });
+    s = await getPlotSummary(plot.id);
+    checks.push(['token 50 → paid 50 / remaining 950', near(s.paidToSeller, 50) && near(s.remaining, 950)]);
+
+    await addPlotPayment({ plotId: plot.id, payType: 'BAYANA', amount: 200, date: D, accountId: acc.id });
+    s = await getPlotSummary(plot.id);
+    checks.push(['bayana 200 → paid 250 / remaining 750', near(s.paidToSeller, 250) && near(s.remaining, 750)]);
+
+    // Expense before fully paid: tax 100 on top
+    const db = await getDatabase();
+    const taxCat = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM categories WHERE name_en = 'Transfer Fees & Tax'"
+    );
+    await addPlotExpense({ plotId: plot.id, categoryId: taxCat!.id, amount: 100, date: D, accountId: acc.id });
+    s = await getPlotSummary(plot.id);
+    checks.push(['tax 100 → expenses 100 / total 350', near(s.expenses, 100) && near(s.totalCost, 350)]);
+    checks.push(['remaining unaffected by expense', near(s.remaining, 750)]);
+
+    await addPlotPayment({ plotId: plot.id, payType: 'FINAL', amount: 750, date: D, accountId: acc.id });
+    s = await getPlotSummary(plot.id);
+    checks.push(['final 750 → paid 1000 / remaining 0 / total 1100', near(s.paidToSeller, 1000) && near(s.remaining, 0) && near(s.totalCost, 1100)]);
+
+    // Every rupee left the account: 5000 − 1100 = 3900
+    checks.push(['account drained to 3900', near(await getAccountBalance(acc.id), 3900)]);
+
+    return report('T-PLOT deal math (1000 → 1100)', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-LAB  attendance accrual, payment, no double count                      */
+/* -------------------------------------------------------------------------- */
+
+async function testLaborAccrual(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST L-Acc', type: 'CASH', openingBalance: 10_000 });
+    c.accounts.push(acc.id);
+    const project = await createProject({ name: 'DBTEST Labor' }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+    const worker = await addLaborer({ name: 'DBTEST Mazdoor' });
+    c.laborers.push(worker.id);
+
+    const pl = await attachLaborerToProject({ projectId: project.id, laborerId: worker.id, dailyWage: 1000 });
+
+    const checks: Check[] = [];
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-01', status: 'FULL' });
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-02', status: 'FULL' });
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-03', status: 'HALF' });
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-04', status: 'ABSENT' });
+
+    let bal = await getLaborBalance(pl.id);
+    checks.push(['2×full + half + absent = 2500', near(bal.accrued, 2500)]);
+    checks.push(['day counts 2/1/1', bal.daysFull === 2 && bal.daysHalf === 1 && bal.daysAbsent === 1]);
+
+    // Upsert same day: FULL → HALF replaces, no duplicate
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-02', status: 'HALF' });
+    bal = await getLaborBalance(pl.id);
+    checks.push(['re-mark 06-02 half → accrued 2000', near(bal.accrued, 2000)]);
+    await markAttendance({ projectLaborerId: pl.id, date: '2026-06-02', status: 'FULL' }); // restore
+    bal = await getLaborBalance(pl.id);
+    checks.push(['restore → 2500', near(bal.accrued, 2500)]);
+
+    // Construction expenses: cement 50, bajri 10
+    const db = await getDatabase();
+    const cat = async (n: string) =>
+      (await db.getFirstAsync<{ id: string }>('SELECT id FROM categories WHERE name_en = ?', n))!.id;
+    await addTransaction({ direction: 'OUT', amount: 50, date: D, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: await cat('Cement') });
+    await addTransaction({ direction: 'OUT', amount: 10, date: D, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: await cat('Sand/Crush') });
+
+    let constr = await getConstructionSummary(project.id, '2026-06');
+    checks.push(['construction = 60 cash + 2500 accrued = 2560', near(constr.total, 2560)]);
+    checks.push(['top category is Cement 50', constr.byCategory[0]?.nameEn === 'Cement' && near(constr.byCategory[0]?.total ?? 0, 50)]);
+
+    // Pay the worker 1000  balance drops, account drops, construction total UNCHANGED
+    await payLaborer({ projectLaborerId: pl.id, amount: 1000, date: D, accountId: acc.id });
+    bal = await getLaborBalance(pl.id);
+    constr = await getConstructionSummary(project.id, '2026-06');
+    checks.push(['paid 1000 → balance 1500', near(bal.paid, 1000) && near(bal.balance, 1500)]);
+    checks.push(['no double count: total still 2560', near(constr.total, 2560)]);
+    checks.push(['labor outstanding 1500', near(constr.laborOutstanding, 1500)]);
+    checks.push(['account: 10000−60−1000 = 8940', near(await getAccountBalance(acc.id), 8940)]);
+
+    return report('T-LAB attendance & wages', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-SALE + T-PROJ  sale flow and total project cost                        */
+/* -------------------------------------------------------------------------- */
+
+async function testSaleAndProjectCost(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST S-Acc', type: 'BANK', openingBalance: 2000 });
+    c.accounts.push(acc.id);
+    const plot = await createPlot({ name: 'DBTEST S-Plot', dealPrice: 1000 });
+    c.plots.push(plot.id);
+
+    // Plot fully bought + tax before the project exists
+    await addPlotPayment({ plotId: plot.id, payType: 'FINAL', amount: 1000, date: D, accountId: acc.id });
+    const db = await getDatabase();
+    const taxCat = (await db.getFirstAsync<{ id: string }>("SELECT id FROM categories WHERE name_en = 'Transfer Fees & Tax'"))!.id;
+    await addPlotExpense({ plotId: plot.id, categoryId: taxCat, amount: 100, date: D, accountId: acc.id });
+
+    // Project includes the plot → history backfills
+    const project = await createProject({ name: 'DBTEST S-Proj', plotId: plot.id }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+
+    const checks: Check[] = [];
+    const backfilled = await db.getFirstAsync<{ c: number }>(
+      'SELECT COUNT(*) AS c FROM transactions WHERE plot_id = ? AND project_id = ?',
+      plot.id,
+      project.id
+    );
+    checks.push(['include-plot backfilled 2 txns', (backfilled?.c ?? 0) === 2]);
+    const linked = await db.getFirstAsync<{ plot_id: string | null }>('SELECT plot_id FROM projects WHERE id = ?', project.id);
+    checks.push(['project ↔ plot linked', linked?.plot_id === plot.id]);
+
+    // Construction: cement 60 (no labor here)
+    const cementCat = (await db.getFirstAsync<{ id: string }>("SELECT id FROM categories WHERE name_en = 'Cement'"))!.id;
+    await addTransaction({ direction: 'OUT', amount: 60, date: D, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: cementCat });
+
+    // Sale: deal 3000, token 500, bayana 2500, cost 200
+    const sale = await upsertSale(project.id, { agreedPrice: 3000, buyerName: 'Mr Tariq' });
+    let ss = await getSaleSummary(project.id);
+    checks.push(['sale 3000 / outstanding 3000', near(ss.outstanding, 3000)]);
+
+    await addSaleReceipt({ saleId: sale.id, amount: 500, date: D, accountId: acc.id, payType: 'TOKEN' });
+    ss = await getSaleSummary(project.id);
+    checks.push(['token 500 → outstanding 2500', near(ss.receiptsTotal, 500) && near(ss.outstanding, 2500)]);
+
+    await addSaleReceipt({ saleId: sale.id, amount: 2500, date: D, accountId: acc.id, payType: 'FINAL' });
+    ss = await getSaleSummary(project.id);
+    checks.push(['fully received → outstanding 0', near(ss.outstanding, 0)]);
+
+    await addSaleCost({ projectId: project.id, name: 'Dealer commission', amount: 200, date: D, accountId: acc.id });
+    ss = await getSaleSummary(project.id);
+    checks.push(['sale costs 200', near(ss.costs, 200)]);
+    checks.push(['receipts unaffected by cost', near(ss.receiptsTotal, 3000)]);
+
+    // Project total cost: plot 1100 + construction 60 + sale 200 = 1360
+    const cost = await getProjectCost(project.id);
+    checks.push(['plot cost 1100', near(cost.plotCost, 1100)]);
+    checks.push(['construction 60', near(cost.constructionCost, 60)]);
+    checks.push(['sale cost 200', near(cost.saleCost, 200)]);
+    checks.push(['total 1360', near(cost.totalCost, 1360)]);
+
+    // Account: 2000 −1000 −100 −60 +500 +2500 −200 = 3640
+    checks.push(['account nets to 3640', near(await getAccountBalance(acc.id), 3640)]);
+
+    return report('T-SALE/T-PROJ sale & total cost', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-SET  settlement, donation, loss incl. owner                            */
+/* -------------------------------------------------------------------------- */
+
+async function testSettlementProfitWithDonation(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    // Opening balance = the owner's own money (the residual financier).
+    const acc = await addAccount({ name: 'DBTEST Set-Acc', type: 'BANK', openingBalance: 1000 });
+    c.accounts.push(acc.id);
+    // donation 10% via per-project override (doesn't touch user settings)
+    const project = await createProject({ name: 'DBTEST Set', donationPct: 10 }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+
+    const amir = await addInvestor({ name: 'DBTEST Amir' });
+    const aman = await addInvestor({ name: 'DBTEST Amanullah' });
+    c.investors.push(amir.id, aman.id);
+    await addProjectInvestor({ projectId: project.id, investorId: amir.id, committedAmount: 200, profitPct: 20 });
+    await addProjectInvestor({ projectId: project.id, investorId: aman.id, committedAmount: 300, profitPct: 30 });
+    await addInvestment({ investorId: amir.id, projectId: project.id, amount: 200, date: D, accountId: acc.id });
+    await addInvestment({ investorId: aman.id, projectId: project.id, amount: 300, date: D, accountId: acc.id });
+
+    // Expenses 1000, revenue 1500 → net +500
+    const db = await getDatabase();
+    const miscCat = (await db.getFirstAsync<{ id: string }>("SELECT id FROM categories WHERE name_en = 'Misc'"))!.id;
+    await addTransaction({ direction: 'OUT', amount: 1000, date: D, accountId: acc.id, projectId: project.id, phase: 'GENERAL', categoryId: miscCat });
+    const sale = await upsertSale(project.id, { agreedPrice: 1500 });
+    await addSaleReceipt({ saleId: sale.id, amount: 1500, date: D, accountId: acc.id });
+
+    const s = await computeSettlement(project.id);
+    const rAmir = s.rows.find((r) => r.name === 'DBTEST Amir');
+    const rAman = s.rows.find((r) => r.name === 'DBTEST Amanullah');
+
+    const checks: Check[] = [
+      ['net +500', near(s.net, 500) && s.isProfit],
+      ['Amir profit 100 (20%)', near(rAmir?.profitOrLoss ?? 0, 100)],
+      ['Amanullah profit 150 (30%)', near(rAman?.profitOrLoss ?? 0, 150)],
+      ['owner residual 250', near(s.owner.profitOrLoss, 250)],
+      ['owner capital 500 (1000−500)', near(s.owner.capital, 500)],
+      ['donations 10/15/25', near(rAmir?.donation ?? 0, 10) && near(rAman?.donation ?? 0, 15) && near(s.owner.donation, 25)],
+      ['total donation 50', near(s.totalDonation, 50)],
+      ['payouts 290 / 435', near(rAmir?.finalPayout ?? 0, 290) && near(rAman?.finalPayout ?? 0, 435)],
+    ];
+
+    // Commit and verify ledger writes
+    await settleProject(project.id);
+    const donationRows = await db.getFirstAsync<{ c: number; s: number }>(
+      `SELECT COUNT(*) AS c, COALESCE(SUM(amount), 0) AS s FROM capital_ledger
+       WHERE entry_type = 'DONATION' AND project_investor_id IN
+         (SELECT id FROM project_investors WHERE project_id = ?)`,
+      project.id
+    );
+    checks.push(['DONATION entries written (25)', (donationRows?.c ?? 0) === 2 && near(donationRows?.s ?? 0, 25)]);
+    const proj = await db.getFirstAsync<{ status: string }>('SELECT status FROM projects WHERE id = ?', project.id);
+    checks.push(['project COMPLETED', proj?.status === 'COMPLETED']);
+
+    return report('T-SET profit + donation', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+async function testSettlementLossIncludesOwner(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    // Opening balance = the owner's own money (the residual financier).
+    const acc = await addAccount({ name: 'DBTEST Loss-Acc', type: 'BANK', openingBalance: 1000 });
+    c.accounts.push(acc.id);
+    const project = await createProject({ name: 'DBTEST Loss', donationPct: 10 }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+
+    const amir = await addInvestor({ name: 'DBTEST L-Amir' });
+    const aman = await addInvestor({ name: 'DBTEST L-Aman' });
+    c.investors.push(amir.id, aman.id);
+    await addProjectInvestor({ projectId: project.id, investorId: amir.id, committedAmount: 200, profitPct: 20 });
+    await addProjectInvestor({ projectId: project.id, investorId: aman.id, committedAmount: 300, profitPct: 30 });
+    await addInvestment({ investorId: amir.id, projectId: project.id, amount: 200, date: D, accountId: acc.id });
+    await addInvestment({ investorId: aman.id, projectId: project.id, amount: 300, date: D, accountId: acc.id });
+
+    // Expenses 1000, revenue 800 → net −200. Capital: 500 investors + 500 owner.
+    const db = await getDatabase();
+    const miscCat = (await db.getFirstAsync<{ id: string }>("SELECT id FROM categories WHERE name_en = 'Misc'"))!.id;
+    await addTransaction({ direction: 'OUT', amount: 1000, date: D, accountId: acc.id, projectId: project.id, phase: 'GENERAL', categoryId: miscCat });
+    const sale = await upsertSale(project.id, { agreedPrice: 800 });
+    await addSaleReceipt({ saleId: sale.id, amount: 800, date: D, accountId: acc.id });
+
+    const s = await getProjectSettlementSummary(project.id);
+    const rAmir = s.investors.find((r) => r.name === 'DBTEST L-Amir');
+    const rAman = s.investors.find((r) => r.name === 'DBTEST L-Aman');
+
+    const checks: Check[] = [
+      ['net −200', near(s.net, -200) && !s.isProfit],
+      ['owner invested 500', near(s.owner.invested, 500)],
+      ['Amir loss −40 (200/1000)', near(rAmir?.profitOrLoss ?? 0, -40)],
+      ['Amanullah loss −60 (300/1000)', near(rAman?.profitOrLoss ?? 0, -60)],
+      ['owner loss −100 (NOT 0)', near(s.owner.profitOrLoss, -100)],
+      ['losses sum to −200', near((rAmir?.profitOrLoss ?? 0) + (rAman?.profitOrLoss ?? 0) + s.owner.profitOrLoss, -200)],
+      ['no donation on loss', near(s.totalDonation, 0)],
+      ['payouts 160 / 240', near(rAmir?.finalPayout ?? 0, 160) && near(rAman?.finalPayout ?? 0, 240)],
+    ];
+
+    return report('T-SET loss by capital ratio (incl. owner)', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-UDH  udhaar give / return / clear / void                               */
+/* -------------------------------------------------------------------------- */
+
+async function testUdhaarFlow(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST U-Acc', type: 'CASH', openingBalance: 500 });
+    c.accounts.push(acc.id);
+    const u = await createUdhaar({ personName: 'DBTEST Bilal' }); // GIVEN, free-text person
+    c.udhaar.push(u.id);
+
+    const checks: Check[] = [];
+    checks.push(['free-text person, no party', u.party_id === null && u.person_name === 'DBTEST Bilal']);
+
+    await giveUdhaar({ udhaarId: u.id, amount: 100, date: D, accountId: acc.id });
+    checks.push(['give 100 → account 400', near(await getAccountBalance(acc.id), 400)]);
+    checks.push(['receivable 100', near(await getUdhaarBalance(u.id), 100)]);
+
+    await returnUdhaar({ udhaarId: u.id, amount: 60, date: D, accountId: acc.id });
+    checks.push(['return 60 → account 460', near(await getAccountBalance(acc.id), 460)]);
+    checks.push(['receivable 40', near(await getUdhaarBalance(u.id), 40)]);
+    checks.push(['still OPEN', (await getUdhaar(u.id))?.status === 'OPEN']);
+
+    await returnUdhaar({ udhaarId: u.id, amount: 40, date: D, accountId: acc.id });
+    checks.push(['cleared → balance 0', near(await getUdhaarBalance(u.id), 0)]);
+    checks.push(['status CLEARED', (await getUdhaar(u.id))?.status === 'CLEARED']);
+
+    return report('T-UDH give / return / clear', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-INV  commitment is a promise; only cash given moves; auto-raise        */
+/* -------------------------------------------------------------------------- */
+
+async function testInvestorCommitmentVsCash(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST I-Acc', type: 'BANK', openingBalance: 0 });
+    c.accounts.push(acc.id);
+    const project = await createProject({ name: 'DBTEST I-Proj' }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+    const inv = await addInvestor({ name: 'DBTEST I-Amir' });
+    c.investors.push(inv.id);
+
+    const db = await getDatabase();
+    const pi = await addProjectInvestor({
       projectId: project.id,
-      direction: 'OUT',
-      amount: 1000,
-      date: '2026-06-06',
-      mode: 'CASH',
+      investorId: inv.id,
+      committedAmount: 50_000, // the PROMISE  no money moves
+      profitPct: 20,
     });
 
-    const before = await getProjectTotals(project.id);
-    const reversal = await voidTransaction(txn.id);
-    const original = await getTransaction(txn.id);
-    const after = await getProjectTotals(project.id);
+    const checks: Check[] = [];
+    checks.push(['commitment alone moves no cash', near(await getAccountBalance(acc.id), 0)]);
 
-    const checks = [
-      ['original out=1000', near(before.totalOut, 1000)],
-      ['reversal links original', reversal.void_of_id === txn.id],
-      ['reversal direction flipped', reversal.direction === 'IN'],
-      ['original still exists', original !== null],
-      ['original flagged void', original?.is_void === 1],
-      ['out=0 after void', near(after.totalOut, 0)],
-    ] as const;
+    // They hand over only 5,000 now  ONLY that hits the account.
+    await addInvestment({ investorId: inv.id, projectId: project.id, amount: 5000, date: D, accountId: acc.id });
+    checks.push(['given 5000 → account 5000 (not 50000)', near(await getAccountBalance(acc.id), 5000)]);
+    let row = await db.getFirstAsync<{ committed_amount: number }>(
+      'SELECT committed_amount FROM project_investors WHERE id = ?',
+      pi.id
+    );
+    checks.push(['commitment still 50000', near(row?.committed_amount ?? 0, 50_000)]);
 
-    const failed = checks.filter(([, ok]) => !ok).map(([d]) => d);
-    return {
-      name,
-      passed: failed.length === 0,
-      detail: failed.length ? `failed: ${failed.join(', ')}` : 'reversal appended, original kept & excluded',
-    };
+    // More instalments accumulate.
+    await addInvestment({ investorId: inv.id, projectId: project.id, amount: 40_000, date: D, accountId: acc.id });
+    checks.push(['given 45000 total → account 45000', near(await getAccountBalance(acc.id), 45_000)]);
+
+    // Giving beyond the commitment auto-raises it (45k + 15k = 60k > 50k).
+    await addInvestment({ investorId: inv.id, projectId: project.id, amount: 15_000, date: D, accountId: acc.id });
+    row = await db.getFirstAsync<{ committed_amount: number }>(
+      'SELECT committed_amount FROM project_investors WHERE id = ?',
+      pi.id
+    );
+    checks.push(['over-give auto-raises commitment to 60000', near(row?.committed_amount ?? 0, 60_000)]);
+    checks.push(['account holds all 60000', near(await getAccountBalance(acc.id), 60_000)]);
+
+    return report('T-INV commitment vs cash given', checks);
   } finally {
-    await cleanupProject(project.id, []);
+    await c.run();
   }
 }
 
-/** Proves cash/bank balances and project totals compute correctly. */
-async function testBalancesCompute(): Promise<TestResult> {
-  const name = 'balances compute correctly';
-  const project = await createProject({ name: 'DBTEST bal' }, { withDefaultMilestones: false });
+/* -------------------------------------------------------------------------- */
+/*  T-VAL  validation guards must BLOCK bad money movements                  */
+/* -------------------------------------------------------------------------- */
+
+async function expectThrow(fn: () => Promise<unknown>, marker: string): Promise<boolean> {
   try {
-    await addTransaction({ projectId: project.id, direction: 'IN', amount: 5000, date: '2026-06-06', mode: 'CASH' });
-    await addTransaction({ projectId: project.id, direction: 'OUT', amount: 2000, date: '2026-06-06', mode: 'BANK' });
-
-    const bal = await getCashBankBalance(project.id);
-    const totals = await getProjectTotals(project.id);
-
-    const checks = [
-      ['cash=5000', near(bal.cash, 5000)],
-      ['bank=-2000', near(bal.bank, -2000)],
-      ['total=3000', near(bal.total, 3000)],
-      ['totalIn=5000', near(totals.totalIn, 5000)],
-      ['totalOut=2000', near(totals.totalOut, 2000)],
-      ['net=3000', near(totals.net, 3000)],
-    ] as const;
-
-    const failed = checks.filter(([, ok]) => !ok).map(([d]) => d);
-    return {
-      name,
-      passed: failed.length === 0,
-      detail: failed.length ? `failed: ${failed.join(', ')}` : 'cash 5000 / bank -2000 / total 3000',
-    };
-  } finally {
-    await cleanupProject(project.id, []);
+    await fn();
+    return false; // should have thrown
+  } catch (e) {
+    return e instanceof Error && e.message === marker;
   }
 }
 
-/** Proves ownership percentages sum to 100. */
-async function testOwnershipSumsTo100(): Promise<TestResult> {
-  const name = 'ownership % sums to 100';
-  const project = await createProject({ name: 'DBTEST own' }, { withDefaultMilestones: false });
-  const invA = await addInvestor({ name: 'DBTEST A' });
-  const invB = await addInvestor({ name: 'DBTEST B' });
+async function testValidationGuards(): Promise<TestResult> {
+  const c = new Cleanup();
   try {
-    const piA = await addProjectInvestor({ projectId: project.id, investorId: invA.id, committedAmount: 600000 });
-    const piB = await addProjectInvestor({ projectId: project.id, investorId: invB.id, committedAmount: 400000 });
-    await addCapitalEntry({ projectInvestorId: piA.id, entryType: 'INITIAL', amount: 600000, date: '2026-06-06' });
-    await addCapitalEntry({ projectInvestorId: piB.id, entryType: 'INITIAL', amount: 400000, date: '2026-06-06' });
+    const acc = await addAccount({ name: 'DBTEST V-Acc', type: 'CASH', openingBalance: 100 });
+    c.accounts.push(acc.id);
+    const checks: Check[] = [];
 
-    const summary = await getProjectCapitalSummary(project.id);
-    const sumPct = summary.shares.reduce((s, x) => s + x.ownershipPct, 0);
-    const shareA = summary.shares.find((s) => s.projectInvestorId === piA.id);
-    const shareB = summary.shares.find((s) => s.projectInvestorId === piB.id);
+    // Overdraft blocked: OUT 500 from an account holding 100.
+    checks.push([
+      'overdraft blocked',
+      await expectThrow(
+        () => addTransaction({ direction: 'OUT', amount: 500, date: D, accountId: acc.id }),
+        'INSUFFICIENT_FUNDS'
+      ),
+    ]);
+    checks.push(['balance untouched after block', near(await getAccountBalance(acc.id), 100)]);
 
-    const checks = [
-      ['total capital=1,000,000', near(summary.totalCapital, 1_000_000)],
-      ['A owns 60%', near(shareA?.ownershipPct ?? 0, 60)],
-      ['B owns 40%', near(shareB?.ownershipPct ?? 0, 40)],
-      ['sum=100%', near(sumPct, 100)],
-    ] as const;
+    // Zero-balance account blocked outright.
+    const empty = await addAccount({ name: 'DBTEST V-Empty', type: 'CASH', openingBalance: 0 });
+    c.accounts.push(empty.id);
+    checks.push([
+      'zero-balance blocked',
+      await expectThrow(
+        () => addTransaction({ direction: 'OUT', amount: 1, date: D, accountId: empty.id }),
+        'INSUFFICIENT_FUNDS'
+      ),
+    ]);
 
-    const failed = checks.filter(([, ok]) => !ok).map(([d]) => d);
-    return {
-      name,
-      passed: failed.length === 0,
-      detail: failed.length ? `failed: ${failed.join(', ')}` : '60% + 40% = 100%',
-    };
+    // Transfer more than the source holds is blocked (and nothing moves).
+    checks.push([
+      'over-transfer blocked',
+      await expectThrow(
+        () => transferBetween({ fromAccountId: acc.id, toAccountId: empty.id, amount: 500, date: D }),
+        'INSUFFICIENT_FUNDS'
+      ),
+    ]);
+    checks.push(['transfer target unchanged', near(await getAccountBalance(empty.id), 0)]);
+
+    // Seller can't be paid more than the deal remaining.
+    const plot = await createPlot({ name: 'DBTEST V-Plot', dealPrice: 80 });
+    c.plots.push(plot.id);
+    checks.push([
+      'plot overpay blocked (100 > deal 80)',
+      await expectThrow(
+        () => addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 100, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+    await addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 80, date: D, accountId: acc.id });
+    checks.push([
+      'fully-paid plot blocks any further payment',
+      await expectThrow(
+        () => addPlotPayment({ plotId: plot.id, payType: 'FINAL', amount: 1, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+
+    // Buyer can't pay more than outstanding.
+    const project = await createProject({ name: 'DBTEST V-Proj' }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+    const sale = await upsertSale(project.id, { agreedPrice: 50 });
+    checks.push([
+      'sale over-receipt blocked (60 > 50)',
+      await expectThrow(
+        () => addSaleReceipt({ saleId: sale.id, amount: 60, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+
+    // Udhaar: more can't come back than is outstanding.
+    const u = await createUdhaar({ personName: 'DBTEST V-Person' });
+    c.udhaar.push(u.id);
+    await giveUdhaar({ udhaarId: u.id, amount: 10, date: D, accountId: acc.id });
+    checks.push([
+      'udhaar over-return blocked (25 > 10)',
+      await expectThrow(
+        () => returnUdhaar({ udhaarId: u.id, amount: 25, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+
+    // Duplicate account names blocked (case-insensitive).
+    checks.push([
+      'duplicate account name blocked',
+      await expectThrow(
+        () => addAccount({ name: 'dbtest v-acc', type: 'BANK' }),
+        'DUPLICATE_ACCOUNT'
+      ),
+    ]);
+
+    return report('T-VAL guards block bad movements', checks);
   } finally {
-    await cleanupProject(project.id, [invA.id, invB.id]);
+    await c.run();
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*  T-COM  switching companies isolates ALL data                             */
+/* -------------------------------------------------------------------------- */
+
+async function testCompanyIsolation(): Promise<TestResult> {
+  const db = await getDatabase();
+  const original = getActiveCompanyId();
+  const checks: Check[] = [];
+  let coA: string | null = null;
+  let coB: string | null = null;
+  try {
+    // Company A with its own account + plot + udhaar.
+    const a = await createCompany({ name: 'DBTEST CoA', openingCash: 9000 });
+    coA = a.id;
+    const plotA = await createPlot({ name: 'DBTEST A-Plot', dealPrice: 100 });
+    const uA = await createUdhaar({ personName: 'DBTEST A-Person' });
+    checks.push(['A: seeded Cash account visible', (await listAccountsWithBalance()).length === 1]);
+    checks.push(['A: opening cash 9000', near(await getTotalBalance(), 9000)]);
+
+    // Company B  a fresh world.
+    const b = await createCompany({ name: 'DBTEST CoB', openingCash: 100 });
+    coB = b.id;
+    checks.push(['B: sees only its own account', (await listAccountsWithBalance()).length === 1]);
+    checks.push(['B: total is ITS opening 100', near(await getTotalBalance(), 100)]);
+    checks.push(['B: no plots from A', (await listPlots()).length === 0]);
+    checks.push(['B: no udhaar from A', (await listUdhaar()).length === 0]);
+    checks.push(['B: assets independent', near((await getCompanyAssets()).total, 100)]);
+
+    // Switch back to A  everything is exactly as left.
+    await setActiveCompany(a.id);
+    checks.push(['back to A: plot visible again', (await listPlots()).some((p) => p.id === plotA.id)]);
+    checks.push(['back to A: udhaar visible again', (await listUdhaar()).some((u) => u.id === uA.id)]);
+    checks.push(['back to A: total still 9000', near(await getTotalBalance(), 9000)]);
+
+    return report('T-COM company isolation', checks);
+  } finally {
+    for (const cid of [coA, coB]) {
+      if (!cid) continue;
+      await db.runAsync('DELETE FROM transactions WHERE company_id = ?', cid);
+      await db.runAsync('DELETE FROM udhaar WHERE company_id = ?', cid);
+      await db.runAsync('DELETE FROM plots WHERE company_id = ?', cid);
+      await db.runAsync('DELETE FROM accounts WHERE company_id = ?', cid);
+      await db.runAsync('DELETE FROM companies WHERE id = ?', cid);
+    }
+    if (original) await setActiveCompany(original);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-REG  reconciliation invariant                                          */
+/* -------------------------------------------------------------------------- */
+
+async function testReconciliation(): Promise<TestResult> {
+  // Total balance always equals the sum of per-account balances, and each
+  // account's balance equals opening + signed sum of its live transactions.
+  const accounts = await listAccountsWithBalance();
+  const total = await getTotalBalance();
+  const sum = accounts.reduce((s, a) => s + a.balance, 0);
+
+  const db = await getDatabase();
+  const checks: Check[] = [['total = Σ account balances', near(total, sum)]];
+  for (const a of accounts) {
+    const row = await db.getFirstAsync<{ s: number }>(
+      `SELECT COALESCE(SUM(CASE WHEN direction = 'IN' THEN amount ELSE -amount END), 0) AS s
+       FROM transactions WHERE account_id = ? AND is_void = 0`,
+      a.id
+    );
+    checks.push([`${a.name} reconciles`, near(a.balance, a.opening_balance + (row?.s ?? 0))]);
+  }
+  return report('T-REG reconciliation', checks);
+}
+
+/* -------------------------------------------------------------------------- */
 
 /** Run all DB self-tests in sequence and return their results. */
 export async function runDbTests(): Promise<TestResult[]> {
+  // Everything is company-scoped now  run the whole suite inside a throwaway
+  // test company, then restore the user's active company and delete it.
+  const previousCompanyId = getActiveCompanyId();
+  const testCompany = await createCompany({ name: `DBTEST Co ${Date.now()}` });
+
+  const tests = [
+    testAccountBalances,
+    testPlotMath,
+    testLaborAccrual,
+    testSaleAndProjectCost,
+    testSettlementProfitWithDonation,
+    testSettlementLossIncludesOwner,
+    testUdhaarFlow,
+    testInvestorCommitmentVsCash,
+    testValidationGuards,
+    testCompanyIsolation,
+    testReconciliation,
+  ];
   const results: TestResult[] = [];
-  for (const test of [testVoidCreatesReversal, testBalancesCompute, testOwnershipSumsTo100]) {
-    try {
-      results.push(await test());
-    } catch (e) {
-      results.push({ name: test.name, passed: false, detail: `threw: ${String(e)}` });
+  try {
+    for (const test of tests) {
+      try {
+        results.push(await test());
+      } catch (e) {
+        results.push({ name: test.name, passed: false, detail: `threw: ${String(e)}` });
+      }
     }
+  } finally {
+    // Remove the test company (and its seeded Cash account), restore the user's.
+    const db = await getDatabase();
+    await db.runAsync('DELETE FROM transactions WHERE company_id = ?', testCompany.id);
+    await db.runAsync('DELETE FROM accounts WHERE company_id = ?', testCompany.id);
+    await db.runAsync('DELETE FROM companies WHERE id = ?', testCompany.id);
+    if (previousCompanyId) await setActiveCompany(previousCompanyId);
   }
   return results;
 }

@@ -1,4 +1,4 @@
-# TameerBook — Project Status Report
+# TameerBook Project Status Report
 
 > A report of what has already been built, so an assistant (ChatGPT) can give
 > better guidance on what to do next.
@@ -7,7 +7,7 @@
 
 **TameerBook** is an **offline mobile app for Pakistani property/construction
 investors and small builders**. It tracks money (kharcha/aamdani), property
-deals, construction progress, investors, and profit settlement — all in plain
+deals, construction progress, investors, and profit settlement all in plain
 Urdu/English words, designed for non-technical, low-literacy users on cheap
 Android phones.
 
@@ -28,7 +28,7 @@ Android phones.
 
 ```
 src/
-  db/            SQLite layer — schema, migrations, 20+ repositories
+  db/            SQLite layer  schema, migrations, 20+ repositories
   stores/        Zustand state (entry, ledger, projects, settings)
   screens/       25 screens
   navigation/    Root stack + custom tab bar with center "+" FAB
@@ -39,27 +39,27 @@ src/
   notifications/ Local reminder scheduling
 ```
 
-## 4. Database — DONE (this is the strongest part)
+## 4. Database DONE (this is the strongest part)
 
 A complete, versioned, **append-only ledger** data model with **6 migrations**.
 Tables built:
 
-- `projects` — investment/construction projects with a stage pipeline
-- `properties` + `property_payments` — plot details, seller info, token/bayana/
+- `projects` investment/construction projects with a stage pipeline
+- `properties` + `property_payments` plot details, seller info, token/bayana/
   installment/final payments
-- `transactions` — append-only money in/out ledger (mistakes corrected by
-  reversal, never deleted — full audit trail)
-- `categories` — 20 pre-seeded income/expense categories (Cement, Sariya,
+- `transactions` append-only money in/out ledger (mistakes corrected by
+  reversal, never deleted full audit trail)
+- `categories` 20 pre-seeded income/expense categories (Cement, Sariya,
   Bricks, Labor Dehari, etc.) bilingual
-- `parties` — sellers, buyers, contractors, suppliers, dealers, labor
-- `investors` + `project_investors` — investor profiles and their stake per project
-- `capital_ledger` — append-only investor capital (initial, additional,
+- `parties` sellers, buyers, contractors, suppliers, dealers, labor
+- `investors` + `project_investors` investor profiles and their stake per project
+- `capital_ledger` append-only investor capital (initial, additional,
   withdrawal, transfer, exit, profit payout, loss)
-- `milestones` — 9-step construction progress template (weighted %)
-- `sales` + `sale_receipts` — selling the property, buyer receipts
-- `documents` — attached receipt/document files
-- `project_stage_history` — audit log of stage changes
-- `app_settings` — persisted preferences
+- `milestones` 9-step construction progress template (weighted %)
+- `sales` + `sale_receipts` selling the property, buyer receipts
+- `documents` attached receipt/document files
+- `project_stage_history` audit log of stage changes
+- `app_settings` persisted preferences
 
 **Repositories (business logic) already written** for: acquisition, analytics
 (P&L, cash-flow, ROI, expense-by-category, top suppliers, investment matrix),
@@ -74,7 +74,7 @@ LISTED_FOR_SALE → CLOSED` (with stage-change rules and history tracking).
 
 ## 6. Screens built (25)
 
-- **Home** — dashboard
+- **Home** dashboard
 - **Projects** + **Project Detail** + **New Project Wizard**
 - **Quick Entry** (the "+" FAB), **Entry**, **Material Entry**, **Dehari (labor)
   Entry**, **Investment Entry**
@@ -100,5 +100,5 @@ LISTED_FOR_SALE → CLOSED` (with stage-change rules and history tracking).
 ## 8. Summary in one line
 
 > The **data engine and core money/project/investor/settlement tracking is
-> built** — full offline SQLite database, 20+ repositories, 25 screens,
+> built** full offline SQLite database, 20+ repositories, 25 screens,
 > bilingual UI, dark mode, PDF reports, photos, and reminders.

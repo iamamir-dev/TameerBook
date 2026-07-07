@@ -18,7 +18,7 @@ interface AppTextProps extends TextProps {
   color?: ColorKey;
   /** Center the text. */
   center?: boolean;
-  /** Tabular (monospaced) digits — for aligned big numbers. */
+  /** Tabular (monospaced) digits  for aligned big numbers. */
   tabular?: boolean;
   /** Uppercase + letter-spaced overline caption (e.g. "TOTAL BALANCE"). */
   uppercase?: boolean;
@@ -27,7 +27,7 @@ interface AppTextProps extends TextProps {
 /**
  * The base text primitive. EVERY string renders through this (or a component
  * built on it) so font family, size, weight, color, and line height all come
- * from the theme — never hardcoded.
+ * from the theme  never hardcoded.
  */
 export function AppText({
   size = 'md',

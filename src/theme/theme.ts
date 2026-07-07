@@ -1,7 +1,7 @@
 /**
- * theme.ts — THE SINGLE SOURCE OF TRUTH for TameerBook's visual design.
+ * theme.ts  THE SINGLE SOURCE OF TRUTH for TameerBook's visual design.
  *
- * Design language: "Soft Modern" — quiet-premium feel. Warm cream canvas,
+ * Design language: "Soft Modern"  quiet-premium feel. Warm cream canvas,
  * crisp white cards, a near-black charcoal brand (hero card, primary buttons),
  * a single muted emerald-green accent, warm-gray text, generously rounded
  * corners (nothing sharp), and ultra-soft diffuse shadows instead of borders.
@@ -21,15 +21,15 @@ import type { TextStyle, ViewStyle } from 'react-native';
 /* -------------------------------------------------------------------------- */
 
 export interface ColorPalette {
-  /** Brand near-black charcoal — hero card, primary surfaces, key text. */
+  /** Brand near-black charcoal  hero card, primary surfaces, key text. */
   primary: string;
-  /** Muted emerald green — the "+" FAB, primary actions, highlights. */
+  /** Muted emerald green  the "+" FAB, primary actions, highlights. */
   accent: string;
-  /** Green — money coming IN (aamdani). */
+  /** Green  money coming IN (aamdani). */
   success: string;
-  /** Red — money going OUT (kharcha). */
+  /** Red  money going OUT (kharcha). */
   danger: string;
-  /** Gold — investor / profit accents. */
+  /** Gold  investor / profit accents. */
   gold: string;
   /** Soft off-white app canvas behind cards. */
   background: string;
@@ -39,14 +39,14 @@ export interface ColorPalette {
   textPrimary: string;
   /** Secondary / muted text (lighter, softer). */
   textSecondary: string;
-  /** Hairline borders / dividers — used sparingly, shadows do the lifting. */
+  /** Hairline borders / dividers  used sparingly, shadows do the lifting. */
   border: string;
 
   /** Text/icons on a primary (charcoal) surface. */
   onPrimary: string;
-  /** ~62% white — captions on the charcoal hero. */
+  /** ~62% white  captions on the charcoal hero. */
   onPrimaryMuted: string;
-  /** ~45% white — faint subtitles on the charcoal hero. */
+  /** ~45% white  faint subtitles on the charcoal hero. */
   onPrimaryFaint: string;
   /** Translucent white chip background on the hero (icon circles). */
   onPrimaryChip: string;
@@ -55,13 +55,13 @@ export interface ColorPalette {
   /** Text/icons on an accent (green) surface. */
   onAccent: string;
 
-  /** Always-dark "hero" card surface (the premium LIVE-style card) — charcoal
+  /** Always-dark "hero" card surface (the premium LIVE-style card)  charcoal
    *  in BOTH light and dark mode, so it never inverts. */
   heroBg: string;
-  /** Solid white text/icons on the hero — white in BOTH modes. */
+  /** Solid white text/icons on the hero  white in BOTH modes. */
   onHero: string;
 
-  /** 10% soft tints — used as pastel icon-chip / pill backgrounds. */
+  /** 10% soft tints  used as pastel icon-chip / pill backgrounds. */
   primarySoft: string;
   successSoft: string;
   dangerSoft: string;
@@ -161,7 +161,7 @@ const darkGradients: Gradients = { hero: ['#262420', '#131210'] };
 /**
  * Font sizes. Content text never goes below `xs` (13) per the UX rules.
  * `overline` (11) is reserved ONLY for the uppercase, letter-spaced micro
- * captions (e.g. "TOTAL BALANCE") — a decorative label, not reading content.
+ * captions (e.g. "TOTAL BALANCE")  a decorative label, not reading content.
  */
 export const fontSizes = {
   overline: 11,
@@ -240,7 +240,7 @@ export const spacing = {
 } as const;
 
 /**
- * Corner radii — everything is generously rounded, nothing sharp.
+ * Corner radii  everything is generously rounded, nothing sharp.
  * `md`/`lg` are kept (remapped to the soft values) for back-compat; new code
  * should prefer the semantic `chip` / `card` / `hero`.
  */
@@ -255,7 +255,7 @@ export const radius = {
 } as const;
 
 export interface Shadows {
-  /** Ultra-soft elevation for resting cards — they float, never harsh. */
+  /** Ultra-soft elevation for resting cards  they float, never harsh. */
   card: ViewStyle;
   /** Stronger-soft elevation for floating elements (navbar pill, sheets). */
   raised: ViewStyle;
@@ -279,7 +279,7 @@ const shadows: Shadows = {
     elevation: 10,
   },
   fab: {
-    // Soft green glow — color matches `accent`.
+    // Soft green glow  color matches `accent`.
     shadowColor: '#1FA15D',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.32,
@@ -301,7 +301,7 @@ const icon: IconSpec = {
 };
 
 export interface TouchSpec {
-  /** Minimum touch target — every tappable element is at least this tall. */
+  /** Minimum touch target  every tappable element is at least this tall. */
   minTarget: number;
   /** Default hitSlop applied to small touchables. */
   hitSlop: { top: number; bottom: number; left: number; right: number };

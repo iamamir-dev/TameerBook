@@ -232,7 +232,7 @@ export function ExitWizardScreen(): React.JSX.Element {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {/* Step 1 — who + which project */}
+        {/* Step 1  who + which project */}
         {step === 0 ? (
           <>
             <AppText size="lg" weight="bold">
@@ -272,7 +272,7 @@ export function ExitWizardScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Step 2 — scenario */}
+        {/* Step 2  scenario */}
         {step === 1 ? (
           <>
             <AppText size="lg" weight="bold">
@@ -294,7 +294,7 @@ export function ExitWizardScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Step 3 — value + consent */}
+        {/* Step 3  value + consent */}
         {step === 2 ? (
           <>
             <AppText size="lg" weight="bold">
@@ -317,7 +317,7 @@ export function ExitWizardScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Step 4 — buyer / portion */}
+        {/* Step 4  buyer / portion */}
         {step === 3 ? (
           <>
             {scenario === 'PARTNER_BUY' ? (
@@ -348,7 +348,7 @@ export function ExitWizardScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Step 5 — review */}
+        {/* Step 5  review */}
         {step === 4 ? (
           <>
             <AppText size="lg" weight="bold">

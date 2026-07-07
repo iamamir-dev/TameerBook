@@ -17,7 +17,7 @@ interface ThemeProviderProps {
 /**
  * Wraps the app and selects light/dark from the settings store. Because it
  * subscribes to `darkMode`, toggling that flag re-themes EVERY component that
- * reads `useTheme()` — no prop drilling, no per-screen colors.
+ * reads `useTheme()`  no prop drilling, no per-screen colors.
  */
 export function ThemeProvider({ children }: ThemeProviderProps): React.JSX.Element {
   const darkMode = useSettingsStore((state) => state.darkMode);

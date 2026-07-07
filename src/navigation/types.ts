@@ -1,22 +1,22 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-import type { PaymentMode, TxnDirection } from '@/db';
+import type { TxnDirection } from '@/db';
 
 /** Pre-filled values when opening the entry screen to correct a mistake. */
 export interface EntryPrefill {
   amount?: number;
   categoryId?: string | null;
   note?: string;
-  mode?: PaymentMode;
+  accountId?: string;
   projectId?: string;
   partyId?: string | null;
 }
 
-/** Bottom tab routes. Home, Projects, Reports, Investors — entry is the FAB. */
+/** Bottom tab routes (two each side of the center "+" FAB). */
 export type TabParamList = {
   Home: undefined;
   Projects: undefined;
-  Reports: undefined;
+  Plots: undefined;
   Investors: undefined;
 };
 
@@ -25,22 +25,39 @@ export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   QuickEntry: undefined;
   Settings: undefined;
+  NewCompany: undefined;
   DevTools: undefined;
+  // Cash flow
+  Cash: undefined;
+  Accounts: undefined;
+  AccountDetail: { accountId: string };
+  Transfer: { fromAccountId?: string } | undefined;
+  // Reports hub (reached from Settings)
+  Reports: undefined;
+  // Plots
+  NewPlot: undefined;
+  PlotDetail: { plotId: string };
+  // Projects
   NewProject: undefined;
   ProjectDetail: { projectId: string };
-  Entry: { direction: TxnDirection; prefill?: EntryPrefill };
-  ComingSoon: { titleKey: string };
+  ConstructionDetail: { projectId: string };
+  SaleDetail: { projectId: string };
   Transactions: { projectId: string };
-  Udhaar: undefined;
-  MaterialEntry: undefined;
-  DehariEntry: undefined;
   PhotoDiary: { projectId: string };
-  SupplierLedger: { partyId: string };
+  Settlement: { projectId: string };
+  // Money entry
+  Entry: { direction: TxnDirection; prefill?: EntryPrefill };
+  MaterialEntry: undefined;
   Investment: { investorId?: string } | undefined;
+  // Udhaar
+  Udhaar: undefined;
+  UdhaarDetail: { udhaarId: string };
+  // Investors
   InvestorProfile: { investorId: string };
   ExitWizard: { investorId: string };
-  Settlement: { projectId: string };
-  Report: { type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' };
+  // Reports / misc
+  Report: { type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };
+  ComingSoon: { titleKey: string };
 };
 
 declare global {

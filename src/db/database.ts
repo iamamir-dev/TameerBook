@@ -18,7 +18,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   return dbInstance;
 }
 
-/** Run migrations + seed defaults. Idempotent — safe on every launch. */
+/** Run migrations + seed defaults. Idempotent  safe on every launch. */
 export async function initDatabase(): Promise<void> {
   const db = await getDatabase();
   await runMigrations(db);

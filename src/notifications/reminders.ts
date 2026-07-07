@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { getDatabase, listSupplierPayables, listTransferDeadlines } from '@/db';
+import { getDatabase, getUdhaarTotals, listTransferDeadlines } from '@/db';
 import { t } from '@/i18n';
 import type { ReminderPrefs } from '@/stores/useSettingsStore';
 
@@ -61,11 +61,11 @@ export async function rescheduleReminders(prefs: ReminderPrefs): Promise<void> {
     const deadlines = await listTransferDeadlines();
     for (const d of deadlines) {
       for (const lead of [7, 2]) {
-        const when = new Date(new Date(d.deadline).getTime() - lead * DAY_MS);
+        const when = new Date(new Date(d.transfer_deadline).getTime() - lead * DAY_MS);
         when.setHours(9, 0, 0, 0);
         if (when.getTime() > Date.now()) {
           await Notifications.scheduleNotificationAsync({
-            content: { title: t('notifDeadlineTitle'), body: `${d.projectName} — ${t('notifDeadlineBody')}` },
+            content: { title: t('notifDeadlineTitle'), body: `${d.plot_name}  ${t('notifDeadlineBody')}` },
             trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
           });
         }
@@ -74,8 +74,8 @@ export async function rescheduleReminders(prefs: ReminderPrefs): Promise<void> {
   }
 
   if (prefs.udhaar) {
-    const payables = await listSupplierPayables();
-    if (payables.some((p) => p.payable > 0)) {
+    const totals = await getUdhaarTotals();
+    if (totals.receivable > 0 || totals.payable > 0) {
       await Notifications.scheduleNotificationAsync({
         content: { title: t('notifUdhaarTitle'), body: t('notifUdhaarBody') },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 6, hour: 20, minute: 0 },

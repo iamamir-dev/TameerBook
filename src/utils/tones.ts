@@ -1,6 +1,6 @@
 import type { ColorPalette, Theme } from '@/theme/theme';
 
-type ColorKey = keyof ColorPalette;
+export type ColorKey = keyof ColorPalette;
 
 /** Soft 10% tint that pairs with a tone (for icon chips / badges). */
 export function softToneColor(theme: Theme, tone: ColorKey): string {

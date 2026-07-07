@@ -6,13 +6,13 @@
  *   12345678 -> "1,23,45,678" (1.23 Crore)
  *
  * Kept UI-agnostic so AmountInput, StatCard, and AppListRow all format the
- * same way. No currency symbol is hardcoded here — callers add "Rs" via i18n.
+ * same way. No currency symbol is hardcoded here  callers add "Rs" via i18n.
  */
 
 const LAKH = 100_000;
 const CRORE = 10_000_000;
 
-/** Strip everything except digits — used to read raw typed input. */
+/** Strip everything except digits  used to read raw typed input. */
 export const digitsOnly = (value: string): string => value.replace(/[^0-9]/g, '');
 
 /**

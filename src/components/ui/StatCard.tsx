@@ -28,7 +28,7 @@ interface StatCardProps {
 }
 
 /**
- * A headline number with a label — the building block of the Home dashboard.
+ * A headline number with a label  the building block of the Home dashboard.
  * The big value uses the `xxl` size; tone/trend colors come from the theme.
  */
 export function StatCard({

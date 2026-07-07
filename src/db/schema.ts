@@ -4,7 +4,19 @@
  * This file is the single source of truth for the persisted data model:
  * enums, row types (keyed in snake_case to match SQLite columns exactly, so
  * `getAllAsync<Row>` results need no mapping), the DDL, and the default seed
- * data (categories + milestone template).
+ * data (categories + default cash account + milestone template).
+ *
+ * v2 data model ("cash-flow first"):
+ * - `accounts` (bank / cash-in-hand / wallet) are the source of truth for
+ *   money. Every real cash movement is a `transactions` row posted against an
+ *   account; balances are always DERIVED (opening + Σin − Σout), never stored.
+ * - `plots` are standalone purchases (deal price, seller payments, expenses,
+ *   documents) that can later be included in a project.
+ * - A project = an included plot + construction + sale. No stage pipeline.
+ * - `laborers` are reusable workers; per-project wage + daily attendance
+ *   accrues a wage balance (an accrual, not a cash movement).
+ * - `udhaar` tracks money lent to (or taken from) a person  who may not be
+ *   saved anywhere else (free-text name)  flowing out of / back into accounts.
  *
  * Design notes:
  * - Every table has `id` (TEXT uuid), `created_at` (ISO), `created_by`.
@@ -17,25 +29,13 @@
 /*  Enums (const arrays + derived union types)                                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Deal → delivery pipeline, in order. Buying is the essential Pakistani
- * milestones only (no "negotiation/agreement" filler): the new deal, then
- * token, bayana, transfer, possession.
- */
-export const PROJECT_STAGES = [
-  'TOKEN_PAID',
-  'BAYANA_PAID',
-  'TRANSFER',
-  'POSSESSION',
-  'CONSTRUCTION',
-  'FINISHING',
-  'LISTED_FOR_SALE',
-  'CLOSED',
-] as const;
-export type ProjectStage = (typeof PROJECT_STAGES)[number];
+/** Where money lives: a named bank account, physical cash, or a mobile wallet. */
+export const ACCOUNT_TYPES = ['BANK', 'CASH', 'WALLET'] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
-export const PROFIT_METHODS = ['SIMPLE', 'TIME_WEIGHTED'] as const;
-export type ProfitMethod = (typeof PROFIT_METHODS)[number];
+/** Lifecycle of a purchased plot. */
+export const PLOT_STATUSES = ['OWNED', 'IN_PROJECT', 'SOLD'] as const;
+export type PlotStatus = (typeof PLOT_STATUSES)[number];
 
 export const PROJECT_STATUSES = ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
@@ -43,11 +43,13 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export const SIZE_UNITS = ['MARLA', 'KANAL', 'SQYD'] as const;
 export type SizeUnit = (typeof SIZE_UNITS)[number];
 
-export const PROPERTY_PAYMENT_TYPES = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
-export type PropertyPaymentType = (typeof PROPERTY_PAYMENT_TYPES)[number];
+/** Named instalments of a property deal (seller side or buyer side). */
+export const PAY_TYPES = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
+export type PayType = (typeof PAY_TYPES)[number];
 
-export const PAYMENT_MODES = ['CASH', 'BANK', 'JAZZCASH', 'CREDIT'] as const;
-export type PaymentMode = (typeof PAYMENT_MODES)[number];
+/** Which slice of the business a transaction belongs to. */
+export const TXN_PHASES = ['PLOT', 'CONSTRUCTION', 'SALE', 'GENERAL'] as const;
+export type TxnPhase = (typeof TXN_PHASES)[number];
 
 export const PARTY_TYPES = [
   'SELLER',
@@ -80,11 +82,26 @@ export const CAPITAL_ENTRY_TYPES = [
   'EXIT_SETTLEMENT',
   'PROFIT_PAYOUT',
   'LOSS_ADJ',
+  'DONATION',
 ] as const;
 export type CapitalEntryType = (typeof CAPITAL_ENTRY_TYPES)[number];
 
 export const MILESTONE_STATUSES = ['PENDING', 'IN_PROGRESS', 'DONE'] as const;
 export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number];
+
+export const LABORER_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+export type LaborerStatus = (typeof LABORER_STATUSES)[number];
+
+/** A day's attendance: full dihari, half dihari, or absent (no wage). */
+export const ATTENDANCE_STATUSES = ['FULL', 'HALF', 'ABSENT'] as const;
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+/** GIVEN = we lent money out (receivable); TAKEN = we borrowed (payable). */
+export const UDHAAR_DIRECTIONS = ['GIVEN', 'TAKEN'] as const;
+export type UdhaarDirection = (typeof UDHAAR_DIRECTIONS)[number];
+
+export const UDHAAR_STATUSES = ['OPEN', 'CLEARED'] as const;
+export type UdhaarStatus = (typeof UDHAAR_STATUSES)[number];
 
 /* -------------------------------------------------------------------------- */
 /*  Row types (snake_case to mirror columns)                                  */
@@ -96,40 +113,64 @@ interface Base {
   created_by: string;
 }
 
-export interface ProjectRow extends Base {
+/**
+ * A company/workspace. Every ROOT entity (accounts, plots, projects,
+ * investors, laborers, udhaar, parties, transactions) carries a `company_id`;
+ * child tables inherit the scope through their parents. Switching companies
+ * switches the whole world.
+ */
+export interface CompanyRow extends Base {
   name: string;
-  stage: ProjectStage;
-  start_date: string | null;
-  profit_method: ProfitMethod;
-  status: ProjectStatus;
+  owner_name: string | null;
+  phone: string | null;
 }
 
-export interface PropertyRow extends Base {
-  project_id: string;
+/** A place money lives. Balance is DERIVED: opening + Σ(IN) − Σ(OUT). */
+export interface AccountRow extends Base {
+  company_id: string | null;
+  name: string;
+  type: AccountType;
+  opening_balance: number;
+  icon: string | null;
+  color: string | null;
+  sort_order: number;
+  is_archived: number; // 0 | 1
+}
+
+/** A standalone plot purchase; joins a project only when included in one. */
+export interface PlotRow extends Base {
+  company_id: string | null;
+  name: string;
   society: string | null;
   block: string | null;
   plot_no: string | null;
   size_value: number | null;
   size_unit: SizeUnit | null;
-  agreed_price: number | null;
+  /** Price agreed with the seller at deal time. */
+  deal_price: number;
   seller_name: string | null;
   seller_cnic: string | null;
   seller_phone: string | null;
   transfer_date: string | null;
-  /** Deadline by which transfer must complete (set when bayana is paid). */
   transfer_deadline: string | null;
+  status: PlotStatus;
+  /** Set when the plot is included in a project. */
+  project_id: string | null;
 }
 
-export interface PropertyPaymentRow extends Base {
-  property_id: string;
-  type: PropertyPaymentType;
-  amount: number;
-  date: string;
-  mode: PaymentMode;
-  doc_id: string | null;
+export interface ProjectRow extends Base {
+  company_id: string | null;
+  name: string;
+  /** The plot this project builds on (set at creation). */
+  plot_id: string | null;
+  start_date: string | null;
+  status: ProjectStatus;
+  /** Optional per-project override of the Settings donation %. */
+  donation_pct: number | null;
 }
 
 export interface PartyRow extends Base {
+  company_id: string | null;
   type: PartyType;
   name: string;
   phone: string | null;
@@ -144,14 +185,36 @@ export interface CategoryRow extends Base {
   icon: string | null;
 }
 
+/**
+ * The universal money primitive: every real cash movement is one row posted
+ * against an account. Transfers are two linked rows (shared `transfer_id`);
+ * udhaar rows link to their `udhaar` record. APPEND-ONLY.
+ */
 export interface TransactionRow extends Base {
-  project_id: string;
+  company_id: string | null;
   direction: TxnDirection;
-  category_id: string | null;
   amount: number;
   date: string;
-  mode: PaymentMode;
+  /** The account money moved through. Null only for legacy/system rows. */
+  account_id: string | null;
+  /** Optional: which project this belongs to (null = personal/global money). */
+  project_id: string | null;
+  /** Optional: which plot this belongs to (seller payments / plot expenses). */
+  plot_id: string | null;
+  /** Which slice of the business: PLOT / CONSTRUCTION / SALE / GENERAL. */
+  phase: TxnPhase | null;
+  category_id: string | null;
   party_id: string | null;
+  /** Free-text counterparty (e.g. an udhaar person not saved as a party). */
+  counterparty_name: string | null;
+  /** Named instalment (TOKEN/BAYANA/...) for seller/buyer deal payments. */
+  pay_type: PayType | null;
+  /** Links the two rows of an account-to-account transfer. */
+  transfer_id: string | null;
+  /** Links a give/return to its udhaar record. */
+  udhaar_id: string | null;
+  /** Links a wage payment to the worker's project attachment. */
+  labor_id: string | null;
   description: string | null;
   doc_id: string | null;
   is_void: number; // 0 | 1
@@ -159,6 +222,7 @@ export interface TransactionRow extends Base {
 }
 
 export interface InvestorRow extends Base {
+  company_id: string | null;
   name: string;
   cnic: string | null;
   phone: string | null;
@@ -208,6 +272,8 @@ export interface DocumentRow extends Base {
 export interface SaleRow extends Base {
   project_id: string;
   buyer_party_id: string | null;
+  /** Free-text buyer (may not be saved as a party). */
+  buyer_name: string | null;
   agreed_price: number;
   completed_at: string | null;
 }
@@ -216,15 +282,56 @@ export interface SaleReceiptRow extends Base {
   sale_id: string;
   amount: number;
   date: string;
-  mode: PaymentMode;
+  /** The account the buyer's money landed in. */
+  account_id: string | null;
+  /** Named instalment from the buyer (TOKEN/BAYANA/...). */
+  pay_type: PayType | null;
   doc_id: string | null;
 }
 
-export interface ProjectStageHistoryRow extends Base {
+/** A reusable worker (mazdoor)  attach to projects with a per-project wage. */
+export interface LaborerRow extends Base {
+  company_id: string | null;
+  name: string;
+  phone: string | null;
+  cnic: string | null;
+  photo_uri: string | null;
+  status: LaborerStatus;
+}
+
+/** A worker attached to a project with the dihari agreed for that project. */
+export interface ProjectLaborerRow extends Base {
   project_id: string;
-  from_stage: ProjectStage | null;
-  to_stage: ProjectStage;
-  changed_at: string;
+  laborer_id: string;
+  daily_wage: number;
+  status: LaborerStatus;
+  joined_at: string | null;
+}
+
+/**
+ * One row per worker per day. `wage_accrued` snapshots the wage owed for the
+ * day (full/half/0) so later wage changes don't rewrite history. An accrual,
+ * NOT a cash movement  payment happens via a Labor Payment transaction.
+ */
+export interface LaborAttendanceRow extends Base {
+  project_laborer_id: string;
+  date: string;
+  status: AttendanceStatus;
+  wage_accrued: number;
+  note: string | null;
+}
+
+/**
+ * A lending relationship with a person (possibly unsaved  free-text name).
+ * Balance is derived from linked transactions: Σ(given) − Σ(returned).
+ */
+export interface UdhaarRow extends Base {
+  company_id: string | null;
+  person_name: string;
+  party_id: string | null;
+  direction: UdhaarDirection;
+  note: string | null;
+  status: UdhaarStatus;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -232,58 +339,74 @@ export interface ProjectStageHistoryRow extends Base {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Schema version 1. Legacy demo tables (from the earlier in-memory build) are
- * dropped first — they never held real data — so we always land on the
- * current shape regardless of what a previous launch created.
+ * Schema version 7  the v2 "cash-flow first" clean rebuild (pre-launch, so
+ * legacy dev data is disposable). Drops every v1 table and recreates the new
+ * model. `app_settings` is preserved (prefs survive). Fresh installs run this
+ * as their first (only) migration.
  */
-export const SCHEMA_V1 = `
+export const SCHEMA_V7_CLEAN_REBUILD = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 DROP TABLE IF EXISTS entries;
-DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS project_stage_history;
+DROP TABLE IF EXISTS property_payments;
+DROP TABLE IF EXISTS properties;
+DROP TABLE IF EXISTS sale_receipts;
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS milestones;
+DROP TABLE IF EXISTS capital_ledger;
+DROP TABLE IF EXISTS project_investors;
 DROP TABLE IF EXISTS investors;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS parties;
+DROP TABLE IF EXISTS projects;
+
+CREATE TABLE accounts (
+  id              TEXT PRIMARY KEY NOT NULL,
+  created_at      TEXT NOT NULL,
+  created_by      TEXT NOT NULL DEFAULT 'local',
+  name            TEXT NOT NULL,
+  type            TEXT NOT NULL DEFAULT 'CASH',
+  opening_balance REAL NOT NULL DEFAULT 0,
+  icon            TEXT,
+  color           TEXT,
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  is_archived     INTEGER NOT NULL DEFAULT 0
+);
 
 CREATE TABLE projects (
-  id            TEXT PRIMARY KEY NOT NULL,
-  created_at    TEXT NOT NULL,
-  created_by    TEXT NOT NULL DEFAULT 'local',
-  name          TEXT NOT NULL,
-  stage         TEXT NOT NULL DEFAULT 'DEAL_PIPELINE',
-  start_date    TEXT,
-  profit_method TEXT NOT NULL DEFAULT 'SIMPLE',
-  status        TEXT NOT NULL DEFAULT 'ACTIVE'
+  id           TEXT PRIMARY KEY NOT NULL,
+  created_at   TEXT NOT NULL,
+  created_by   TEXT NOT NULL DEFAULT 'local',
+  name         TEXT NOT NULL,
+  plot_id      TEXT,
+  start_date   TEXT,
+  status       TEXT NOT NULL DEFAULT 'ACTIVE',
+  donation_pct REAL
 );
 
-CREATE TABLE properties (
-  id            TEXT PRIMARY KEY NOT NULL,
-  created_at    TEXT NOT NULL,
-  created_by    TEXT NOT NULL DEFAULT 'local',
-  project_id    TEXT NOT NULL,
-  society       TEXT,
-  block         TEXT,
-  plot_no       TEXT,
-  size_value    REAL,
-  size_unit     TEXT,
-  agreed_price  REAL,
-  seller_name   TEXT,
-  seller_cnic   TEXT,
-  seller_phone  TEXT,
-  transfer_date TEXT,
+CREATE TABLE plots (
+  id                TEXT PRIMARY KEY NOT NULL,
+  created_at        TEXT NOT NULL,
+  created_by        TEXT NOT NULL DEFAULT 'local',
+  name              TEXT NOT NULL,
+  society           TEXT,
+  block             TEXT,
+  plot_no           TEXT,
+  size_value        REAL,
+  size_unit         TEXT,
+  deal_price        REAL NOT NULL DEFAULT 0,
+  seller_name       TEXT,
+  seller_cnic       TEXT,
+  seller_phone      TEXT,
+  transfer_date     TEXT,
+  transfer_deadline TEXT,
+  status            TEXT NOT NULL DEFAULT 'OWNED',
+  project_id        TEXT,
   FOREIGN KEY (project_id) REFERENCES projects (id)
-);
-
-CREATE TABLE property_payments (
-  id          TEXT PRIMARY KEY NOT NULL,
-  created_at  TEXT NOT NULL,
-  created_by  TEXT NOT NULL DEFAULT 'local',
-  property_id TEXT NOT NULL,
-  type        TEXT NOT NULL,
-  amount      REAL NOT NULL DEFAULT 0,
-  date        TEXT NOT NULL,
-  mode        TEXT NOT NULL DEFAULT 'CASH',
-  doc_id      TEXT,
-  FOREIGN KEY (property_id) REFERENCES properties (id)
 );
 
 CREATE TABLE parties (
@@ -307,23 +430,46 @@ CREATE TABLE categories (
   icon       TEXT
 );
 
-CREATE TABLE transactions (
+CREATE TABLE udhaar (
   id          TEXT PRIMARY KEY NOT NULL,
   created_at  TEXT NOT NULL,
   created_by  TEXT NOT NULL DEFAULT 'local',
-  project_id  TEXT NOT NULL,
-  direction   TEXT NOT NULL,
-  category_id TEXT,
-  amount      REAL NOT NULL DEFAULT 0,
-  date        TEXT NOT NULL,
-  mode        TEXT NOT NULL DEFAULT 'CASH',
+  person_name TEXT NOT NULL,
   party_id    TEXT,
-  description TEXT,
-  doc_id      TEXT,
-  is_void     INTEGER NOT NULL DEFAULT 0,
-  void_of_id  TEXT,
+  direction   TEXT NOT NULL DEFAULT 'GIVEN',
+  note        TEXT,
+  status      TEXT NOT NULL DEFAULT 'OPEN',
+  FOREIGN KEY (party_id) REFERENCES parties (id)
+);
+
+CREATE TABLE transactions (
+  id                TEXT PRIMARY KEY NOT NULL,
+  created_at        TEXT NOT NULL,
+  created_by        TEXT NOT NULL DEFAULT 'local',
+  direction         TEXT NOT NULL,
+  amount            REAL NOT NULL DEFAULT 0,
+  date              TEXT NOT NULL,
+  account_id        TEXT,
+  project_id        TEXT,
+  plot_id           TEXT,
+  phase             TEXT,
+  category_id       TEXT,
+  party_id          TEXT,
+  counterparty_name TEXT,
+  pay_type          TEXT,
+  transfer_id       TEXT,
+  udhaar_id         TEXT,
+  labor_id          TEXT,
+  description       TEXT,
+  doc_id            TEXT,
+  is_void           INTEGER NOT NULL DEFAULT 0,
+  void_of_id        TEXT,
+  FOREIGN KEY (account_id) REFERENCES accounts (id),
   FOREIGN KEY (project_id) REFERENCES projects (id),
-  FOREIGN KEY (category_id) REFERENCES categories (id)
+  FOREIGN KEY (plot_id) REFERENCES plots (id),
+  FOREIGN KEY (category_id) REFERENCES categories (id),
+  FOREIGN KEY (udhaar_id) REFERENCES udhaar (id),
+  FOREIGN KEY (labor_id) REFERENCES project_laborers (id)
 );
 
 CREATE TABLE investors (
@@ -368,6 +514,43 @@ CREATE TABLE capital_ledger (
   FOREIGN KEY (project_investor_id) REFERENCES project_investors (id)
 );
 
+CREATE TABLE laborers (
+  id         TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'local',
+  name       TEXT NOT NULL,
+  phone      TEXT,
+  cnic       TEXT,
+  photo_uri  TEXT,
+  status     TEXT NOT NULL DEFAULT 'ACTIVE'
+);
+
+CREATE TABLE project_laborers (
+  id         TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'local',
+  project_id TEXT NOT NULL,
+  laborer_id TEXT NOT NULL,
+  daily_wage REAL NOT NULL DEFAULT 0,
+  status     TEXT NOT NULL DEFAULT 'ACTIVE',
+  joined_at  TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects (id),
+  FOREIGN KEY (laborer_id) REFERENCES laborers (id)
+);
+
+CREATE TABLE labor_attendance (
+  id                 TEXT PRIMARY KEY NOT NULL,
+  created_at         TEXT NOT NULL,
+  created_by         TEXT NOT NULL DEFAULT 'local',
+  project_laborer_id TEXT NOT NULL,
+  date               TEXT NOT NULL,
+  status             TEXT NOT NULL,
+  wage_accrued       REAL NOT NULL DEFAULT 0,
+  note               TEXT,
+  UNIQUE (project_laborer_id, date),
+  FOREIGN KEY (project_laborer_id) REFERENCES project_laborers (id)
+);
+
 CREATE TABLE milestones (
   id             TEXT PRIMARY KEY NOT NULL,
   created_at     TEXT NOT NULL,
@@ -393,13 +576,14 @@ CREATE TABLE documents (
 );
 
 CREATE TABLE sales (
-  id            TEXT PRIMARY KEY NOT NULL,
-  created_at    TEXT NOT NULL,
-  created_by    TEXT NOT NULL DEFAULT 'local',
-  project_id    TEXT NOT NULL,
+  id             TEXT PRIMARY KEY NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL DEFAULT 'local',
+  project_id     TEXT NOT NULL,
   buyer_party_id TEXT,
-  agreed_price  REAL NOT NULL DEFAULT 0,
-  completed_at  TEXT,
+  buyer_name     TEXT,
+  agreed_price   REAL NOT NULL DEFAULT 0,
+  completed_at   TEXT,
   FOREIGN KEY (project_id) REFERENCES projects (id),
   FOREIGN KEY (buyer_party_id) REFERENCES parties (id)
 );
@@ -411,79 +595,90 @@ CREATE TABLE sale_receipts (
   sale_id    TEXT NOT NULL,
   amount     REAL NOT NULL DEFAULT 0,
   date       TEXT NOT NULL,
-  mode       TEXT NOT NULL DEFAULT 'CASH',
+  account_id TEXT,
+  pay_type   TEXT,
   doc_id     TEXT,
-  FOREIGN KEY (sale_id) REFERENCES sales (id)
+  FOREIGN KEY (sale_id) REFERENCES sales (id),
+  FOREIGN KEY (account_id) REFERENCES accounts (id)
 );
 
-CREATE INDEX idx_txn_project ON transactions (project_id);
-CREATE INDEX idx_txn_category ON transactions (category_id);
-CREATE INDEX idx_txn_void ON transactions (is_void);
-CREATE INDEX idx_prop_project ON properties (project_id);
-CREATE INDEX idx_pi_project ON project_investors (project_id);
-CREATE INDEX idx_cap_pi ON capital_ledger (project_investor_id);
-CREATE INDEX idx_ms_project ON milestones (project_id);
-`;
-
-/** Schema version 2 — records every project stage transition for audit. */
-export const SCHEMA_V2 = `
-CREATE TABLE project_stage_history (
-  id         TEXT PRIMARY KEY NOT NULL,
-  created_at TEXT NOT NULL,
-  created_by TEXT NOT NULL DEFAULT 'local',
-  project_id TEXT NOT NULL,
-  from_stage TEXT,
-  to_stage   TEXT NOT NULL,
-  changed_at TEXT NOT NULL,
-  FOREIGN KEY (project_id) REFERENCES projects (id)
-);
-
-CREATE INDEX idx_stagehist_project ON project_stage_history (project_id);
-`;
-
-/** Schema version 3 — transfer deadline on properties (set when bayana paid). */
-export const SCHEMA_V3 = `
-ALTER TABLE properties ADD COLUMN transfer_deadline TEXT;
-`;
-
-/**
- * Schema version 4 — persisted app settings (key/value). Lets preferences such
- * as language, dark mode, and the default investor profit-share % survive
- * relaunches (the settings store hydrates from here on launch).
- */
-export const SCHEMA_V4 = `
-CREATE TABLE app_settings (
+CREATE TABLE IF NOT EXISTS app_settings (
   key   TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
 );
+
+CREATE INDEX idx_txn_account ON transactions (account_id);
+CREATE INDEX idx_txn_project ON transactions (project_id);
+CREATE INDEX idx_txn_plot ON transactions (plot_id);
+CREATE INDEX idx_txn_udhaar ON transactions (udhaar_id);
+CREATE INDEX idx_txn_category ON transactions (category_id);
+CREATE INDEX idx_txn_void ON transactions (is_void);
+CREATE INDEX idx_plot_project ON plots (project_id);
+CREATE INDEX idx_pi_project ON project_investors (project_id);
+CREATE INDEX idx_cap_pi ON capital_ledger (project_investor_id);
+CREATE INDEX idx_ms_project ON milestones (project_id);
+CREATE INDEX idx_pl_project ON project_laborers (project_id);
+CREATE INDEX idx_att_pl ON labor_attendance (project_laborer_id);
 `;
 
 /**
- * Schema version 5 — the buying pipeline dropped the NEGOTIATION/AGREEMENT
- * filler stages. Move any project still sitting on them back to DEAL_PIPELINE
- * so its stage stays a valid pipeline value.
+ * Schema version 8  multi-company workspaces. Adds the `companies` table and
+ * a `company_id` column on every ROOT table (child tables inherit scope via
+ * their parents). Existing dev data is backfilled into a default company so
+ * nothing disappears; fresh installs create their first company in onboarding.
  */
-export const SCHEMA_V5 = `
-UPDATE projects SET stage = 'DEAL_PIPELINE' WHERE stage IN ('NEGOTIATION', 'AGREEMENT');
+export const SCHEMA_V8_COMPANIES = `
+CREATE TABLE companies (
+  id         TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'local',
+  name       TEXT NOT NULL,
+  owner_name TEXT,
+  phone      TEXT
+);
+
+ALTER TABLE accounts ADD COLUMN company_id TEXT;
+ALTER TABLE plots ADD COLUMN company_id TEXT;
+ALTER TABLE projects ADD COLUMN company_id TEXT;
+ALTER TABLE investors ADD COLUMN company_id TEXT;
+ALTER TABLE laborers ADD COLUMN company_id TEXT;
+ALTER TABLE udhaar ADD COLUMN company_id TEXT;
+ALTER TABLE parties ADD COLUMN company_id TEXT;
+ALTER TABLE transactions ADD COLUMN company_id TEXT;
+
+CREATE INDEX idx_acc_company ON accounts (company_id);
+CREATE INDEX idx_plot_company ON plots (company_id);
+CREATE INDEX idx_proj_company ON projects (company_id);
+CREATE INDEX idx_txn_company ON transactions (company_id);
+
+-- Backfill: if any data already exists, keep it under a default company the
+-- user can rename. Fresh installs skip this (no rows anywhere).
+INSERT INTO companies (id, created_at, created_by, name, owner_name, phone)
+SELECT '__default__', datetime('now'), 'local', 'My Company', NULL, NULL
+WHERE EXISTS (SELECT 1 FROM accounts)
+   OR EXISTS (SELECT 1 FROM plots)
+   OR EXISTS (SELECT 1 FROM projects)
+   OR EXISTS (SELECT 1 FROM transactions);
+
+UPDATE accounts     SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE plots        SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE projects     SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE investors    SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE laborers     SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE udhaar       SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE parties      SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
+UPDATE transactions SET company_id = '__default__' WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies);
 `;
 
 /**
- * Schema version 6 — the pre-token "deal/negotiation/agreement" stages are
- * gone; the pipeline now starts at TOKEN_PAID (the first thing you actually do).
- * Move any project still on a removed stage to the new start.
+ * Ordered list of migrations, applied by `PRAGMA user_version`.
+ * Versions 1–6 were the pre-launch v1 model; the clean rebuild replaces them,
+ * so existing dev installs (user_version ≤ 6) and fresh installs both land on
+ * version 7 directly, then 8 adds companies.
  */
-export const SCHEMA_V6 = `
-UPDATE projects SET stage = 'TOKEN_PAID' WHERE stage IN ('DEAL_PIPELINE', 'NEGOTIATION', 'AGREEMENT');
-`;
-
-/** Ordered list of migrations, applied by `PRAGMA user_version`. */
 export const MIGRATIONS: { version: number; sql: string }[] = [
-  { version: 1, sql: SCHEMA_V1 },
-  { version: 2, sql: SCHEMA_V2 },
-  { version: 3, sql: SCHEMA_V3 },
-  { version: 4, sql: SCHEMA_V4 },
-  { version: 5, sql: SCHEMA_V5 },
-  { version: 6, sql: SCHEMA_V6 },
+  { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
+  { version: 8, sql: SCHEMA_V8_COMPANIES },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -497,12 +692,18 @@ export interface DefaultCategory {
   icon: string;
 }
 
-/** Seeded once on first run. Urdu names included for the bilingual UI. */
+/**
+ * Seeded once on first run. Urdu names included for the bilingual UI.
+ * System categories (created/used by business logic, hidden from the manual
+ * entry grid): Plot Payment, Transfer, Labor Payment, Sale Cost, Investor
+ * Investment, Buyer Receipt.
+ */
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
-  // Expenses
+  // Expenses  plot phase
   { name_en: 'Plot Payment', name_ur: 'پلاٹ کی ادائیگی', type: 'EXPENSE', icon: 'home' },
   { name_en: 'Transfer Fees & Tax', name_ur: 'ٹرانسفر فیس و ٹیکس', type: 'EXPENSE', icon: 'receipt' },
   { name_en: 'Naqsha/Approval', name_ur: 'نقشہ/منظوری', type: 'EXPENSE', icon: 'project' },
+  // Expenses  construction phase
   { name_en: 'Cement', name_ur: 'سیمنٹ', type: 'EXPENSE', icon: 'material' },
   { name_en: 'Sariya', name_ur: 'سریا', type: 'EXPENSE', icon: 'material' },
   { name_en: 'Bricks', name_ur: 'اینٹیں', type: 'EXPENSE', icon: 'brick' },
@@ -513,14 +714,40 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name_en: 'Electric', name_ur: 'بجلی کا سامان', type: 'EXPENSE', icon: 'tools' },
   { name_en: 'Sanitary', name_ur: 'سینٹری', type: 'EXPENSE', icon: 'tools' },
   { name_en: 'Labor Dehari', name_ur: 'مزدور دیہاڑی', type: 'EXPENSE', icon: 'dehari' },
+  { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari' },
   { name_en: 'Contractor', name_ur: 'ٹھیکیدار', type: 'EXPENSE', icon: 'tools' },
   { name_en: 'Utilities', name_ur: 'یوٹیلٹی بل', type: 'EXPENSE', icon: 'receipt' },
+  // Expenses  sale phase + general
+  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag' },
   { name_en: 'Misc', name_ur: 'متفرق', type: 'EXPENSE', icon: 'kharcha' },
-  { name_en: 'Udhaar Payment', name_ur: 'ادھار کی واپسی', type: 'EXPENSE', icon: 'investor' },
   // Income
   { name_en: 'Investor Investment', name_ur: 'سرمایہ کاری', type: 'INCOME', icon: 'investor' },
   { name_en: 'Buyer Receipt', name_ur: 'خریدار کی رقم', type: 'INCOME', icon: 'aamdani' },
   { name_en: 'Other Income', name_ur: 'دیگر آمدنی', type: 'INCOME', icon: 'aamdani' },
+];
+
+/**
+ * System category names  created on demand by business logic and hidden from
+ * the manual entry category grid.
+ */
+export const SYSTEM_CATEGORY_NAMES = [
+  'Plot Payment',
+  'Labor Payment',
+  'Sale Cost',
+  'Investor Investment',
+  'Buyer Receipt',
+  'Transfer',
+  'Udhaar',
+] as const;
+
+export interface DefaultAccount {
+  name: string;
+  type: AccountType;
+}
+
+/** Seeded once on first run so entries always have somewhere to post. */
+export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
+  { name: 'Cash in Hand', type: 'CASH' },
 ];
 
 export interface DefaultMilestone {
@@ -544,41 +771,3 @@ export const DEFAULT_MILESTONES: DefaultMilestone[] = [
 
 /** Default actor stamped on `created_by` when none is supplied. */
 export const DEFAULT_USER = 'local';
-
-/* -------------------------------------------------------------------------- */
-/*  Legacy in-memory demo types                                               */
-/*  (still used by useLedgerStore + the current Home UI — NOT persisted)      */
-/* -------------------------------------------------------------------------- */
-
-/** A construction project the user is managing money for (demo store). */
-export interface ProjectRecord {
-  id: string;
-  name: string;
-  location: string;
-  /** One of the StageTracker stage keys. */
-  stageKey: string;
-  createdAt: string;
-}
-
-/** Money direction for a demo ledger entry. */
-export type EntryType = 'kharcha' | 'aamdani' | 'material' | 'dehari' | 'investor';
-
-/** A single demo ledger entry (money in or out) against a project. */
-export interface EntryRecord {
-  id: string;
-  projectId: string;
-  type: EntryType;
-  amount: number;
-  note: string;
-  receiptUri: string | null;
-  date: string;
-  createdAt: string;
-}
-
-/** A person who invests money into projects (demo store). */
-export interface InvestorRecord {
-  id: string;
-  name: string;
-  phone: string;
-  committed: number;
-}

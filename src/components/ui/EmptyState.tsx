@@ -24,7 +24,7 @@ interface EmptyStateProps {
 
 /**
  * Friendly placeholder shown when a screen has no data (or isn't built yet).
- * Big icon + plain-language message + one optional primary action — exactly
+ * Big icon + plain-language message + one optional primary action  exactly
  * one call to action, per the UX rules.
  */
 export function EmptyState({

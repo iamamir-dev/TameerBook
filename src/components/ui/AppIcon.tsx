@@ -22,7 +22,7 @@ interface AppIconProps {
 
 /**
  * The single place the app renders an icon. Resolves a semantic name to its
- * lucide component and pulls size / color / strokeWidth from the theme — so no
+ * lucide component and pulls size / color / strokeWidth from the theme  so no
  * icon components, hex codes, or stroke widths leak into screens.
  */
 export function AppIcon({

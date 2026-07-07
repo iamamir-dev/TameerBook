@@ -1,21 +1,19 @@
 import { create } from 'zustand';
 
-import type { PaymentMode } from '@/db';
-
 /**
  * Sticky preferences for the Quick Entry flow so rapid repeat entries keep the
- * user's last project and payment mode (a key part of the "<15s" goal).
+ * user's last project and account (a key part of the "<15s" goal).
  */
 interface EntryState {
   lastProjectId: string | null;
-  lastMode: PaymentMode;
+  lastAccountId: string | null;
   setLastProjectId: (id: string) => void;
-  setLastMode: (mode: PaymentMode) => void;
+  setLastAccountId: (id: string) => void;
 }
 
 export const useEntryStore = create<EntryState>((set) => ({
   lastProjectId: null,
-  lastMode: 'CASH',
+  lastAccountId: null,
   setLastProjectId: (lastProjectId) => set({ lastProjectId }),
-  setLastMode: (lastMode) => set({ lastMode }),
+  setLastAccountId: (lastAccountId) => set({ lastAccountId }),
 }));

@@ -1,5 +1,5 @@
 /**
- * logo-concepts.js — render candidate TameerBook marks for comparison.
+ * logo-concepts.js  render candidate TameerBook marks for comparison.
  * Applies 2026 app-icon practice: mesh gradient bg (analogous greens + warm
  * glow), simple light foreground, soft-3D / glass depth, grid-built symbols.
  * Outputs assets/_concepts/c{1..4}.png at 512.  Run: node scripts/logo-concepts.js
@@ -64,7 +64,7 @@ function tile() {
     <rect width="${S}" height="${S}" rx="${r}" fill="url(#topGlow)"/>`;
 }
 
-/* C1 — "Ascent": one unified upward arrow (growth + spire), gold base */
+/* C1  "Ascent": one unified upward arrow (growth + spire), gold base */
 function c1() {
   const apex = 130, sw = 80;
   return `
@@ -77,7 +77,7 @@ function c1() {
   </g>`;
 }
 
-/* C2 — "Build-up": offset stacked blocks (foundation→growth), top block gold */
+/* C2  "Build-up": offset stacked blocks (foundation→growth), top block gold */
 function c2() {
   const s = 118, r = 30;
   const blocks = [
@@ -90,7 +90,7 @@ function c2() {
     .join('')}</g>`;
 }
 
-/* C3 — "Tameer House": rounded building with an upward arrow in negative space */
+/* C3  "Tameer House": rounded building with an upward arrow in negative space */
 function c3() {
   const bx = CX - 124, bw = 248, by = 214, bh = 176, br = 30;      // body
   const apexY = 116, eaveY = 214;
@@ -114,7 +114,7 @@ function c3() {
   </g>`;
 }
 
-/* C4 — "Glass T": refined monogram with frosted-glass depth */
+/* C4  "Glass T": refined monogram with frosted-glass depth */
 function c4() {
   return `
   <g filter="url(#softShadow)">

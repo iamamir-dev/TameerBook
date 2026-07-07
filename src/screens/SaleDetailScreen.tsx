@@ -1,0 +1,532 @@
+import {
+  type RouteProp,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import {
+  AmountInput,
+  AppButton,
+  AppCard,
+  AppHeader,
+  AppIcon,
+  AppText,
+  LedgerTable,
+  SelectSheet,
+  type IconKey,
+  type LedgerRow,
+  type SelectOption,
+} from '@/components/ui';
+import {
+  addSaleCost,
+  addSaleReceipt,
+  getSaleSummary,
+  isInsufficientFunds,
+  isLimitExceeded,
+  listAccountsWithBalance,
+  listProjectPhaseTransactions,
+  upsertSale,
+  type AccountWithBalance,
+  type SaleSummary,
+  type TransactionRow,
+} from '@/db';
+import { PAY_TYPES, type PayType } from '@/db/schema';
+import { useTranslation, type TranslationKey } from '@/i18n';
+import type { RootStackParamList } from '@/navigation/types';
+import { useTheme } from '@/theme';
+import type { Theme } from '@/theme/theme';
+import { todayISO } from '@/utils/date';
+import { formatRupees } from '@/utils/money';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+type SaleRoute = RouteProp<RootStackParamList, 'SaleDetail'>;
+
+const PAY_TYPE_KEY: Record<PayType, TranslationKey> = {
+  TOKEN: 'ptToken',
+  BAYANA: 'ptBayana',
+  INSTALLMENT: 'ptInstallment',
+  FINAL: 'ptFinal',
+};
+
+/**
+ * The SALE phase of a project: the deal with the buyer (agreed price), money
+ * received from the buyer (receipts land in an account), seller-side costs
+ * (commission, taxes), and the notebook-style SALE ledger.
+ */
+export function SaleDetailScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  const navigation = useNavigation<Nav>();
+  const { projectId } = useRoute<SaleRoute>().params;
+  const insets = useSafeAreaInsets();
+  const styles = makeStyles(theme);
+
+  const [summary, setSummary] = useState<SaleSummary | null>(null);
+  const [txns, setTxns] = useState<TransactionRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
+
+  // New-deal form (when no sale exists yet).
+  const [dealPrice, setDealPrice] = useState(0);
+  const [dealBuyer, setDealBuyer] = useState('');
+
+  // Receipt sheet.
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [payType, setPayType] = useState<PayType | null>(null);
+  const [receiptAmount, setReceiptAmount] = useState(0);
+
+  // Expense sheet.
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [expenseName, setExpenseName] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState(0);
+
+  // Edit-deal sheet.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editPrice, setEditPrice] = useState(0);
+  const [editBuyer, setEditBuyer] = useState('');
+
+  // Shared: the account the money moves through.
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountSheet, setAccountSheet] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const [sum, rows, accs] = await Promise.all([
+      getSaleSummary(projectId),
+      listProjectPhaseTransactions(projectId, 'SALE'),
+      listAccountsWithBalance(),
+    ]);
+    setSummary(sum);
+    setTxns(rows);
+    setAccounts(accs);
+  }, [projectId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load().catch(() => undefined);
+    }, [load])
+  );
+
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) setAccountId(accounts[0].id);
+  }, [accounts, accountId]);
+
+  const sale = summary?.sale ?? null;
+  const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
+
+  const accountOptions: SelectOption[] = useMemo(
+    () =>
+      accounts.map((a) => ({
+        id: a.id,
+        label: a.name,
+        subtitle: formatRupees(a.balance),
+        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
+      })),
+    [accounts]
+  );
+
+  const ledgerRows: LedgerRow[] = useMemo(
+    () =>
+      txns.map((txn) => ({
+        id: txn.id,
+        title:
+          txn.description ||
+          (txn.pay_type ? t(PAY_TYPE_KEY[txn.pay_type]) : '') ||
+          txn.counterparty_name ||
+          t('phaseSale'),
+        date: txn.date,
+        amount: txn.amount,
+        direction: txn.direction === 'IN' ? 'in' : 'out',
+        typeLabel: txn.pay_type ? t(PAY_TYPE_KEY[txn.pay_type]) : undefined,
+      })),
+    [txns, t]
+  );
+
+  const onCreateDeal = async () => {
+    if (dealPrice <= 0) return;
+    setSaving(true);
+    try {
+      await upsertSale(projectId, { agreedPrice: dealPrice, buyerName: dealBuyer.trim() || null });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveReceipt = async () => {
+    if (!sale || receiptAmount <= 0 || !accountId) return;
+    setSaving(true);
+    try {
+      await addSaleReceipt({
+        saleId: sale.id,
+        amount: receiptAmount,
+        date: todayISO(),
+        accountId,
+        payType,
+      });
+      setReceiptOpen(false);
+      setReceiptAmount(0);
+      setPayType(null);
+      await load();
+    } catch (e) {
+      if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
+      else if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
+      else throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveExpense = async () => {
+    if (expenseAmount <= 0 || !accountId || !expenseName.trim()) return;
+    setSaving(true);
+    try {
+      await addSaleCost({
+        projectId,
+        name: expenseName.trim(),
+        amount: expenseAmount,
+        date: todayISO(),
+        accountId,
+      });
+      setExpenseOpen(false);
+      setExpenseName('');
+      setExpenseAmount(0);
+      await load();
+    } catch (e) {
+      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
+      else throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = () => {
+    if (!sale) return;
+    setEditPrice(sale.agreed_price);
+    setEditBuyer(sale.buyer_name ?? '');
+    setEditOpen(true);
+  };
+
+  const onSaveEdit = async () => {
+    if (editPrice <= 0) return;
+    setSaving(true);
+    try {
+      await upsertSale(projectId, { agreedPrice: editPrice, buyerName: editBuyer.trim() || null });
+      setEditOpen(false);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** The account chip used by every sheet (money always lands in an account). */
+  const accountChip = (
+    <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
+      <AppIcon name={selectedAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
+      <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+        {selectedAccount ? `${selectedAccount.name} · ${formatRupees(selectedAccount.balance)}` : t('selectAccount')}
+      </AppText>
+      <AppIcon name="forward" size={18} color="textSecondary" />
+    </Pressable>
+  );
+
+  return (
+    <View style={styles.screen}>
+      <AppHeader title={t('phaseSale')} onBack={() => navigation.goBack()} />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+      >
+        {!sale ? (
+          /* No deal yet  record the agreed price + buyer */
+          <AppCard>
+            <View style={styles.newDeal}>
+              <AppText size="lg" weight="bold">
+                {t('saleDeal')}
+              </AppText>
+              <AmountInput label={t('agreedPrice')} value={dealPrice} onChange={setDealPrice} />
+              <FloatingLabelInput label={t('buyerName')} value={dealBuyer} onChangeText={setDealBuyer} />
+              <AppButton
+                label={t('save')}
+                icon="check"
+                onPress={onCreateDeal}
+                loading={saving}
+                disabled={dealPrice <= 0}
+              />
+            </View>
+          </AppCard>
+        ) : (
+          <>
+            {/* Deal hero  tap to edit */}
+            <Pressable onPress={openEdit} accessibilityRole="button" style={styles.hero}>
+              <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
+                {t('saleDeal')}
+              </AppText>
+              <AppText size="display" weight="bold" color="primary" tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(sale.agreed_price)}
+              </AppText>
+              {sale.buyer_name ? (
+                <AppText size="sm" color="textSecondary" numberOfLines={1}>
+                  {`${t('buyerName')}: ${sale.buyer_name}`}
+                </AppText>
+              ) : null}
+              <View style={styles.heroMetrics}>
+                <MetricRow label={t('buyerReceipts')} value={formatRupees(summary?.receiptsTotal ?? 0)} tone="success" />
+                <MetricRow label={t('outstanding')} value={formatRupees(summary?.outstanding ?? 0)} />
+                <MetricRow label={t('saleCosts')} value={formatRupees(summary?.costs ?? 0)} />
+              </View>
+            </Pressable>
+
+            {/* Actions */}
+            <View style={styles.actionRow}>
+              <View style={styles.flex}>
+                <AppButton label={t('addReceipt')} icon="moneyIn" onPress={() => setReceiptOpen(true)} />
+              </View>
+              <View style={styles.flex}>
+                <AppButton
+                  label={t('addExpense')}
+                  icon="moneyOut"
+                  variant="secondary"
+                  onPress={() => setExpenseOpen(true)}
+                />
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* SALE ledger */}
+        <AppText size="lg" weight="bold" style={styles.sectionTitle}>
+          {t('transactions')}
+        </AppText>
+        <AppCard compact>
+          <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
+        </AppCard>
+      </ScrollView>
+
+      {/* Add-receipt sheet */}
+      <Modal visible={receiptOpen} transparent animationType="slide" onRequestClose={() => setReceiptOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+        <Pressable style={styles.backdrop} onPress={() => setReceiptOpen(false)} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <View style={styles.grabber} />
+          <AppText size="lg" weight="bold" center>
+            {t('addReceipt')}
+          </AppText>
+
+          {/* Pay-type chips */}
+          <View style={styles.chipRow}>
+            {PAY_TYPES.map((pt) => {
+              const selected = payType === pt;
+              return (
+                <Pressable
+                  key={pt}
+                  onPress={() => setPayType(selected ? null : pt)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={[styles.chip, selected && styles.chipActive]}
+                >
+                  <AppText size="sm" weight="bold" color={selected ? 'onPrimary' : 'textPrimary'}>
+                    {t(PAY_TYPE_KEY[pt])}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <AmountInput
+            label={t('amount')}
+            value={receiptAmount}
+            onChange={setReceiptAmount}
+            floating
+            surface={theme.colors.card}
+          />
+          {accountChip}
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={onSaveReceipt}
+            loading={saving}
+            disabled={
+              receiptAmount <= 0 ||
+              !accountId ||
+              (!!summary && receiptAmount > summary.outstanding)
+            }
+          />
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Add-expense sheet */}
+      <Modal visible={expenseOpen} transparent animationType="slide" onRequestClose={() => setExpenseOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+        <Pressable style={styles.backdrop} onPress={() => setExpenseOpen(false)} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <View style={styles.grabber} />
+          <AppText size="lg" weight="bold" center>
+            {t('addExpense')}
+          </AppText>
+          <FloatingLabelInput label={t('note')} value={expenseName} onChangeText={setExpenseName} />
+          <AmountInput
+            label={t('amount')}
+            value={expenseAmount}
+            onChange={setExpenseAmount}
+            floating
+            surface={theme.colors.card}
+          />
+          {accountChip}
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={onSaveExpense}
+            loading={saving}
+            disabled={
+              expenseAmount <= 0 ||
+              !accountId ||
+              !expenseName.trim() ||
+              (!!selectedAccount && expenseAmount > selectedAccount.balance)
+            }
+          />
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit-deal sheet */}
+      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+        <Pressable style={styles.backdrop} onPress={() => setEditOpen(false)} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <View style={styles.grabber} />
+          <AppText size="lg" weight="bold" center>
+            {t('saleDeal')}
+          </AppText>
+          <AmountInput
+            label={t('agreedPrice')}
+            value={editPrice}
+            onChange={setEditPrice}
+            floating
+            surface={theme.colors.card}
+          />
+          <FloatingLabelInput label={t('buyerName')} value={editBuyer} onChangeText={setEditBuyer} />
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={onSaveEdit}
+            loading={saving}
+            disabled={editPrice <= 0}
+          />
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accountOptions}
+        selectedId={accountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setAccountId(o.id)}
+      />
+    </View>
+  );
+}
+
+/* ------------------------------ helpers --------------------------------- */
+
+function MetricRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'success';
+}): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.metricRow}>
+      <AppText size="sm" color="textSecondary">
+        {label}
+      </AppText>
+      <AppText size="sm" weight="bold" tabular color={tone ?? 'textPrimary'}>
+        {value}
+      </AppText>
+    </View>
+  );
+}
+
+const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.colors.background },
+    flex: { flex: 1 },
+    content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },
+    newDeal: { gap: theme.spacing.md },
+    hero: {
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.hero,
+      padding: theme.spacing.xl,
+      gap: theme.spacing.xs,
+      ...theme.shadows.card,
+    },
+    heroMetrics: {
+      gap: theme.spacing.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      paddingTop: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+    },
+    metricRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    actionRow: { flexDirection: 'row', gap: theme.spacing.md },
+    sectionTitle: { marginTop: theme.spacing.sm },
+    /* sheets */
+    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
+    sheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: theme.colors.card,
+      borderTopLeftRadius: theme.radius.hero,
+      borderTopRightRadius: theme.radius.hero,
+      padding: theme.spacing.xl,
+      gap: theme.spacing.md,
+      ...theme.shadows.raised,
+    },
+    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+    chip: {
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.primarySoft,
+      minHeight: theme.touch.minTarget - 12,
+      justifyContent: 'center',
+    },
+    chipActive: { backgroundColor: theme.colors.primary },
+    accountChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.primarySoft,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
+    },
+  });

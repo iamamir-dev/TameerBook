@@ -3,8 +3,8 @@ import type { TranslationKey } from '@/i18n';
 
 /** A meaningful icon per document type (instead of one generic receipt icon). */
 export const DOC_ICON: Partial<Record<TranslationKey, IconKey>> = {
-  docFard: 'record', // فرد — record of rights
-  docAgreement: 'agreement', // بیع نامہ — sale agreement
+  docFard: 'record', // فرد  record of rights
+  docAgreement: 'agreement', // بیع نامہ  sale agreement
   docNdc: 'certificate', // No-Demand Certificate
   docRegistry: 'deed', // registered transfer / sale deed
   docTaxChallan: 'rupee', // tax challan

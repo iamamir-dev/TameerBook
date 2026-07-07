@@ -2,29 +2,30 @@ import { getDatabase } from '../database';
 import {
   DEFAULT_MILESTONES,
   DEFAULT_USER,
-  PROJECT_STAGES,
-  type ProfitMethod,
   type ProjectRow,
-  type ProjectStage,
-  type ProjectStageHistoryRow,
   type ProjectStatus,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
+import { requireCompanyId } from './companies';
 import { getProjectProgress } from './milestones';
+import { includePlotInProject } from './plots';
+import { getSaleSummary } from './sales';
 import { getProjectTotals } from './transactions';
 
 export interface NewProject {
   name: string;
-  stage?: ProjectStage;
+  /** The plot this project builds on (linked + backfilled on create). */
+  plotId?: string | null;
   startDate?: string | null;
-  profitMethod?: ProfitMethod;
   status?: ProjectStatus;
+  donationPct?: number | null;
   createdBy?: string;
 }
 
 /**
- * Create a project and (by default) seed its 9 standard construction
- * milestones so progress tracking works out of the box.
+ * Create a project  optionally including a plot (links both ways and pulls
+ * the plot's transaction history into the project)  and seed its 9 standard
+ * construction milestones so progress tracking works out of the box.
  */
 export async function createProject(
   input: NewProject,
@@ -38,16 +39,16 @@ export async function createProject(
 
   await db.withExclusiveTransactionAsync(async (tx) => {
     await tx.runAsync(
-      `INSERT INTO projects (id, created_at, created_by, name, stage, start_date, profit_method, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (id, created_at, created_by, company_id, name, plot_id, start_date, status, donation_pct)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
       id,
       createdAt,
       createdBy,
+      requireCompanyId(),
       input.name,
-      input.stage ?? 'TOKEN_PAID',
-      input.startDate ?? null,
-      input.profitMethod ?? 'SIMPLE',
-      input.status ?? 'ACTIVE'
+      input.startDate ?? createdAt.slice(0, 10),
+      input.status ?? 'ACTIVE',
+      input.donationPct ?? null
     );
 
     if (withDefaultMilestones) {
@@ -67,6 +68,9 @@ export async function createProject(
     }
   });
 
+  // Outside the exclusive transaction  includePlotInProject runs its own.
+  if (input.plotId) await includePlotInProject(input.plotId, id);
+
   return getProject(id) as Promise<ProjectRow>;
 }
 
@@ -77,13 +81,10 @@ export async function getProject(id: string): Promise<ProjectRow | null> {
 
 export async function listProjects(): Promise<ProjectRow[]> {
   const db = await getDatabase();
-  return db.getAllAsync<ProjectRow>('SELECT * FROM projects ORDER BY created_at DESC');
-}
-
-/** Advance/set a project's pipeline stage. */
-export async function setProjectStage(id: string, stage: ProjectStage): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('UPDATE projects SET stage = ? WHERE id = ?', stage, id);
+  return db.getAllAsync<ProjectRow>(
+    'SELECT * FROM projects WHERE company_id = ? ORDER BY created_at DESC',
+    requireCompanyId()
+  );
 }
 
 export async function setProjectStatus(id: string, status: ProjectStatus): Promise<void> {
@@ -91,79 +92,10 @@ export async function setProjectStatus(id: string, status: ProjectStatus): Promi
   await db.runAsync('UPDATE projects SET status = ? WHERE id = ?', status, id);
 }
 
-/** The pipeline stage after `stage`, or null if already at the last stage. */
-export function nextStage(stage: ProjectStage): ProjectStage | null {
-  const idx = PROJECT_STAGES.indexOf(stage);
-  if (idx < 0 || idx >= PROJECT_STAGES.length - 1) return null;
-  return PROJECT_STAGES[idx + 1];
-}
-
-/**
- * Advance a project to the next pipeline stage and record the transition in
- * `project_stage_history`. Returns the updated project, or null if it is
- * already at the final stage (CLOSED).
- */
-export async function moveProjectToNextStage(
-  id: string,
-  createdBy: string = DEFAULT_USER
-): Promise<ProjectRow | null> {
-  const project = await getProject(id);
-  if (!project) throw new Error(`moveProjectToNextStage: project ${id} not found`);
-  const next = nextStage(project.stage);
-  if (!next) return null;
-
-  const changedAt = nowISO();
-  await db_moveStage(id, project.stage, next, changedAt, createdBy);
-  return getProject(id);
-}
-
-async function db_moveStage(
-  projectId: string,
-  from: ProjectStage,
-  to: ProjectStage,
-  changedAt: string,
-  createdBy: string
-): Promise<void> {
+/** Per-project donation % override (null = use the Settings default). */
+export async function setProjectDonationPct(id: string, pct: number | null): Promise<void> {
   const db = await getDatabase();
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    await tx.runAsync(
-      `INSERT INTO project_stage_history
-         (id, created_at, created_by, project_id, from_stage, to_stage, changed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      uuid(),
-      changedAt,
-      createdBy,
-      projectId,
-      from,
-      to,
-      changedAt
-    );
-    await tx.runAsync('UPDATE projects SET stage = ? WHERE id = ?', to, projectId);
-  });
-}
-
-/**
- * Move a project to a specific stage (not necessarily the next one) and record
- * the transition. No-op if it's already at that stage.
- */
-export async function changeProjectStage(
-  id: string,
-  to: ProjectStage,
-  createdBy: string = DEFAULT_USER
-): Promise<ProjectRow | null> {
-  const project = await getProject(id);
-  if (!project) throw new Error(`changeProjectStage: project ${id} not found`);
-  if (project.stage === to) return project;
-  await db_moveStage(id, project.stage, to, nowISO(), createdBy);
-  return getProject(id);
-}
-
-export async function listStageHistory(projectId: string): Promise<ProjectStageHistoryRow[]> {
-  const db = await getDatabase();
-  return db.getAllAsync<ProjectStageHistoryRow>(
-    'SELECT * FROM project_stage_history WHERE project_id = ? ORDER BY changed_at DESC',
-    projectId
-  );
+  await db.runAsync('UPDATE projects SET donation_pct = ? WHERE id = ?', pct, id);
 }
 
 export interface ProjectSummary {
@@ -171,21 +103,32 @@ export interface ProjectSummary {
   progressPercent: number;
   totalIn: number;
   totalOut: number;
+  /** Cost breakdown (plot / construction / sale / total) for the list card. */
+  cost: ProjectCost;
+  /** Sale agreed price (0 if no sale yet). */
+  saleDeal: number;
+  /** Money received from the buyer so far. */
+  saleReceived: number;
 }
 
-/** Project + its live progress and money totals (for list/detail cards). */
+/** Project + its live progress, money totals, and cost breakdown (for cards). */
 export async function getProjectSummary(id: string): Promise<ProjectSummary | null> {
   const project = await getProject(id);
   if (!project) return null;
-  const [progress, totals] = await Promise.all([
+  const [progress, totals, cost, sale] = await Promise.all([
     getProjectProgress(id),
     getProjectTotals(id),
+    getProjectCost(id),
+    getSaleSummary(id),
   ]);
   return {
     project,
     progressPercent: progress.percent,
     totalIn: totals.totalIn,
     totalOut: totals.totalOut,
+    cost,
+    saleDeal: sale.sale?.agreed_price ?? 0,
+    saleReceived: sale.receiptsTotal,
   };
 }
 
@@ -194,4 +137,42 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
   const projects = await listProjects();
   const summaries = await Promise.all(projects.map((p) => getProjectSummary(p.id)));
   return summaries.filter((s): s is ProjectSummary => s !== null);
+}
+
+export interface ProjectCost {
+  plotCost: number;
+  constructionCost: number;
+  saleCost: number;
+  /** plot + construction + sale  what the whole project has cost so far. */
+  totalCost: number;
+}
+
+/**
+ * The project's cost story: plot (seller payments + plot expenses) +
+ * construction (cash spend + accrued labor) + sale-side expenses.
+ * Computed phase-by-phase so the three cards and the total always agree.
+ */
+export async function getProjectCost(projectId: string): Promise<ProjectCost> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ plotCost: number; saleCost: number; constructionCash: number }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN phase = 'PLOT' THEN amount ELSE 0 END), 0) AS plotCost,
+       COALESCE(SUM(CASE WHEN phase = 'SALE' THEN amount ELSE 0 END), 0) AS saleCost,
+       COALESCE(SUM(CASE WHEN phase = 'CONSTRUCTION' AND labor_id IS NULL THEN amount ELSE 0 END), 0) AS constructionCash
+     FROM transactions
+     WHERE project_id = ? AND direction = 'OUT' AND is_void = 0`,
+    projectId
+  );
+  const labor = await db.getFirstAsync<{ s: number }>(
+    `SELECT COALESCE(SUM(la.wage_accrued), 0) AS s
+     FROM project_laborers pl
+     LEFT JOIN labor_attendance la ON la.project_laborer_id = pl.id
+     WHERE pl.project_id = ?`,
+    projectId
+  );
+
+  const plotCost = row?.plotCost ?? 0;
+  const saleCost = row?.saleCost ?? 0;
+  const constructionCost = (row?.constructionCash ?? 0) + (labor?.s ?? 0);
+  return { plotCost, constructionCost, saleCost, totalCost: plotCost + constructionCost + saleCost };
 }

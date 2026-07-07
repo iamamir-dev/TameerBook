@@ -27,8 +27,11 @@ interface FloatingLabelInputProps {
  * when the field is focused or holds a value. An optional `hint` adds a small
  * guidance line beneath. All metrics/colors come from the theme.
  *
- * The field background matches the screen background so the label's background
- * notches the border seamlessly.
+ * The label is centered by FLEXBOX (an absolutely-positioned overlay that fills
+ * the box and centers its content), so at rest it aligns pixel-for-pixel with
+ * the input text regardless of the font's line-box metrics — then a `translateY`
+ * floats it up onto the border. (Computing a manual `top` fought the baseline
+ * and dropped the glyph a few px low.)
  */
 export function FloatingLabelInput({
   label,
@@ -46,17 +49,12 @@ export function FloatingLabelInput({
     active.value = withTiming(focused || value.length > 0 ? 1 : 0, { duration: 160 });
   }, [focused, value, active]);
 
-  // Resting position that vertically centers the label glyph inside the box.
-  const restingTop = (theme.touch.minTarget - theme.typography.sizes.md) / 2;
+  // Active: lift the centered label up onto the top border line.
+  const floatTo = -(theme.touch.minTarget / 2);
 
   const labelStyle = useAnimatedStyle(() => ({
-    // resting: vertically centered inside; active: up on the top border (-10)
-    top: interpolate(active.value, [0, 1], [restingTop, -10]),
-    fontSize: interpolate(
-      active.value,
-      [0, 1],
-      [theme.typography.sizes.md, theme.typography.sizes.xs]
-    ),
+    transform: [{ translateY: interpolate(active.value, [0, 1], [0, floatTo]) }],
+    fontSize: interpolate(active.value, [0, 1], [theme.typography.sizes.md, theme.typography.sizes.xs]),
     color: interpolateColor(
       active.value,
       [0, 1],
@@ -67,9 +65,6 @@ export function FloatingLabelInput({
   return (
     <View>
       <View style={[styles.box, focused && styles.boxFocused]}>
-        <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
-          {label}
-        </Animated.Text>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -79,6 +74,13 @@ export function FloatingLabelInput({
           style={styles.input}
           accessibilityLabel={label}
         />
+        {/* Overlay that fills the box and vertically centers the label; it's
+            non-interactive so taps still reach the input beneath. */}
+        <View pointerEvents="none" style={styles.labelWrap}>
+          <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+            {label}
+          </Animated.Text>
+        </View>
       </View>
       {hint ? (
         <AppText size="xs" color="textSecondary" style={styles.hint}>
@@ -103,16 +105,22 @@ const makeStyles = (theme: Theme) =>
     boxFocused: {
       borderColor: theme.colors.accent,
     },
-    label: {
+    /* fills the box; flexbox centers the label exactly like the input text */
+    labelWrap: {
       position: 'absolute',
+      top: 0,
+      bottom: 0,
       left: theme.spacing.md,
+      right: theme.spacing.md,
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+    },
+    label: {
       // background matches the field/screen so it notches the border cleanly
       backgroundColor: theme.colors.background,
       paddingHorizontal: theme.spacing.xs,
       fontFamily: theme.typography.weights.semibold,
-      // strip Android's extra line padding so the resting glyph centers cleanly
       includeFontPadding: false,
-      textAlignVertical: 'center',
     },
     input: {
       // Auto-height single-line input, vertically centered by the box. No fixed

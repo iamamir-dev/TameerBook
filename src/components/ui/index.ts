@@ -1,6 +1,6 @@
 /**
  * UI kit barrel. Import components from '@/components/ui' everywhere.
- * Every component here reads design tokens via `useTheme()` only — none
+ * Every component here reads design tokens via `useTheme()` only  none
  * hardcode a color, font size, spacing value, or radius.
  */
 export { AppText } from './AppText';
@@ -11,6 +11,9 @@ export { AppCard } from './AppCard';
 export { StatCard, type Trend } from './StatCard';
 export { AmountInput } from './AmountInput';
 export { AppListRow, type EntryDirection } from './AppListRow';
+export { LedgerTable, type LedgerRow } from './LedgerTable';
+export { AccountCard } from './AccountCard';
+export { PhaseCard, type PhaseMetric } from './PhaseCard';
 export { StageTracker, type Stage, type StageStatus } from './StageTracker';
 export { EmptyState } from './EmptyState';
 export { AppHeader } from './AppHeader';

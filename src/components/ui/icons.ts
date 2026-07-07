@@ -27,6 +27,8 @@ import {
   Inbox,
   IndianRupee,
   KeyRound,
+  Landmark,
+  LandPlot,
   Languages,
   Lock,
   type LucideIcon,
@@ -55,7 +57,7 @@ import {
 } from 'lucide-react-native';
 
 /**
- * Semantic icon registry — every icon is a lucide component referenced by
+ * Semantic icon registry  every icon is a lucide component referenced by
  * MEANING (e.g. `ICONS.moneyIn`) rather than by name. To swap the icon set,
  * change this one file; nothing else touches concrete icon components.
  */
@@ -64,9 +66,11 @@ export const ICONS = {
   moneyIn: ArrowDownLeft,
   moneyOut: ArrowUpRight,
   balance: Wallet,
+  bank: Landmark,
   rupee: IndianRupee,
   receipt: Receipt,
   ledger: ReceiptText,
+  plot: LandPlot,
 
   // Documents (each property/legal paper has its own meaningful icon)
   document: FileText,

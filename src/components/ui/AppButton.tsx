@@ -19,8 +19,13 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger';
 interface AppButtonProps {
   label: string;
   onPress: () => void;
-  /** Icon shown before the label. UX rule: icon + text together, always. */
+  /** Icon shown with the label. UX rule: icon + text together, always. */
   icon?: IconKey | GlyphName;
+  /**
+   * Which side the icon sits on. Defaults to the left, EXCEPT the directional
+   * `forward` arrow, which reads as "continue →" and defaults to the right.
+   */
+  iconRight?: boolean;
   variant?: ButtonVariant;
   loading?: boolean;
   disabled?: boolean;
@@ -40,6 +45,7 @@ export function AppButton({
   label,
   onPress,
   icon,
+  iconRight,
   variant = 'primary',
   loading = false,
   disabled = false,
@@ -51,6 +57,8 @@ export function AppButton({
   const styles = makeStyles(theme);
   const palette = variantPalette(theme, variant);
   const isDisabled = disabled || loading;
+  // A forward arrow means "continue"  it belongs after the label unless told otherwise.
+  const onRight = iconRight ?? icon === 'forward';
 
   return (
     <Pressable
@@ -77,10 +85,11 @@ export function AppButton({
         <ActivityIndicator color={palette.fg} />
       ) : (
         <View style={styles.content}>
-          {icon ? <AppIcon name={icon} size={22} color={palette.fgColorKey} /> : null}
+          {icon && !onRight ? <AppIcon name={icon} size={22} color={palette.fgColorKey} /> : null}
           <AppText size="lg" weight="bold" style={{ color: palette.fg }}>
             {label}
           </AppText>
+          {icon && onRight ? <AppIcon name={icon} size={22} color={palette.fgColorKey} /> : null}
         </View>
       )}
     </Pressable>

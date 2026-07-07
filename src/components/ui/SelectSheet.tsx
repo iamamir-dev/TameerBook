@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -47,7 +48,7 @@ const CLOSE_DRAG_THRESHOLD = 120;
 /**
  * A single-select bottom sheet with big, easy-to-tap rows and an optional
  * search box. Slides up with Reanimated and can be dismissed by dragging the
- * grabber down — no extra dependency, robust on low-end phones.
+ * grabber down  no extra dependency, robust on low-end phones.
  */
 export function SelectSheet({
   visible,
@@ -165,7 +166,12 @@ export function SelectSheet({
             </View>
           ) : null}
 
-          <View style={styles.list}>
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {filtered.map((option) => {
               const isSelected = option.id === selectedId;
               return (
@@ -203,7 +209,7 @@ export function SelectSheet({
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -264,7 +270,12 @@ const makeStyles = (theme: Theme) =>
       includeFontPadding: false,
     },
     list: {
+      // Bounded by the sheet's maxHeight so long option lists (e.g. materials) scroll.
+      flexShrink: 1,
+    },
+    listContent: {
       gap: theme.spacing.xs,
+      paddingBottom: theme.spacing.sm,
     },
     row: {
       flexDirection: 'row',

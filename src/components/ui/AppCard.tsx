@@ -12,20 +12,20 @@ import type { Theme } from '@/theme/theme';
 
 interface AppCardProps {
   children: ReactNode;
-  /** Optional tap handler — makes the whole card a touch target. */
+  /** Optional tap handler  makes the whole card a touch target. */
   onPress?: () => void;
   /** Use the stronger floating shadow instead of the resting card shadow. */
   raised?: boolean;
   /** Tighter inner padding (e.g. for list-style cards). */
   compact?: boolean;
-  /** Add a hairline border (off by default — cards float on shadow alone). */
+  /** Add a hairline border (off by default  cards float on shadow alone). */
   bordered?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
  * The standard surface container. Soft off-white-on-white with a generous
- * radius and an ultra-soft floating shadow — no harsh borders. Background,
+ * radius and an ultra-soft floating shadow  no harsh borders. Background,
  * radius, padding, and shadow all come from the theme.
  */
 export function AppCard({

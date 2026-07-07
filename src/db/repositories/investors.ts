@@ -7,6 +7,7 @@ import {
   type ProjectInvestorStatus,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
+import { requireCompanyId } from './companies';
 
 export interface NewInvestor {
   name: string;
@@ -22,11 +23,12 @@ export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
-    `INSERT INTO investors (id, created_at, created_by, name, cnic, phone, photo_uri, bank_info, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO investors (id, created_at, created_by, company_id, name, cnic, phone, photo_uri, bank_info, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
+    requireCompanyId(),
     input.name,
     input.cnic ?? null,
     input.phone ?? null,
@@ -39,7 +41,10 @@ export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
 
 export async function listInvestors(): Promise<InvestorRow[]> {
   const db = await getDatabase();
-  return db.getAllAsync<InvestorRow>('SELECT * FROM investors ORDER BY name');
+  return db.getAllAsync<InvestorRow>(
+    'SELECT * FROM investors WHERE company_id = ? ORDER BY name',
+    requireCompanyId()
+  );
 }
 
 export async function getInvestor(id: string): Promise<InvestorRow | null> {

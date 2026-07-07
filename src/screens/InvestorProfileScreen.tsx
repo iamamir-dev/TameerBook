@@ -7,6 +7,7 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StageBadge } from '@/components/StageBadge';
 import { AppButton, AppCard, AppHeader, AppIcon, AppText } from '@/components/ui';
 import {
   getInvestor,
@@ -22,7 +23,6 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { ColorPalette, Theme } from '@/theme/theme';
 import { formatRupees } from '@/utils/money';
-import { PROJECT_STAGE_LABEL } from '@/utils/projectStage';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ProfileRoute = RouteProp<RootStackParamList, 'InvestorProfile'>;
@@ -93,7 +93,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
           th{color:#9A958B;text-transform:uppercase;font-size:11px}
         </style></head><body>
         <h1>TameerBook</h1>
-        <div class="sub">${t('statement')} — ${investor.name}${investor.phone ? ' · ' + investor.phone : ''}</div>
+        <div class="sub">${t('statement')}  ${investor.name}${investor.phone ? ' · ' + investor.phone : ''}</div>
         <div>${t('totalCapital')}</div>
         <div class="total">${formatRupees(total)}</div>
         <table><thead><tr><th>${t('date')}</th><th>${t('category')}</th><th>${t('projects')}</th><th style="text-align:right">${t('amount')}</th></tr></thead>
@@ -143,7 +143,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
           </View>
         </View>
 
-        {/* Project history — invested + realized profit/loss, tap to open */}
+        {/* Project history  invested + realized profit/loss, tap to open */}
         {returns.length > 0 ? (
           <>
             <AppText size="lg" weight="bold">
@@ -163,9 +163,15 @@ export function InvestorProfileScreen(): React.JSX.Element {
                       <AppText size="sm" weight="bold" numberOfLines={1}>
                         {r.projectName}
                       </AppText>
-                      <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                        {`${t('invested')}: ${formatRupees(r.invested)} · ${t(PROJECT_STAGE_LABEL[r.stage])}`}
-                      </AppText>
+                      <View style={styles.subRow}>
+                        <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                          {`${t('invested')}: ${formatRupees(r.invested)}`}
+                        </AppText>
+                        <StageBadge
+                          tone={r.settled ? 'success' : 'accent'}
+                          label={r.settled ? t('statusDone') : t('statusCurrent')}
+                        />
+                      </View>
                     </View>
                     {r.settled ? (
                       <AppText size="sm" weight="bold" color={plColor(r.profitOrLoss)} tabular>
@@ -243,6 +249,7 @@ const makeStyles = (theme: Theme) =>
     },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
     pRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md },
+    subRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginTop: 2 },
     pressed: { opacity: 0.6 },
     lRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
     chip: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderRadius: theme.radius.pill },

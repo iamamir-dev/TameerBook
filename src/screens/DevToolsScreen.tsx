@@ -5,6 +5,7 @@ import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppButton, AppCard, AppHeader, AppIcon, AppText } from '@/components/ui';
 import { clearAllData, getTableCounts, loadDemoData, runDbTests, TABLE_NAMES, type TestResult } from '@/db';
+import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -15,7 +16,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 /**
  * Hidden developer tools (reached via a long-press on the Settings app
  * version). Shows table row counts, loads demo data, and runs the DB
- * self-tests. Strings are intentionally English/dev-only — not user-facing.
+ * self-tests. Strings are intentionally English/dev-only  not user-facing.
  */
 export function DevToolsScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -61,6 +62,8 @@ export function DevToolsScreen(): React.JSX.Element {
               setTests([]);
               await refreshCounts();
               await refreshProjects();
+              // No companies remain → the app gate drops back to onboarding.
+              await useCompanyStore.getState().hydrate();
             } finally {
               setBusy(null);
             }

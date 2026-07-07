@@ -1,7 +1,7 @@
 /**
  * RFC4122-ish v4 UUID generator.
  *
- * Uses Math.random — sufficient for local primary keys in an offline app.
+ * Uses Math.random  sufficient for local primary keys in an offline app.
  * (No native module needed, so it stays Expo Go compatible. Swap for
  * expo-crypto's randomUUID later if cryptographic strength is ever required.)
  */
@@ -13,7 +13,7 @@ export function uuid(): string {
   });
 }
 
-/** Current timestamp as an ISO string — the app's canonical stored format. */
+/** Current timestamp as an ISO string  the app's canonical stored format. */
 export function nowISO(): string {
   return new Date().toISOString();
 }

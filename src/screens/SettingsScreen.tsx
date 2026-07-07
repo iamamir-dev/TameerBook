@@ -17,6 +17,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { Language } from '@/i18n/types';
 import type { RootStackParamList } from '@/navigation/types';
 import { rescheduleReminders } from '@/notifications/reminders';
+import { useCompanyStore } from '@/stores/useCompanyStore';
 import { type ReminderKey, useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -29,7 +30,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * Settings placeholder. The two live controls are the LANGUAGE picker (en /
- * Roman Urdu) and the DARK MODE switch — both write to `useSettingsStore`, so
+ * Roman Urdu) and the DARK MODE switch  both write to `useSettingsStore`, so
  * flipping either re-themes / re-translates the whole app instantly. The
  * structure is RTL-ready: adding an Urdu-script dictionary + flipping
  * I18nManager is the only remaining step.
@@ -47,6 +48,8 @@ export function SettingsScreen(): React.JSX.Element {
   const setReminder = useSettingsStore((s) => s.setReminder);
   const investorProfitPct = useSettingsStore((s) => s.investorProfitPct);
   const setInvestorProfitPct = useSettingsStore((s) => s.setInvestorProfitPct);
+  const donationPct = useSettingsStore((s) => s.donationPct);
+  const setDonationPct = useSettingsStore((s) => s.setDonationPct);
 
   const onToggleReminder = (key: ReminderKey, value: boolean) => {
     setReminder(key, value);
@@ -61,6 +64,26 @@ export function SettingsScreen(): React.JSX.Element {
   ];
 
   const [langSheetOpen, setLangSheetOpen] = useState(false);
+  const [companySheetOpen, setCompanySheetOpen] = useState(false);
+
+  const companies = useCompanyStore((st) => st.companies);
+  const activeCompanyId = useCompanyStore((st) => st.activeCompanyId);
+  const switchTo = useCompanyStore((st) => st.switchTo);
+  const activeCompany = companies.find((c) => c.id === activeCompanyId) ?? null;
+
+  const NEW_COMPANY_ID = '__new__';
+  const companyOptions = useMemo<SelectOption[]>(
+    () => [
+      ...companies.map((c) => ({
+        id: c.id,
+        label: c.name,
+        subtitle: c.owner_name ?? undefined,
+        icon: 'projects' as IconKey,
+      })),
+      { id: NEW_COMPANY_ID, label: t('newCompany'), icon: 'add' as IconKey },
+    ],
+    [companies, t]
+  );
 
   /** Language options for the bottom-sheet picker. */
   const languageOptions = useMemo<SelectOption[]>(
@@ -84,7 +107,17 @@ export function SettingsScreen(): React.JSX.Element {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <AppCard compact>
-          {/* Udhaar — suppliers with outstanding payable */}
+          {/* Company  the active workspace; switch or create another */}
+          <SettingRow
+            icon="projects"
+            label={t('companyTitle')}
+            value={activeCompany?.name ?? ''}
+            onPress={() => setCompanySheetOpen(true)}
+          />
+
+          <Divider />
+
+          {/* Udhaar  person lending */}
           <SettingRow
             icon="investor"
             label={t('udhaar')}
@@ -93,7 +126,25 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
-          {/* Language — opens the big-row picker sheet */}
+          {/* Accounts  cash / bank / wallet balances */}
+          <SettingRow
+            icon="balance"
+            label={t('accountsTitle')}
+            onPress={() => navigation.navigate('Accounts')}
+          />
+
+          <Divider />
+
+          {/* Reports hub */}
+          <SettingRow
+            icon="reports"
+            label={t('reports')}
+            onPress={() => navigation.navigate('Reports')}
+          />
+
+          <Divider />
+
+          {/* Language  opens the big-row picker sheet */}
           <SettingRow
             icon="language"
             label={t('language')}
@@ -103,7 +154,7 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
-          {/* Dark mode — structure ready, light is the default */}
+          {/* Dark mode  structure ready, light is the default */}
           <SettingRow
             icon="moon"
             label={t('darkMode')}
@@ -114,7 +165,7 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
-          {/* Version — read-only */}
+          {/* Version  read-only */}
           <SettingRow
             icon="settings"
             label={t('appVersion')}
@@ -145,7 +196,7 @@ export function SettingsScreen(): React.JSX.Element {
             </View>
           ))}
         </AppCard>
-        {/* Profit sharing — global default investor % (loss always by capital) */}
+        {/* Profit sharing  global default investor % (loss always by capital) */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
           {t('profitSharing')}
         </AppText>
@@ -188,8 +239,63 @@ export function SettingsScreen(): React.JSX.Element {
           <AppText size="xs" color="textSecondary" style={styles.note}>
             {t('profitShareNote')}
           </AppText>
+
+          <Divider />
+
+          {/* Donation %  charity share deducted from each profit */}
+          <View style={styles.row}>
+            <View style={styles.iconChip}>
+              <AppIcon name="investor" size={24} color="primary" />
+            </View>
+            <AppText size="md" weight="semibold" style={styles.rowLabel}>
+              {t('donationPctLabel')}
+            </AppText>
+            <View style={styles.stepper}>
+              <Pressable
+                onPress={() => setDonationPct(donationPct - 1)}
+                hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="-1%"
+                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
+              >
+                <AppText size="lg" weight="bold" color="primary">
+                  −
+                </AppText>
+              </Pressable>
+              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
+                {donationPct}%
+              </AppText>
+              <Pressable
+                onPress={() => setDonationPct(donationPct + 1)}
+                hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="+1%"
+                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
+              >
+                <AppText size="lg" weight="bold" color="primary">
+                  +
+                </AppText>
+              </Pressable>
+            </View>
+          </View>
+          <AppText size="xs" color="textSecondary" style={styles.note}>
+            {t('donationNote')}
+          </AppText>
         </AppCard>
       </ScrollView>
+
+      <SelectSheet
+        visible={companySheetOpen}
+        onClose={() => setCompanySheetOpen(false)}
+        options={companyOptions}
+        selectedId={activeCompanyId ?? undefined}
+        title={t('switchCompany')}
+        searchable={false}
+        onSelect={(o) => {
+          if (o.id === NEW_COMPANY_ID) navigation.navigate('NewCompany');
+          else switchTo(o.id).catch(() => undefined);
+        }}
+      />
 
       <SelectSheet
         visible={langSheetOpen}

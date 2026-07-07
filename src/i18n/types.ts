@@ -1,6 +1,6 @@
 /**
  * Supported languages:
- * - `ur` Urdu (اردو — full Urdu script, the default audience)
+ * - `ur` Urdu (اردو  full Urdu script, the default audience)
  * - `en` English
  */
 export type Language = 'en' | 'ur';
@@ -20,7 +20,7 @@ export interface TranslationKeys {
   quickEntry: string;
   notifications: string;
 
-  // Quick entry tiles (kept in Roman Urdu — no accounting jargon)
+  // Quick entry tiles (kept in Roman Urdu  no accounting jargon)
   kharcha: string; // expense / money out
   aamdani: string; // income / money in
   material: string;
@@ -91,7 +91,7 @@ export interface TranslationKeys {
   create: string;
   review: string;
 
-  // Wizard — step 1 (plot)
+  // Wizard  step 1 (plot)
   plotInfo: string;
   society: string;
   block: string;
@@ -101,7 +101,7 @@ export interface TranslationKeys {
   unitMarla: string;
   unitKanal: string;
   unitSqyd: string;
-  // Wizard — step 2 (price & seller)
+  // Wizard  step 2 (price & seller)
   priceSeller: string;
   agreedPrice: string;
   sellerName: string;
@@ -392,4 +392,127 @@ export interface TranslationKeys {
   sFinishing: string;
   sListed: string;
   sClosed: string;
+
+  // v2  Accounts / cash flow
+  accountsTitle: string;
+  accountLabel: string;
+  accountBank: string;
+  accountCash: string;
+  accountWallet: string;
+  openingBalance: string;
+  totalBalance: string;
+  addAccount: string;
+  accountName: string;
+  transferTitleV2: string;
+  fromAccount: string;
+  toAccount: string;
+  selectAccount: string;
+  recentActivity: string;
+  cashFlowTitle: string;
+  noAccountTxns: string;
+
+  // v2  Plots
+  plotsTitle: string;
+  plotLabel: string;
+  newPlot: string;
+  plotName: string;
+  dealPrice: string;
+  paidToSeller: string;
+  plotExpensesLabel: string;
+  totalCostLabel: string;
+  includeInProject: string;
+  sellerPayment: string;
+  addExpense: string;
+  plotOwned: string;
+  plotInProject: string;
+  plotSold: string;
+  noPlotsYet: string;
+  noPlotsDetail: string;
+  selectPlot: string;
+  noFreePlots: string;
+
+  // v2  Project phases
+  phasePlot: string;
+  phaseConstruction: string;
+  phaseSale: string;
+  projectTotalCost: string;
+  viewPlotDetail: string;
+
+  // v2  Labor
+  laborTitle: string;
+  addWorker: string;
+  workerName: string;
+  dailyWage: string;
+  attendanceTitle: string;
+  attFull: string;
+  attHalf: string;
+  attAbsent: string;
+  wageBalance: string;
+  earnedLabel: string;
+  takenLabel: string;
+  payWorker: string;
+  noWorkers: string;
+  daysLabel: string;
+
+  // v2  Udhaar (person lending)
+  giveUdhaar: string;
+  returnUdhaar: string;
+  receivable: string;
+  udhaarGiven: string;
+  udhaarTaken: string;
+  newUdhaar: string;
+  clearedLabel: string;
+  givenLabel: string;
+  returnedLabel: string;
+
+  // v2  Donation / settlement
+  donationLabel: string;
+  donationPctLabel: string;
+  donationNote: string;
+  totalDonation: string;
+  ownerInvested: string;
+  payoutLabel: string;
+
+  // v2  Sale detail
+  saleDeal: string;
+  buyerReceipts: string;
+  saleCosts: string;
+  buyerName: string;
+  noProject: string;
+
+  // v2  Validation / cash tab
+  insufficientFunds: string;
+  duplicateAccount: string;
+  exceedsRemaining: string;
+  tabCash: string;
+  givenNow: string;
+  obWelcomeBody: string;
+  optionalDetails: string;
+  companyNameHint: string;
+  openingCashHint: string;
+  setupFinalStep: string;
+
+  // v2  Company / onboarding
+  companyTitle: string;
+  companyName: string;
+  ownerName: string;
+  createCompanyLabel: string;
+  switchCompany: string;
+  newCompany: string;
+  companySetupTitle: string;
+  companySetupBody: string;
+  openingCash: string;
+  totalAssets: string;
+  assetPlots: string;
+  assetConstruction: string;
+  obSkip: string;
+  obGetStarted: string;
+  obCashTitle: string;
+  obCashBody: string;
+  obPlotsTitle: string;
+  obPlotsBody: string;
+  obProjectsTitle: string;
+  obProjectsBody: string;
+  obReportsTitle: string;
+  obReportsBody: string;
 }

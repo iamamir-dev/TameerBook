@@ -1,32 +1,44 @@
 import { getDatabase } from './database';
 import { seedDefaults } from './migrations';
 import {
-  addCapitalEntry,
+  createCompany,
+  getActiveCompanyId,
+  addAccount,
+  addInvestment,
   addInvestor,
-  addParty,
+  addLaborer,
+  addPlotExpense,
+  addPlotPayment,
   addProjectInvestor,
-  addProperty,
-  addPropertyPayment,
+  addSaleReceipt,
   addTransaction,
+  attachLaborerToProject,
+  createPlot,
   createProject,
-  createSale,
+  createUdhaar,
+  giveUdhaar,
   listCategories,
-  listMilestones,
-  setMilestoneStatus,
+  markAttendance,
+  upsertSale,
 } from './repositories';
 import { nowISO } from './uuid';
 
 /** Tables exposed in DevTools, in display order. */
 export const TABLE_NAMES = [
+  'companies',
+  'accounts',
+  'plots',
   'projects',
-  'properties',
-  'property_payments',
   'parties',
   'categories',
   'transactions',
   'investors',
   'project_investors',
   'capital_ledger',
+  'laborers',
+  'project_laborers',
+  'labor_attendance',
+  'udhaar',
   'milestones',
   'documents',
   'sales',
@@ -46,114 +58,87 @@ export async function getTableCounts(): Promise<Record<string, number>> {
 
 /**
  * Wipe EVERY row from every table (demo data and real data alike), then
- * re-seed the default categories so the app keeps working. Append-only ledgers
- * included — this is a full reset, intended for DevTools only. Deletes children
- * before parents so it is safe even if foreign keys are enforced.
+ * re-seed the defaults (categories + Cash account) so the app keeps working.
+ * Append-only ledgers included  this is a full reset, intended for DevTools
+ * only. Deletes children before parents so it is safe with foreign keys ON.
  */
 export async function clearAllData(): Promise<void> {
   const db = await getDatabase();
   for (const t of [...TABLE_NAMES].reverse()) {
     await db.runAsync(`DELETE FROM ${t}`);
   }
-  await seedDefaults(db); // restore the default expense/income categories
+  await seedDefaults(db);
 }
 
 /**
- * Populate one realistic demo project end-to-end so every screen/report has
- * something to show. Returns the new project id.
+ * Populate a realistic demo dataset end-to-end (accounts → plot → project →
+ * construction + labor → sale → udhaar) so every screen has something to show.
+ * Returns the new project id.
  */
 export async function loadDemoData(): Promise<string> {
   const today = nowISO().slice(0, 10);
 
-  const project = await createProject({
-    name: 'Bahria Town Villa',
-    stage: 'CONSTRUCTION',
-    startDate: today,
-  });
+  // Demo data needs a company to live in (creating one also activates it).
+  if (!getActiveCompanyId()) await createCompany({ name: 'Demo Company' });
 
-  // Mark the first three milestones complete.
-  const milestones = await listMilestones(project.id);
-  for (const ms of milestones.slice(0, 3)) {
-    await setMilestoneStatus(ms.id, 'DONE', today);
-  }
+  // Accounts  the cash-flow backbone.
+  const bank = await addAccount({ name: 'HBL Bank', type: 'BANK', openingBalance: 30_000_000 });
+  const cash = await addAccount({ name: 'Cash in Hand', type: 'CASH', openingBalance: 2_000_000 });
 
-  // Property + a token payment.
-  const property = await addProperty({
-    projectId: project.id,
+  const cats = await listCategories();
+  const catId = (nameEn: string) => cats.find((c) => c.name_en === nameEn)?.id ?? null;
+
+  // A standalone plot: deal 18,000,000  token + bayana paid, tax on top.
+  const plot = await createPlot({
+    name: 'Bahria Town C-123',
     society: 'Bahria Town',
     block: 'C',
     plotNo: '123',
     sizeValue: 10,
     sizeUnit: 'MARLA',
-    agreedPrice: 18_000_000,
+    dealPrice: 18_000_000,
     sellerName: 'Haji Saleem',
     sellerPhone: '0300-1234567',
   });
-  await addPropertyPayment({
-    propertyId: property.id,
-    type: 'TOKEN',
-    amount: 500_000,
+  await addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 500_000, date: today, accountId: bank.id });
+  await addPlotPayment({ plotId: plot.id, payType: 'BAYANA', amount: 4_500_000, date: today, accountId: bank.id });
+  await addPlotExpense({
+    plotId: plot.id,
+    categoryId: catId('Transfer Fees & Tax')!,
+    amount: 350_000,
     date: today,
-    mode: 'BANK',
+    accountId: bank.id,
   });
 
-  // Parties.
-  await addParty({ type: 'SELLER', name: 'Haji Saleem', phone: '0300-1234567' });
-  const contractor = await addParty({ type: 'CONTRACTOR', name: 'Ustad Akram', phone: '0321-1112222' });
-  const buyer = await addParty({ type: 'BUYER', name: 'Mr. Tariq', phone: '0345-9998887' });
+  // Project on that plot with two investors.
+  const project = await createProject({ name: 'Bahria Town Villa', plotId: plot.id });
+  const inv1 = await addInvestor({ name: 'Amir Khan', phone: '0300-1234567' });
+  const inv2 = await addInvestor({ name: 'Amanullah', phone: '0321-7654321' });
+  await addProjectInvestor({ projectId: project.id, investorId: inv1.id, committedAmount: 6_000_000, profitPct: 20 });
+  await addProjectInvestor({ projectId: project.id, investorId: inv2.id, committedAmount: 4_000_000, profitPct: 15 });
+  await addInvestment({ investorId: inv1.id, projectId: project.id, amount: 6_000_000, date: today, accountId: bank.id });
+  await addInvestment({ investorId: inv2.id, projectId: project.id, amount: 4_000_000, date: today, accountId: bank.id });
 
-  // Categories (seeded on first run) — look up a few by English name.
-  const cats = await listCategories();
-  const catId = (nameEn: string) => cats.find((c) => c.name_en === nameEn)?.id ?? null;
-
-  // Transactions.
+  // Construction spend + a worker with attendance.
   await addTransaction({
-    projectId: project.id,
-    direction: 'IN',
-    categoryId: catId('Investor Investment'),
-    amount: 600_000,
-    date: today,
-    mode: 'CASH',
-    description: 'Sharik ki investment',
+    direction: 'OUT', amount: 185_000, date: today, accountId: bank.id,
+    projectId: project.id, phase: 'CONSTRUCTION', categoryId: catId('Cement'), description: 'Cement 100 bori',
   });
   await addTransaction({
-    projectId: project.id,
-    direction: 'OUT',
-    categoryId: catId('Cement'),
-    amount: 185_000,
-    date: today,
-    mode: 'BANK',
-    description: 'Cement 100 bori',
+    direction: 'OUT', amount: 95_000, date: today, accountId: cash.id,
+    projectId: project.id, phase: 'CONSTRUCTION', categoryId: catId('Sand/Crush'), description: 'Bajri 2 trolley',
   });
-  await addTransaction({
-    projectId: project.id,
-    direction: 'OUT',
-    categoryId: catId('Labor Dehari'),
-    amount: 24_000,
-    date: today,
-    mode: 'CASH',
-    partyId: contractor.id,
-    description: '8 mazdoor',
-  });
+  const worker = await addLaborer({ name: 'Ustad Akram', phone: '0321-1112222' });
+  const pl = await attachLaborerToProject({ projectId: project.id, laborerId: worker.id, dailyWage: 1500 });
+  await markAttendance({ projectLaborerId: pl.id, date: today, status: 'FULL' });
 
-  // Investors + capital ledger.
-  const inv1 = await addInvestor({ name: 'Haji Saleem', phone: '0300-1234567' });
-  const inv2 = await addInvestor({ name: 'Tariq Sb', phone: '0321-7654321' });
-  const pi1 = await addProjectInvestor({
-    projectId: project.id,
-    investorId: inv1.id,
-    committedAmount: 6_000_000,
-  });
-  const pi2 = await addProjectInvestor({
-    projectId: project.id,
-    investorId: inv2.id,
-    committedAmount: 4_000_000,
-  });
-  await addCapitalEntry({ projectInvestorId: pi1.id, entryType: 'INITIAL', amount: 6_000_000, date: today });
-  await addCapitalEntry({ projectInvestorId: pi2.id, entryType: 'INITIAL', amount: 4_000_000, date: today });
+  // A sale in progress: deal 32,000,000, token received.
+  const sale = await upsertSale(project.id, { agreedPrice: 32_000_000, buyerName: 'Mr. Tariq' });
+  await addSaleReceipt({ saleId: sale.id, amount: 1_000_000, date: today, accountId: bank.id, payType: 'TOKEN' });
 
-  // A sale in progress.
-  await createSale({ projectId: project.id, buyerPartyId: buyer.id, agreedPrice: 22_000_000 });
+  // An udhaar given from cash.
+  const udhaar = await createUdhaar({ personName: 'Bilal (neighbour)' });
+  await giveUdhaar({ udhaarId: udhaar.id, amount: 150_000, date: today, accountId: cash.id });
 
   return project.id;
 }

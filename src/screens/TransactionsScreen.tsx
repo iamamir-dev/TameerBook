@@ -21,7 +21,9 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
+  type AccountRow,
   type CategoryRow,
+  listAccounts,
   listCategories,
   listDocumentsForType,
   listTransactions,
@@ -59,6 +61,7 @@ export function TransactionsScreen(): React.JSX.Element {
 
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [receipts, setReceipts] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<Filter>('all');
   const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
@@ -66,13 +69,15 @@ export function TransactionsScreen(): React.JSX.Element {
   const [selected, setSelected] = useState<TransactionRow | null>(null);
 
   const load = useCallback(async () => {
-    const [rows, cats, docs] = await Promise.all([
+    const [rows, cats, accts, docs] = await Promise.all([
       listTransactions(projectId),
       listCategories(),
+      listAccounts(),
       listDocumentsForType('transaction'),
     ]);
     setTxns(rows);
     setCategories(cats);
+    setAccounts(accts);
     const map: Record<string, string> = {};
     for (const d of docs) map[d.entity_id] = d.file_uri;
     setReceipts(map);
@@ -91,6 +96,14 @@ export function TransactionsScreen(): React.JSX.Element {
       return c ? (language === 'ur' ? c.name_ur : c.name_en) : '';
     },
     [categories, language]
+  );
+
+  const accountName = useCallback(
+    (id: string | null) => {
+      if (!id) return '';
+      return accounts.find((a) => a.id === id)?.name ?? '';
+    },
+    [accounts]
   );
 
   const ym = todayISO().slice(0, 7);
@@ -130,8 +143,8 @@ export function TransactionsScreen(): React.JSX.Element {
         amount: original.amount,
         categoryId: original.category_id,
         note: original.description ?? undefined,
-        mode: original.mode,
-        projectId: original.project_id,
+        accountId: original.account_id ?? undefined,
+        projectId: original.project_id ?? undefined,
         partyId: original.party_id,
       },
     });
@@ -237,7 +250,8 @@ export function TransactionsScreen(): React.JSX.Element {
               </AppText>
             ) : null}
             <AppText size="sm" color="textSecondary">
-              {dayjs(selected.date).format('DD MMM YYYY')} · {t(modeKey(selected.mode))}
+              {dayjs(selected.date).format('DD MMM YYYY')}
+              {accountName(selected.account_id) ? ` · ${accountName(selected.account_id)}` : ''}
             </AppText>
 
             <View style={styles.fixExplain}>
@@ -258,19 +272,6 @@ export function TransactionsScreen(): React.JSX.Element {
       </Modal>
     </View>
   );
-}
-
-function modeKey(mode: string): TranslationKey {
-  switch (mode) {
-    case 'BANK':
-      return 'modeBank';
-    case 'JAZZCASH':
-      return 'modeJazzcash';
-    case 'CREDIT':
-      return 'modeCredit';
-    default:
-      return 'modeCash';
-  }
 }
 
 const makeStyles = (theme: Theme) =>

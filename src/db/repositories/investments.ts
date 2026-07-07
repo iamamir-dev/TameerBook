@@ -1,55 +1,44 @@
 import { getDatabase } from '../database';
-import { DEFAULT_USER, type PaymentMode } from '../schema';
+import { DEFAULT_USER } from '../schema';
 import { nowISO, uuid } from '../uuid';
+import { categoryIdByName } from './categories';
 import { addDocument } from './documents';
-
-const INVESTOR_CATEGORY_EN = 'Investor Investment';
-
-/** Find (or create) the "Investor Investment" income category. */
-async function investorCategoryId(): Promise<string> {
-  const db = await getDatabase();
-  const found = await db.getFirstAsync<{ id: string }>(
-    'SELECT id FROM categories WHERE name_en = ? LIMIT 1',
-    INVESTOR_CATEGORY_EN
-  );
-  if (found) return found.id;
-  const id = uuid();
-  await db.runAsync(
-    `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon)
-     VALUES (?, ?, ?, NULL, ?, ?, 'INCOME', 'investor')`,
-    id,
-    nowISO(),
-    DEFAULT_USER,
-    INVESTOR_CATEGORY_EN,
-    'سرمایہ کاری'
-  );
-  return id;
-}
 
 export interface InvestmentInput {
   investorId: string;
   projectId: string;
   amount: number;
   date: string;
-  mode: PaymentMode;
+  /** The account the investor's money landed in (real cash entering). */
+  accountId: string;
   receiptUri?: string | null;
   createdBy?: string;
 }
 
 /**
- * Record an investment: writes a capital_ledger entry (INITIAL for the
- * investor's first contribution to the project, otherwise ADDITIONAL) AND an
- * IN transaction (category "Investor Investment") atomically. Auto-creates the
- * project_investor link if it doesn't exist yet. Ownership % is computed live
- * from the ledger, so it recalculates automatically after this write.
+ * Record REAL money an investor hands over (their commitment is a separate
+ * promise on project_investors): writes a capital_ledger entry (INITIAL for
+ * the investor's first contribution to the project, otherwise ADDITIONAL) AND
+ * an IN transaction (category "Investor Investment") posted to the chosen
+ * account, atomically. Auto-creates the project_investor link if it doesn't
+ * exist yet. Ownership % is computed live from the ledger, so it recalculates
+ * automatically after this write.
+ *
+ * If the total paid-in now exceeds the committed amount, the commitment is
+ * automatically raised to match (they clearly agreed to invest more).
  */
 export async function addInvestment(input: InvestmentInput): Promise<void> {
   const db = await getDatabase();
+  if (input.amount <= 0) throw new Error('addInvestment: amount must be positive');
   const by = input.createdBy ?? DEFAULT_USER;
-  const catId = await investorCategoryId();
+  const catId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری');
   const existingPi = await db.getFirstAsync<{ id: string }>(
     'SELECT id FROM project_investors WHERE project_id = ? AND investor_id = ? LIMIT 1',
     input.projectId,
+    input.investorId
+  );
+  const investor = await db.getFirstAsync<{ name: string }>(
+    'SELECT name FROM investors WHERE id = ?',
     input.investorId
   );
   const createdAt = nowISO();
@@ -92,20 +81,41 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
     );
     await tx.runAsync(
       `INSERT INTO transactions
-         (id, created_at, created_by, project_id, direction, category_id, amount, date, mode, party_id, description, doc_id, is_void, void_of_id)
-       VALUES (?, ?, ?, ?, 'IN', ?, ?, ?, ?, NULL, NULL, NULL, 0, NULL)`,
+         (id, created_at, created_by, direction, amount, date, account_id, project_id, plot_id,
+          phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
+          labor_id, description, doc_id, is_void, void_of_id)
+       VALUES (?, ?, ?, 'IN', ?, ?, ?, ?, NULL, 'GENERAL', ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL)`,
       txnId,
       createdAt,
       by,
-      input.projectId,
-      catId,
       input.amount,
       input.date,
-      input.mode
+      input.accountId,
+      input.projectId,
+      catId,
+      investor?.name ?? null
+    );
+
+    // Auto-raise the commitment when the paid-in total overtakes it.
+    await tx.runAsync(
+      `UPDATE project_investors SET committed_amount = MAX(committed_amount,
+         (SELECT COALESCE(SUM(CASE cl.entry_type
+            WHEN 'INITIAL' THEN cl.amount
+            WHEN 'ADDITIONAL' THEN cl.amount
+            WHEN 'TRANSFER_IN' THEN cl.amount
+            ELSE 0 END), 0)
+          FROM capital_ledger cl WHERE cl.project_investor_id = project_investors.id))
+       WHERE id = ?`,
+      piId
     );
   });
 
   if (input.receiptUri) {
-    await addDocument({ entityType: 'transaction', entityId: txnId, fileUri: input.receiptUri, mime: 'image/jpeg' });
+    await addDocument({
+      entityType: 'transaction',
+      entityId: txnId,
+      fileUri: input.receiptUri,
+      mime: 'image/jpeg',
+    });
   }
 }

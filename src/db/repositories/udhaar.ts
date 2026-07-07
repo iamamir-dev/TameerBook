@@ -1,114 +1,215 @@
 import { getDatabase } from '../database';
-import { DEFAULT_USER, type PartyRow, type PaymentMode } from '../schema';
+import {
+  DEFAULT_USER,
+  type TransactionRow,
+  type UdhaarDirection,
+  type UdhaarRow,
+  type UdhaarStatus,
+} from '../schema';
 import { nowISO, uuid } from '../uuid';
-import { addTransaction } from './transactions';
+import { requireCompanyId } from './companies';
+import { addTransaction, LimitExceededError } from './transactions';
 
-/** Well-known category used to mark udhaar repayments (kept out of normal spend). */
-const UDHAAR_PAYMENT_EN = 'Udhaar Payment';
+/**
+ * Udhaar = money lent to (GIVEN) or borrowed from (TAKEN) a person. The person
+ * may not exist anywhere else in the app  a free-text name is enough.
+ * Money always moves through an account; the outstanding balance is derived
+ * from the linked transactions, never stored.
+ */
 
-/** Find (or create) the special "Udhaar Payment" category id. */
-async function udhaarPaymentCategoryId(): Promise<string> {
-  const db = await getDatabase();
-  const found = await db.getFirstAsync<{ id: string }>(
-    'SELECT id FROM categories WHERE name_en = ? LIMIT 1',
-    UDHAAR_PAYMENT_EN
-  );
-  if (found) return found.id;
-  const id = uuid();
-  await db.runAsync(
-    `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon)
-     VALUES (?, ?, ?, NULL, ?, ?, 'EXPENSE', 'investor')`,
-    id,
-    nowISO(),
-    DEFAULT_USER,
-    UDHAAR_PAYMENT_EN,
-    'ادھار کی واپسی'
-  );
-  return id;
+export interface NewUdhaar {
+  personName: string;
+  partyId?: string | null;
+  direction?: UdhaarDirection;
+  note?: string | null;
+  createdBy?: string;
 }
 
-export interface SupplierPayable extends PartyRow {
-  /** Total taken on udhaar (CREDIT expenses). */
-  credit: number;
-  /** Total repaid via udhaar payments. */
-  paid: number;
-  /** Outstanding payable = credit − paid. */
-  payable: number;
+export async function createUdhaar(input: NewUdhaar): Promise<UdhaarRow> {
+  const db = await getDatabase();
+  const id = uuid();
+  await db.runAsync(
+    `INSERT INTO udhaar (id, created_at, created_by, company_id, person_name, party_id, direction, note, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+    id,
+    nowISO(),
+    input.createdBy ?? DEFAULT_USER,
+    requireCompanyId(),
+    input.personName.trim(),
+    input.partyId ?? null,
+    input.direction ?? 'GIVEN',
+    input.note ?? null
+  );
+  return (await getUdhaar(id))!;
+}
+
+export async function getUdhaar(id: string): Promise<UdhaarRow | null> {
+  const db = await getDatabase();
+  return db.getFirstAsync<UdhaarRow>('SELECT * FROM udhaar WHERE id = ?', id);
 }
 
 /**
- * Net outstanding payable to a party:
- *   Σ(CREDIT expenses) − Σ(udhaar repayments).
- * A CREDIT expense (mode=CREDIT) and a repayment (category = Udhaar Payment,
- * paid by cash/bank) never overlap, so the two sums are clean.
+ * Delete an udhaar record ONLY if no money ever moved on it (used to clean up
+ * when the first give is blocked by the funds guard). No-op otherwise.
  */
-export async function getPayable(partyId: string): Promise<number> {
+export async function deleteUdhaarIfEmpty(id: string): Promise<void> {
   const db = await getDatabase();
-  const catId = await udhaarPaymentCategoryId();
-  const row = await db.getFirstAsync<{ credit: number; paid: number }>(
+  const txns = await db.getFirstAsync<{ c: number }>(
+    'SELECT COUNT(*) AS c FROM transactions WHERE udhaar_id = ?',
+    id
+  );
+  if ((txns?.c ?? 0) === 0) await db.runAsync('DELETE FROM udhaar WHERE id = ?', id);
+}
+
+/**
+ * Outstanding balance of one udhaar:
+ *   GIVEN → Σ(OUT: money we handed over) − Σ(IN: money returned to us)
+ *   TAKEN → Σ(IN: money we received)     − Σ(OUT: money we paid back)
+ * Hits 0 when fully cleared.
+ */
+export async function getUdhaarBalance(id: string): Promise<number> {
+  const db = await getDatabase();
+  const u = await getUdhaar(id);
+  if (!u) return 0;
+  const row = await db.getFirstAsync<{ outSum: number; inSum: number }>(
     `SELECT
-       COALESCE(SUM(CASE WHEN mode = 'CREDIT'   THEN amount ELSE 0 END), 0) AS credit,
-       COALESCE(SUM(CASE WHEN category_id = ?   THEN amount ELSE 0 END), 0) AS paid
-     FROM transactions
-     WHERE party_id = ? AND direction = 'OUT' AND is_void = 0`,
-    catId,
-    partyId
+       COALESCE(SUM(CASE WHEN direction = 'OUT' THEN amount ELSE 0 END), 0) AS outSum,
+       COALESCE(SUM(CASE WHEN direction = 'IN'  THEN amount ELSE 0 END), 0) AS inSum
+     FROM transactions WHERE udhaar_id = ? AND is_void = 0`,
+    id
   );
-  return (row?.credit ?? 0) - (row?.paid ?? 0);
+  const outSum = row?.outSum ?? 0;
+  const inSum = row?.inSum ?? 0;
+  return u.direction === 'GIVEN' ? outSum - inSum : inSum - outSum;
 }
 
-/** Every party that has taken udhaar, with their outstanding payable. */
-export async function listSupplierPayables(): Promise<SupplierPayable[]> {
+export interface UdhaarWithBalance extends UdhaarRow {
+  given: number;
+  returned: number;
+  balance: number;
+}
+
+/** All udhaar records (optionally filtered by status) with balances, newest first. */
+export async function listUdhaar(status?: UdhaarStatus): Promise<UdhaarWithBalance[]> {
   const db = await getDatabase();
-  const catId = await udhaarPaymentCategoryId();
-  const rows = await db.getAllAsync<PartyRow & { credit: number; paid: number }>(
-    `SELECT p.*,
-       COALESCE(SUM(CASE WHEN t.mode = 'CREDIT' THEN t.amount ELSE 0 END), 0) AS credit,
-       COALESCE(SUM(CASE WHEN t.category_id = ? THEN t.amount ELSE 0 END), 0) AS paid
-     FROM parties p
-     JOIN transactions t ON t.party_id = p.id AND t.direction = 'OUT' AND t.is_void = 0
-     GROUP BY p.id
-     HAVING credit > 0
-     ORDER BY (credit - paid) DESC`,
-    catId
+  const where = status ? 'WHERE u.company_id = ? AND u.status = ?' : 'WHERE u.company_id = ?';
+  const params = status ? [requireCompanyId(), status] : [requireCompanyId()];
+  return db.getAllAsync<UdhaarWithBalance>(
+    `SELECT u.*,
+       COALESCE(SUM(CASE WHEN t.is_void = 0
+         AND t.direction = (CASE u.direction WHEN 'GIVEN' THEN 'OUT' ELSE 'IN' END)
+         THEN t.amount ELSE 0 END), 0) AS given,
+       COALESCE(SUM(CASE WHEN t.is_void = 0
+         AND t.direction = (CASE u.direction WHEN 'GIVEN' THEN 'IN' ELSE 'OUT' END)
+         THEN t.amount ELSE 0 END), 0) AS returned,
+       COALESCE(SUM(CASE WHEN t.is_void = 0 THEN
+         (CASE WHEN t.direction = (CASE u.direction WHEN 'GIVEN' THEN 'OUT' ELSE 'IN' END)
+               THEN t.amount ELSE -t.amount END) ELSE 0 END), 0) AS balance
+     FROM udhaar u
+     LEFT JOIN transactions t ON t.udhaar_id = u.id
+     ${where}
+     GROUP BY u.id
+     ORDER BY u.created_at DESC`,
+    ...params
   );
-  return rows.map((r) => ({ ...r, payable: r.credit - r.paid }));
 }
 
-export interface UdhaarPaymentInput {
-  partyId: string;
+/** Live (non-void) transactions on one udhaar, newest first (its ledger). */
+export async function listUdhaarTransactions(udhaarId: string): Promise<TransactionRow[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<TransactionRow>(
+    'SELECT * FROM transactions WHERE udhaar_id = ? AND is_void = 0 ORDER BY date DESC, created_at DESC',
+    udhaarId
+  );
+}
+
+export interface UdhaarMoveInput {
+  udhaarId: string;
   amount: number;
   date: string;
-  /** Real payment mode (CREDIT is coerced to CASH — a repayment leaves cash). */
-  mode: PaymentMode;
+  accountId: string;
+  note?: string | null;
   createdBy?: string;
 }
 
 /**
- * Record a repayment to a supplier: an OUT transaction tagged with the
- * Udhaar Payment category, which reduces that party's payable. The project is
- * inferred from the supplier's most recent CREDIT expense.
+ * Hand money over on an udhaar: for GIVEN this is us lending (OUT of the
+ * account); for TAKEN this is us receiving the loan (IN to the account).
  */
-export async function recordUdhaarPayment(input: UdhaarPaymentInput): Promise<void> {
-  const db = await getDatabase();
-  const catId = await udhaarPaymentCategoryId();
-  const src = await db.getFirstAsync<{ project_id: string }>(
-    `SELECT project_id FROM transactions
-     WHERE party_id = ? AND direction = 'OUT' AND mode = 'CREDIT' AND is_void = 0
-     ORDER BY date DESC LIMIT 1`,
-    input.partyId
-  );
-  if (!src) throw new Error('recordUdhaarPayment: no udhaar found for this party');
+export async function giveUdhaar(input: UdhaarMoveInput): Promise<void> {
+  const u = await getUdhaar(input.udhaarId);
+  if (!u) throw new Error(`giveUdhaar: udhaar ${input.udhaarId} not found`);
 
   await addTransaction({
-    projectId: src.project_id,
-    direction: 'OUT',
-    categoryId: catId,
+    direction: u.direction === 'GIVEN' ? 'OUT' : 'IN',
     amount: input.amount,
     date: input.date,
-    mode: input.mode === 'CREDIT' ? 'CASH' : input.mode,
-    partyId: input.partyId,
-    description: 'Udhaar payment',
+    accountId: input.accountId,
+    udhaarId: u.id,
+    counterpartyName: u.person_name,
+    description: input.note ?? null,
     createdBy: input.createdBy,
   });
+
+  await syncStatus(u.id);
+}
+
+/**
+ * Money coming back on an udhaar: for GIVEN this is repayment to us (IN);
+ * for TAKEN this is us paying back (OUT). Marks the record CLEARED when the
+ * balance reaches zero.
+ */
+export async function returnUdhaar(input: UdhaarMoveInput): Promise<void> {
+  const u = await getUdhaar(input.udhaarId);
+  if (!u) throw new Error(`returnUdhaar: udhaar ${input.udhaarId} not found`);
+  if (input.amount <= 0) throw new Error('returnUdhaar: amount must be positive');
+
+  // VALIDATION: more can't come back than is outstanding on this udhaar.
+  const balance = await getUdhaarBalance(u.id);
+  if (input.amount > balance + 0.001) {
+    throw new LimitExceededError(balance, input.amount);
+  }
+
+  await addTransaction({
+    direction: u.direction === 'GIVEN' ? 'IN' : 'OUT',
+    amount: input.amount,
+    date: input.date,
+    accountId: input.accountId,
+    udhaarId: u.id,
+    counterpartyName: u.person_name,
+    description: input.note ?? null,
+    createdBy: input.createdBy,
+  });
+
+  await syncStatus(u.id);
+}
+
+/** Keep OPEN/CLEARED in step with the derived balance. */
+export async function syncStatus(udhaarId: string): Promise<void> {
+  const balance = await getUdhaarBalance(udhaarId);
+  const db = await getDatabase();
+  await db.runAsync(
+    'UPDATE udhaar SET status = ? WHERE id = ?',
+    balance <= 0.001 ? 'CLEARED' : 'OPEN',
+    udhaarId
+  );
+}
+
+export interface UdhaarTotals {
+  /** Money out on loan to people (they owe us). */
+  receivable: number;
+  /** Money we borrowed and still owe. */
+  payable: number;
+}
+
+/** Dashboard totals across all open udhaar. */
+export async function getUdhaarTotals(): Promise<UdhaarTotals> {
+  const rows = await listUdhaar('OPEN');
+  let receivable = 0;
+  let payable = 0;
+  for (const r of rows) {
+    if (r.direction === 'GIVEN') receivable += Math.max(0, r.balance);
+    else payable += Math.max(0, r.balance);
+  }
+  return { receivable, payable };
 }

@@ -30,7 +30,7 @@ interface AmountInputProps {
    */
   floating?: boolean;
   /**
-   * Surface colour the floating label notches into — should match the
+   * Surface colour the floating label notches into  should match the
    * container behind the field. Defaults to the screen background.
    */
   surface?: string;
@@ -155,9 +155,10 @@ function FloatingAmount({
     active.value = withTiming(focused || filled ? 1 : 0, { duration: 160 });
   }, [focused, filled, active]);
 
-  const restingTop = (theme.touch.minTarget - theme.typography.sizes.md) / 2;
+  // Active: lift the flex-centered label up onto the top border line.
+  const floatTo = -(theme.touch.minTarget / 2);
   const labelStyle = useAnimatedStyle(() => ({
-    top: interpolate(active.value, [0, 1], [restingTop, -10]),
+    transform: [{ translateY: interpolate(active.value, [0, 1], [0, floatTo]) }],
     fontSize: interpolate(active.value, [0, 1], [theme.typography.sizes.md, theme.typography.sizes.xs]),
     color: interpolateColor(active.value, [0, 1], [theme.colors.textSecondary, theme.colors.accent]),
   }));
@@ -167,12 +168,6 @@ function FloatingAmount({
   return (
     <View style={style}>
       <View style={[styles.fBox, { backgroundColor: surface }, focused && styles.fBoxFocused]}>
-        <Animated.Text
-          style={[styles.fLabel, { backgroundColor: surface }, labelStyle]}
-          numberOfLines={1}
-        >
-          {label}
-        </Animated.Text>
         <View style={styles.fRow}>
           {showPrefix ? (
             <AppText size="md" weight="bold" color="textSecondary">
@@ -190,6 +185,16 @@ function FloatingAmount({
             maxLength={15}
             autoFocus={autoFocus}
           />
+        </View>
+        {/* Flex-centered label overlay (matches the input line); floats up on the
+            border when active. Non-interactive so taps reach the input. */}
+        <View pointerEvents="none" style={styles.fLabelWrap}>
+          <Animated.Text
+            style={[styles.fLabel, { backgroundColor: surface }, labelStyle]}
+            numberOfLines={1}
+          >
+            {label}
+          </Animated.Text>
         </View>
       </View>
       {helper ? (
@@ -245,13 +250,20 @@ const makeStyles = (theme: Theme) =>
     fBoxFocused: {
       borderColor: theme.colors.accent,
     },
-    fLabel: {
+    /* fills the box; flexbox centers the label exactly like the input line */
+    fLabelWrap: {
       position: 'absolute',
+      top: 0,
+      bottom: 0,
       left: theme.spacing.md,
+      right: theme.spacing.md,
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+    },
+    fLabel: {
       paddingHorizontal: theme.spacing.xs,
       fontFamily: theme.typography.weights.semibold,
       includeFontPadding: false,
-      textAlignVertical: 'center',
     },
     fRow: {
       flexDirection: 'row',

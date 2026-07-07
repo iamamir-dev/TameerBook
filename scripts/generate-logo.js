@@ -1,8 +1,8 @@
 /**
- * generate-logo.js — TameerBook soft modern building mark, icons & wordmark.
+ * generate-logo.js  TameerBook soft modern building mark, icons & wordmark.
  *
  * Concept "Soft Skyline": a small cluster of rounded, modern buildings rising
- * from an open book — construction (Tameer) over the ledger (Book) — with NO
+ * from an open book  construction (Tameer) over the ledger (Book)  with NO
  * lettering. Themed after a clean premium reference UI: warm cream canvas,
  * soft charcoal forms, gentle diffuse shadows, generous rounding, and a single
  * muted emerald-green accent building.

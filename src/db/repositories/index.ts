@@ -1,6 +1,8 @@
-/** Repository barrel — typed data access for every table. */
+/** Repository barrel  typed data access for every table. */
+export * from './companies';
+export * from './accounts';
 export * from './projects';
-export * from './properties';
+export * from './plots';
 export * from './parties';
 export * from './categories';
 export * from './transactions';
@@ -10,7 +12,7 @@ export * from './milestones';
 export * from './documents';
 export * from './sales';
 export * from './udhaar';
-export * from './acquisition';
+export * from './labor';
 export * from './reports';
 export * from './investments';
 export * from './exit';

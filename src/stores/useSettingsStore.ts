@@ -25,12 +25,17 @@ export type ReminderKey = keyof ReminderPrefs;
 /** Default investor profit share when none is set (Musharakah split). */
 export const DEFAULT_INVESTOR_PROFIT_PCT = 50;
 
+/** Default charity/donation % of each party's profit (shariah, agreed upfront). */
+export const DEFAULT_DONATION_PCT = 0;
+
 interface SettingsState {
   language: Language;
   darkMode: boolean;
   reminders: ReminderPrefs;
   /** Default % of profit given to investors (loss is always by capital ratio). */
   investorProfitPct: number;
+  /** % of each party's profit donated to charity at settlement. */
+  donationPct: number;
   hydrate: () => Promise<void>;
   setLanguage: (language: Language) => void;
   toggleLanguage: () => void;
@@ -38,6 +43,7 @@ interface SettingsState {
   toggleDarkMode: () => void;
   setReminder: (key: ReminderKey, value: boolean) => void;
   setInvestorProfitPct: (pct: number) => void;
+  setDonationPct: (pct: number) => void;
 }
 
 const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
@@ -47,6 +53,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   darkMode: false, // Light mode is the default per the design spec.
   reminders: { daily: true, deadline: true, udhaar: true, buyer: true },
   investorProfitPct: DEFAULT_INVESTOR_PROFIT_PCT,
+  donationPct: DEFAULT_DONATION_PCT,
 
   hydrate: async () => {
     try {
@@ -62,9 +69,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
       }
       if (s.investorProfitPct != null) patch.investorProfitPct = clampPct(Number(s.investorProfitPct));
+      if (s.donationPct != null) patch.donationPct = clampPct(Number(s.donationPct));
       if (Object.keys(patch).length) set(patch);
     } catch {
-      /* first launch / table missing — keep defaults */
+      /* first launch / table missing  keep defaults */
     }
   },
 
@@ -95,5 +103,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const investorProfitPct = clampPct(pct);
     set({ investorProfitPct });
     void saveSetting('investorProfitPct', String(investorProfitPct));
+  },
+  setDonationPct: (pct) => {
+    const donationPct = clampPct(pct);
+    set({ donationPct });
+    void saveSetting('donationPct', String(donationPct));
   },
 }));

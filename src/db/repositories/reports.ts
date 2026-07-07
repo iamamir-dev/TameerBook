@@ -1,20 +1,6 @@
 import { getDatabase } from '../database';
 import type { TransactionRow } from '../schema';
-
-/** Categories considered "construction" for the Tameer cost summary. */
-export const CONSTRUCTION_CATEGORIES = [
-  'Cement',
-  'Sariya',
-  'Bricks',
-  'Sand/Crush',
-  'Tiles',
-  'Wood',
-  'Paint',
-  'Electric',
-  'Sanitary',
-  'Labor Dehari',
-  'Contractor',
-] as const;
+import { getProjectLaborTotals } from './labor';
 
 export interface CategorySpend {
   categoryId: string;
@@ -24,48 +10,61 @@ export interface CategorySpend {
 }
 
 export interface ConstructionSummary {
+  /** Cash construction spend + accrued labor wages (the true build cost). */
   total: number;
   thisMonth: number;
+  /** Top spend categories (cement, bajri, …) high→low. Labor shown separately. */
   byCategory: CategorySpend[];
+  /** Accrued labor wages (this IS the labor cost  payments settle it). */
+  laborAccrued: number;
+  laborPaid: number;
+  laborOutstanding: number;
 }
 
 /**
- * Construction spend for a project: all-time total, this-month total, and a
- * per-category breakdown (sorted high→low) for the mini bar list.
+ * Construction cost for a project. Cash spend counts CONSTRUCTION-phase OUT
+ * transactions EXCLUDING labor payments (those settle the accrued wage
+ * balance, which already carries the cost)  so nothing is double counted:
+ *   total = Σ(non-labor CONSTRUCTION OUT) + Σ(accrued labor wages)
  */
 export async function getConstructionSummary(
   projectId: string,
   monthPrefix: string
 ): Promise<ConstructionSummary> {
   const db = await getDatabase();
-  const placeholders = CONSTRUCTION_CATEGORIES.map(() => '?').join(', ');
 
   const byCategory = await db.getAllAsync<CategorySpend>(
     `SELECT t.category_id AS categoryId, c.name_en AS nameEn, c.name_ur AS nameUr,
             COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
      JOIN categories c ON c.id = t.category_id
-     WHERE t.project_id = ? AND t.direction = 'OUT' AND t.is_void = 0
-       AND c.name_en IN (${placeholders})
+     WHERE t.project_id = ? AND t.phase = 'CONSTRUCTION' AND t.direction = 'OUT'
+       AND t.is_void = 0 AND t.labor_id IS NULL
      GROUP BY t.category_id
      ORDER BY total DESC`,
-    projectId,
-    ...CONSTRUCTION_CATEGORIES
+    projectId
   );
 
   const month = await db.getFirstAsync<{ s: number }>(
-    `SELECT COALESCE(SUM(t.amount), 0) AS s
-     FROM transactions t
-     JOIN categories c ON c.id = t.category_id
-     WHERE t.project_id = ? AND t.direction = 'OUT' AND t.is_void = 0
-       AND c.name_en IN (${placeholders}) AND t.date LIKE ?`,
+    `SELECT COALESCE(SUM(amount), 0) AS s
+     FROM transactions
+     WHERE project_id = ? AND phase = 'CONSTRUCTION' AND direction = 'OUT'
+       AND is_void = 0 AND labor_id IS NULL AND date LIKE ?`,
     projectId,
-    ...CONSTRUCTION_CATEGORIES,
     `${monthPrefix}%`
   );
 
-  const total = byCategory.reduce((s, c) => s + c.total, 0);
-  return { total, thisMonth: month?.s ?? 0, byCategory };
+  const labor = await getProjectLaborTotals(projectId);
+  const cashSpend = byCategory.reduce((s, c) => s + c.total, 0);
+
+  return {
+    total: cashSpend + labor.accrued,
+    thisMonth: month?.s ?? 0,
+    byCategory,
+    laborAccrued: labor.accrued,
+    laborPaid: labor.paid,
+    laborOutstanding: labor.outstanding,
+  };
 }
 
 /** All live transactions for a party (supplier ledger: purchases + payments). */

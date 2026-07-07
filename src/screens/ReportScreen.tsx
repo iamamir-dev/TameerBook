@@ -8,8 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReportPreview } from '@/components/ReportPreview';
 import { AppButton, AppCard, AppHeader, AppText } from '@/components/ui';
 import {
+  type AccountFlowRow,
   type CashFlowMonth,
   type CategorySpendRow,
+  getAccountFlowReport,
   getCashFlow,
   getExpenseByCategory,
   getInvestmentMatrix,
@@ -17,15 +19,14 @@ import {
   getProjectReport,
   getRoiReport,
   getTopSuppliers,
+  getUdhaarTotals,
   type InvestmentMatrixRow,
-  listSupplierPayables,
   type PnlRow,
   type ProjectReportRow,
   type RoiRow,
-  type SupplierPayable,
   type SupplierSpendRow,
+  type UdhaarTotals,
 } from '@/db';
-import { PROJECT_STAGE_LABEL } from '@/utils/projectStage';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -42,6 +43,7 @@ const TITLE: Record<ReportRoute['params']['type'], TranslationKey> = {
   expense: 'rptExpense',
   investment: 'rptInvestment',
   roi: 'rptRoi',
+  accounts: 'accountsTitle',
 };
 
 export function ReportScreen(): React.JSX.Element {
@@ -57,9 +59,10 @@ export function ReportScreen(): React.JSX.Element {
   const [cash, setCash] = useState<CashFlowMonth[]>([]);
   const [cats, setCats] = useState<CategorySpendRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierSpendRow[]>([]);
-  const [udhaar, setUdhaar] = useState<SupplierPayable[]>([]);
+  const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
   const [matrix, setMatrix] = useState<InvestmentMatrixRow[]>([]);
   const [roi, setRoi] = useState<RoiRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountFlowRow[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -69,9 +72,10 @@ export function ReportScreen(): React.JSX.Element {
     else if (type === 'expense') {
       setCats(await getExpenseByCategory());
       setSuppliers(await getTopSuppliers());
-      setUdhaar(await listSupplierPayables());
+      setUdhaar(await getUdhaarTotals());
     } else if (type === 'investment') setMatrix(await getInvestmentMatrix());
     else if (type === 'roi') setRoi(await getRoiReport());
+    else if (type === 'accounts') setAccounts(await getAccountFlowReport());
   }, [type]);
 
   useEffect(() => {
@@ -98,12 +102,14 @@ export function ReportScreen(): React.JSX.Element {
       return [
         { columns: [t('category'), t('totalLabel')], rows: cats.map((c) => [cn(c.nameEn, c.nameUr), formatRupees(c.total)]) },
         { heading: t('topSuppliers'), columns: [t('supplier'), t('totalLabel')], rows: suppliers.map((s) => [s.name, formatRupees(s.total)]) },
-        { heading: t('udhaar'), columns: [t('supplier'), t('payable')], rows: udhaar.map((u) => [u.name, formatRupees(u.payable)]) },
+        { heading: t('udhaar'), columns: [t('udhaar'), t('totalLabel')], rows: [[t('receivable'), formatRupees(udhaar.receivable)], [t('payable'), formatRupees(udhaar.payable)]] },
       ];
     if (type === 'investment')
       return [{ columns: [t('investors'), t('projects'), t('committedAmount'), t('paidLabel')], rows: matrix.map((m) => [m.investorName, m.projectName, formatRupees(m.committed), formatRupees(m.paid)]) }];
     if (type === 'roi')
       return [{ columns: [t('projects'), t('profitLabel'), t('durationLabel'), t('roiPct')], rows: roi.map((r) => [r.name, formatRupees(r.profit), `${days(r.startDate)} ${t('daysRunning')}`, `${r.roiPct.toFixed(1)}%`]) }];
+    if (type === 'accounts')
+      return [{ columns: [t('accountsTitle'), t('openingBalance'), t('filterIn'), t('filterOut'), t('runningBalance')], rows: accounts.map((a) => [a.name, formatRupees(a.opening), formatRupees(a.inSum), formatRupees(a.outSum), formatRupees(a.balance)]) }];
     return [];
   };
 
@@ -146,7 +152,7 @@ export function ReportScreen(): React.JSX.Element {
             {projects.map((p, i) => (
               <Row key={p.id} first={i === 0} styles={styles}
                 left={<><AppText size="sm" weight="bold" numberOfLines={1}>{p.name}</AppText>
-                  <AppText size="xs" color="textSecondary">{t(PROJECT_STAGE_LABEL[p.stage])} · {days(p.start_date ?? p.created_at)} {t('daysRunning')}</AppText></>}
+                  <AppText size="xs" color="textSecondary">{p.status === 'COMPLETED' ? t('statusDone') : t('statusCurrent')} · {days(p.start_date ?? p.created_at)} {t('daysRunning')}</AppText></>}
                 right={<><AppText size="sm" weight="bold" color="danger" tabular>{formatRupees(p.spent)}</AppText>
                   <AppText size="xs" color="gold" tabular>{formatRupees(p.invested)}</AppText></>} />
             ))}
@@ -198,12 +204,12 @@ export function ReportScreen(): React.JSX.Element {
             </AppCard>
             <AppText size="lg" weight="bold">{t('udhaar')}</AppText>
             <AppCard compact>
-              {udhaar.map((u, i) => (
-                <Row key={u.id} first={i === 0} styles={styles}
-                  left={<AppText size="sm" weight="semibold" numberOfLines={1}>{u.name}</AppText>}
-                  right={<AppText size="sm" weight="bold" color="danger" tabular>{formatRupees(u.payable)}</AppText>} />
-              ))}
-              {udhaar.length === 0 ? <AppText size="sm" color="textSecondary" center style={styles.empty}>{t('noUdhaar')}</AppText> : null}
+              <Row first styles={styles}
+                left={<AppText size="sm" weight="semibold" numberOfLines={1}>{t('receivable')}</AppText>}
+                right={<AppText size="sm" weight="bold" color="success" tabular>{formatRupees(udhaar.receivable)}</AppText>} />
+              <Row first={false} styles={styles}
+                left={<AppText size="sm" weight="semibold" numberOfLines={1}>{t('payable')}</AppText>}
+                right={<AppText size="sm" weight="bold" color="danger" tabular>{formatRupees(udhaar.payable)}</AppText>} />
             </AppCard>
           </>
         ) : null}
@@ -229,6 +235,17 @@ export function ReportScreen(): React.JSX.Element {
                 right={<AppText size="md" weight="bold" color={r.roiPct >= 0 ? 'success' : 'danger'} tabular>{r.roiPct.toFixed(1)}%</AppText>} />
             ))}
             {roi.length === 0 ? <AppText size="sm" color="textSecondary" center style={styles.empty}>{t('comingSoon')}</AppText> : null}
+          </AppCard>
+        ) : null}
+
+        {type === 'accounts' ? (
+          <AppCard compact>
+            {accounts.map((a, i) => (
+              <Row key={a.id} first={i === 0} styles={styles}
+                left={<><AppText size="sm" weight="bold" numberOfLines={1}>{a.name}</AppText>
+                  <AppText size="xs" color="textSecondary" tabular>{t('openingBalance')}: {formatRupees(a.opening)} · +{formatRupees(a.inSum)} · −{formatRupees(a.outSum)}</AppText></>}
+                right={<AppText size="md" weight="bold" color={a.balance >= 0 ? 'success' : 'danger'} tabular>{formatRupees(a.balance)}</AppText>} />
+            ))}
           </AppCard>
         ) : null}
       </ScrollView>

@@ -4,10 +4,10 @@ import {
   type CapitalLedgerRow,
   DEFAULT_USER,
   type InvestorRow,
-  type ProjectStage,
   type ProjectStatus,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
+import { requireCompanyId } from './companies';
 
 export interface NewCapitalEntry {
   projectInvestorId: string;
@@ -22,7 +22,7 @@ export interface NewCapitalEntry {
 }
 
 /**
- * Append a capital-ledger entry. APPEND-ONLY — no update/delete. A correction
+ * Append a capital-ledger entry. APPEND-ONLY  no update/delete. A correction
  * is recorded as another entry (e.g. a WITHDRAWAL offsetting an ADDITIONAL).
  */
 export async function addCapitalEntry(input: NewCapitalEntry): Promise<CapitalLedgerRow> {
@@ -159,7 +159,9 @@ export async function listInvestorsWithCapital(): Promise<InvestorWithCapital[]>
          WHERE pi.investor_id = inv.id
        ), 0) AS totalCapital
      FROM investors inv
-     ORDER BY inv.name`
+     WHERE inv.company_id = ?
+     ORDER BY inv.name`,
+    requireCompanyId()
   );
 }
 
@@ -170,11 +172,10 @@ export interface InvestorLedgerEntry extends CapitalLedgerRow {
 export interface InvestorProjectReturn {
   projectId: string;
   projectName: string;
-  stage: ProjectStage;
   status: ProjectStatus;
   /** Gross capital put in (INITIAL + ADDITIONAL + TRANSFER_IN). */
   invested: number;
-  /** Realized profit (PROFIT_PAYOUT) − realized loss (LOSS_ADJ). 0 until settled. */
+  /** Realized profit (PROFIT_PAYOUT − DONATION) − realized loss (LOSS_ADJ). 0 until settled. */
   profitOrLoss: number;
   settled: boolean;
 }
@@ -188,13 +189,12 @@ export async function getInvestorProjectReturns(investorId: string): Promise<Inv
   const rows = await db.getAllAsync<{
     project_id: string;
     projectName: string;
-    stage: ProjectStage;
     status: ProjectStatus;
     pi_status: string;
     invested: number;
     profit: number;
   }>(
-    `SELECT pi.project_id, COALESCE(pr.name, '') AS projectName, pr.stage, pr.status,
+    `SELECT pi.project_id, COALESCE(pr.name, '') AS projectName, pr.status,
         pi.status AS pi_status,
         COALESCE(SUM(CASE cl.entry_type
           WHEN 'INITIAL' THEN cl.amount
@@ -203,6 +203,7 @@ export async function getInvestorProjectReturns(investorId: string): Promise<Inv
           ELSE 0 END), 0) AS invested,
         COALESCE(SUM(CASE cl.entry_type
           WHEN 'PROFIT_PAYOUT' THEN cl.amount
+          WHEN 'DONATION' THEN -cl.amount
           WHEN 'LOSS_ADJ' THEN -cl.amount
           ELSE 0 END), 0) AS profit
      FROM project_investors pi
@@ -216,7 +217,6 @@ export async function getInvestorProjectReturns(investorId: string): Promise<Inv
   return rows.map((r) => ({
     projectId: r.project_id,
     projectName: r.projectName,
-    stage: r.stage,
     status: r.status,
     invested: r.invested,
     profitOrLoss: r.profit,

@@ -1,14 +1,8 @@
 import type { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useState } from 'react';
-import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import React from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon, AppText } from '@/components/ui';
@@ -23,12 +17,12 @@ import type { RootStackParamList, TabParamList } from './types';
 const TAB_META: Record<keyof TabParamList, { icon: IconKey; labelKey: TranslationKey }> = {
   Home: { icon: 'home', labelKey: 'home' },
   Projects: { icon: 'projects', labelKey: 'projects' },
-  Reports: { icon: 'reports', labelKey: 'reports' },
+  Plots: { icon: 'plot', labelKey: 'plotsTitle' },
   Investors: { icon: 'investors', labelKey: 'investors' },
 };
 
 const FAB_SIZE = 48;
-const BAR_HEIGHT = 56;
+const BAR_HEIGHT = 64;
 
 /**
  * Clearance (in px, excluding the bottom safe-area inset) that screens should
@@ -37,10 +31,10 @@ const BAR_HEIGHT = 56;
 export const FLOATING_BAR_CLEARANCE = BAR_HEIGHT + 32;
 
 /**
- * A floating white pill tab bar. The active tab morphs into a dark pill with
- * an icon + label (200ms Reanimated expand); inactive tabs are a grey icon
- * only. A raised green "+" FAB sits dead-center and opens Quick Entry. Driven
- * by a swipeable (pager-backed) tab navigator, so the bar tracks page swipes.
+ * A floating white pill tab bar. Every tab shows its icon with the tab name
+ * beneath it; the active tab sits in a soft dark pill. A raised green "+" FAB
+ * sits dead-center and opens Quick Entry. Driven by a swipeable (pager-backed)
+ * tab navigator, so the bar tracks page swipes.
  */
 export function TabBar({ state, navigation }: MaterialTopTabBarProps): React.JSX.Element {
   const theme = useTheme();
@@ -112,27 +106,14 @@ interface TabItemProps {
   onPress: () => void;
 }
 
-/** A single tab that animates between "icon only" and "dark pill + label". */
+/**
+ * A single tab: icon with its name beneath. The active one sits in a fully
+ * rounded dark pill with an accent tick above the icon, so the selection
+ * reads instantly without feeling heavy.
+ */
 function TabItem({ icon, label, focused, onPress }: TabItemProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
-  const progress = useSharedValue(focused ? 1 : 0);
-  const [labelWidth, setLabelWidth] = useState(0);
-
-  useEffect(() => {
-    progress.value = withTiming(focused ? 1 : 0, { duration: 200 });
-  }, [focused, progress]);
-
-  const labelStyle = useAnimatedStyle(() => ({
-    width: interpolate(progress.value, [0, 1], [0, labelWidth]),
-    opacity: progress.value,
-    marginLeft: interpolate(progress.value, [0, 1], [0, theme.spacing.xs]),
-  }));
-
-  const onLabelLayout = (e: LayoutChangeEvent) => {
-    const w = Math.ceil(e.nativeEvent.layout.width);
-    if (w && w !== labelWidth) setLabelWidth(w);
-  };
 
   return (
     <Pressable
@@ -143,26 +124,14 @@ function TabItem({ icon, label, focused, onPress }: TabItemProps): React.JSX.Ele
       accessibilityLabel={label}
       style={[styles.tab, focused && styles.tabActive]}
     >
-      <AppIcon name={icon} size={22} color={focused ? 'onPrimary' : 'textSecondary'} />
-      <Animated.View style={[styles.labelClip, labelStyle]}>
-        <AppText
-          size="xs"
-          weight="semibold"
-          color="onPrimary"
-          numberOfLines={1}
-          style={styles.labelText}
-        >
-          {label}
-        </AppText>
-      </Animated.View>
-
-      {/* Hidden copy used only to measure the label's natural width. */}
+      <View style={[styles.tick, focused && styles.tickActive]} />
+      <AppIcon name={icon} size={20} color={focused ? 'onPrimary' : 'textSecondary'} />
       <AppText
-        size="xs"
-        weight="semibold"
+        size="overline"
+        weight={focused ? 'bold' : 'semibold'}
+        color={focused ? 'onPrimary' : 'textSecondary'}
         numberOfLines={1}
-        onLayout={onLabelLayout}
-        style={styles.measure}
+        style={styles.label}
       >
         {label}
       </AppText>
@@ -194,26 +163,33 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'space-around',
     },
     tab: {
-      flexDirection: 'row',
       alignItems: 'center',
-      minHeight: 44,
-      paddingHorizontal: theme.spacing.xs,
+      justifyContent: 'center',
+      gap: 2,
+      minHeight: 52,
+      minWidth: 66,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
       borderRadius: theme.radius.pill,
     },
     tabActive: {
       backgroundColor: theme.colors.primary,
-      paddingHorizontal: theme.spacing.md,
+      ...theme.shadows.card,
     },
-    labelClip: {
-      overflow: 'hidden',
+    /* tiny accent tick that lights up over the active icon */
+    tick: {
+      width: 14,
+      height: 3,
+      borderRadius: theme.radius.pill,
+      backgroundColor: 'transparent',
+      marginBottom: 1,
     },
-    labelText: {
-      // keeps the clipped label on one line during the width animation
+    tickActive: {
+      backgroundColor: theme.colors.accent,
     },
-    measure: {
-      position: 'absolute',
-      opacity: 0,
-      left: 0,
+    label: {
+      // keeps the tiny caption tight under the icon
+      lineHeight: 13,
     },
     fabSlot: {
       width: FAB_SIZE + theme.spacing.lg,

@@ -50,3 +50,19 @@ export async function getCategoryByNameEn(nameEn: string): Promise<CategoryRow |
   const db = await getDatabase();
   return db.getFirstAsync<CategoryRow>('SELECT * FROM categories WHERE name_en = ? LIMIT 1', nameEn);
 }
+
+/**
+ * Find-or-create a category by its canonical English name. Used by business
+ * logic that posts system transactions (Plot Payment, Transfer, Labor
+ * Payment, …) so the category always exists.
+ */
+export async function categoryIdByName(
+  nameEn: string,
+  type: CategoryType,
+  nameUr?: string
+): Promise<string> {
+  const existing = await getCategoryByNameEn(nameEn);
+  if (existing) return existing.id;
+  const created = await addCategory({ nameEn, nameUr: nameUr ?? nameEn, type });
+  return created.id;
+}

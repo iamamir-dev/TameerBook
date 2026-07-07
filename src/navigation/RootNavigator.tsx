@@ -4,27 +4,36 @@ import React from 'react';
 
 import { useTheme } from '@/theme';
 
-import { HomeScreen } from '@/screens/HomeScreen';
-import { InvestorsScreen } from '@/screens/InvestorsScreen';
-import { ProjectsScreen } from '@/screens/ProjectsScreen';
+import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
+import { AccountsScreen } from '@/screens/AccountsScreen';
+import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
-import { DehariEntryScreen } from '@/screens/DehariEntryScreen';
+import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
 import { DevToolsScreen } from '@/screens/DevToolsScreen';
 import { EntryScreen } from '@/screens/EntryScreen';
 import { ExitWizardScreen } from '@/screens/ExitWizardScreen';
+import { HomeScreen } from '@/screens/HomeScreen';
 import { InvestmentEntryScreen } from '@/screens/InvestmentEntryScreen';
 import { InvestorProfileScreen } from '@/screens/InvestorProfileScreen';
-import { SettlementScreen } from '@/screens/SettlementScreen';
+import { InvestorsScreen } from '@/screens/InvestorsScreen';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
-import { PhotoDiaryScreen } from '@/screens/PhotoDiaryScreen';
-import { SupplierLedgerScreen } from '@/screens/SupplierLedgerScreen';
+import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
+import { NewPlotScreen } from '@/screens/NewPlotScreen';
 import { NewProjectWizard } from '@/screens/NewProjectWizard';
+import { PhotoDiaryScreen } from '@/screens/PhotoDiaryScreen';
+import { PlotDetailScreen } from '@/screens/PlotDetailScreen';
+import { PlotsScreen } from '@/screens/PlotsScreen';
 import { ProjectDetailScreen } from '@/screens/ProjectDetailScreen';
+import { ProjectsScreen } from '@/screens/ProjectsScreen';
 import { QuickEntryScreen } from '@/screens/QuickEntryScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { ReportsScreen } from '@/screens/ReportsScreen';
+import { SaleDetailScreen } from '@/screens/SaleDetailScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
+import { SettlementScreen } from '@/screens/SettlementScreen';
 import { TransactionsScreen } from '@/screens/TransactionsScreen';
+import { TransferScreen } from '@/screens/TransferScreen';
+import { UdhaarDetailScreen } from '@/screens/UdhaarDetailScreen';
 import { UdhaarScreen } from '@/screens/UdhaarScreen';
 
 import { TabBar } from './TabBar';
@@ -34,13 +43,11 @@ const Tab = createMaterialTopTabNavigator<TabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
- * The three bottom-tab destinations. The center "+" FAB is part of the custom
- * `TabBar` (it pushes the QuickEntry route on the root stack), so it is NOT a
- * tab itself — keeping Home / Projects / Investors balanced around it.
- *
  * Swipeable (pager-backed) tabs: dragging horizontally pages between Home /
  * Projects / Reports / Investors and commits as you swipe, with the custom
- * floating `TabBar` pinned to the bottom. Screens render their own `AppHeader`.
+ * floating `TabBar` pinned to the bottom. The center "+" FAB is part of the
+ * TabBar (it pushes QuickEntry on the root stack), so it is NOT a tab itself.
+ * Screens render their own `AppHeader`.
  */
 function Tabs(): React.JSX.Element {
   const theme = useTheme();
@@ -58,59 +65,64 @@ function Tabs(): React.JSX.Element {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Projects" component={ProjectsScreen} />
-      <Tab.Screen name="Reports" component={ReportsScreen} />
+      <Tab.Screen name="Plots" component={PlotsScreen} />
       <Tab.Screen name="Investors" component={InvestorsScreen} />
     </Tab.Navigator>
   );
 }
 
+const MODAL = { presentation: 'modal', animation: 'slide_from_bottom' } as const;
+
 /**
- * Root stack: the tab shell plus full-screen destinations. Quick Entry slides
- * up as a modal (it's the FAB's full-screen launcher); Settings pushes
- * normally. Headers are off everywhere because each screen owns its AppHeader.
+ * Root stack: the tab shell plus full-screen destinations. Money-entry
+ * screens slide up as modals; everything else pushes. Headers are off
+ * everywhere because each screen owns its AppHeader.
  */
 export function RootNavigator(): React.JSX.Element {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Tabs" component={Tabs} />
-      <Stack.Screen
-        name="QuickEntry"
-        component={QuickEntryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
+      <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={MODAL} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="NewCompany" component={NewCompanyScreen} />
       <Stack.Screen name="DevTools" component={DevToolsScreen} />
+
+      {/* Cash flow (hub reached from Home) */}
+      <Stack.Screen name="Cash" component={CashScreen} />
+      <Stack.Screen name="Accounts" component={AccountsScreen} />
+      <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
+      <Stack.Screen name="Transfer" component={TransferScreen} options={MODAL} />
+
+      {/* Reports hub (reached from Settings) */}
+      <Stack.Screen name="Reports" component={ReportsScreen} />
+
+      {/* Plots (the list itself is a tab) */}
+      <Stack.Screen name="NewPlot" component={NewPlotScreen} />
+      <Stack.Screen name="PlotDetail" component={PlotDetailScreen} />
+
+      {/* Projects */}
       <Stack.Screen name="NewProject" component={NewProjectWizard} />
       <Stack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
-      <Stack.Screen
-        name="Entry"
-        component={EntryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
-      <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
+      <Stack.Screen name="ConstructionDetail" component={ConstructionDetailScreen} />
+      <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
       <Stack.Screen name="Transactions" component={TransactionsScreen} />
-      <Stack.Screen name="Udhaar" component={UdhaarScreen} />
-      <Stack.Screen
-        name="MaterialEntry"
-        component={MaterialEntryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
-      <Stack.Screen
-        name="DehariEntry"
-        component={DehariEntryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
       <Stack.Screen name="PhotoDiary" component={PhotoDiaryScreen} />
-      <Stack.Screen name="SupplierLedger" component={SupplierLedgerScreen} />
-      <Stack.Screen
-        name="Investment"
-        component={InvestmentEntryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
+      <Stack.Screen name="Settlement" component={SettlementScreen} />
+
+      {/* Money entry */}
+      <Stack.Screen name="Entry" component={EntryScreen} options={MODAL} />
+      <Stack.Screen name="MaterialEntry" component={MaterialEntryScreen} options={MODAL} />
+      <Stack.Screen name="Investment" component={InvestmentEntryScreen} options={MODAL} />
+
+      {/* Udhaar */}
+      <Stack.Screen name="Udhaar" component={UdhaarScreen} />
+      <Stack.Screen name="UdhaarDetail" component={UdhaarDetailScreen} />
+
+      {/* Investors / reports / misc */}
       <Stack.Screen name="InvestorProfile" component={InvestorProfileScreen} />
       <Stack.Screen name="ExitWizard" component={ExitWizardScreen} />
-      <Stack.Screen name="Settlement" component={SettlementScreen} />
       <Stack.Screen name="Report" component={ReportScreen} />
+      <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
     </Stack.Navigator>
   );
 }

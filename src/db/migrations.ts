@@ -24,25 +24,29 @@ export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   await seedDefaults(db);
 }
 
-/** Insert the default expense/income categories once (when none exist yet). */
+/**
+ * Insert the default expense/income categories once (when none exist yet).
+ * Accounts are seeded PER COMPANY by `createCompany`.
+ */
 export async function seedDefaults(db: SQLiteDatabase): Promise<void> {
-  const count = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) AS c FROM categories');
-  if ((count?.c ?? 0) > 0) return;
-
   const createdAt = nowISO();
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    for (const cat of DEFAULT_CATEGORIES) {
-      await tx.runAsync(
-        `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon)
-         VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`,
-        uuid(),
-        createdAt,
-        DEFAULT_USER,
-        cat.name_en,
-        cat.name_ur,
-        cat.type,
-        cat.icon
-      );
-    }
-  });
+
+  const catCount = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) AS c FROM categories');
+  if ((catCount?.c ?? 0) === 0) {
+    await db.withExclusiveTransactionAsync(async (tx) => {
+      for (const cat of DEFAULT_CATEGORIES) {
+        await tx.runAsync(
+          `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?)`,
+          uuid(),
+          createdAt,
+          DEFAULT_USER,
+          cat.name_en,
+          cat.name_ur,
+          cat.type,
+          cat.icon
+        );
+      }
+    });
+  }
 }

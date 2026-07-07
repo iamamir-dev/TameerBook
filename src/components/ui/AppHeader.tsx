@@ -26,7 +26,7 @@ interface AppHeaderProps {
 }
 
 /**
- * App-wide screen header — "Soft Modern". Sits transparently on the cream
+ * App-wide screen header  "Soft Modern". Sits transparently on the cream
  * canvas (no colored bar): a centered dark title with an optional muted
  * subtitle, flanked by round white "chip" buttons that float on a soft shadow.
  * Safe-area aware and every tap target stays >= the minimum touch size.

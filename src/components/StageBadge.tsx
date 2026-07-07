@@ -9,7 +9,7 @@ import { softToneColor } from '@/utils/tones';
 type ColorKey = keyof ColorPalette;
 
 interface StageBadgeProps {
-  /** Theme color key that tints the pill (see projectStageTone). */
+  /** Theme color key that tints the pill. */
   tone: ColorKey;
   /** Already-translated stage label. */
   label: string;

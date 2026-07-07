@@ -20,19 +20,20 @@ interface Tile {
   tone: ToneKey;
 }
 
-/** The five quick-entry actions, in user-facing Roman Urdu terms. */
+/** The six quick-entry actions, in user-facing Roman Urdu terms. */
 const TILES: Tile[] = [
   { labelKey: 'kharcha', icon: 'kharcha', tone: 'danger' },
   { labelKey: 'aamdani', icon: 'aamdani', tone: 'success' },
   { labelKey: 'material', icon: 'material', tone: 'primary' },
-  { labelKey: 'dehari', icon: 'dehari', tone: 'gold' },
+  { labelKey: 'transferTitleV2', icon: 'netFlow', tone: 'accent' },
+  { labelKey: 'udhaar', icon: 'investor', tone: 'gold' },
   { labelKey: 'investor', icon: 'investor', tone: 'accent' },
 ];
 
 /**
- * Full-screen Quick Entry launcher. Five big, color-coded tiles — each well
- * above the 56px minimum — let a user start the right kind of entry with one
- * tap. (Tile actions are placeholders in this build.)
+ * Full-screen Quick Entry launcher. Six big, color-coded tiles  each well
+ * above the 56px minimum  let a user start the right kind of entry with one
+ * tap.
  */
 export function QuickEntryScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -44,7 +45,8 @@ export function QuickEntryScreen(): React.JSX.Element {
     if (tile.labelKey === 'kharcha') navigation.replace('Entry', { direction: 'OUT' });
     else if (tile.labelKey === 'aamdani') navigation.replace('Entry', { direction: 'IN' });
     else if (tile.labelKey === 'material') navigation.replace('MaterialEntry');
-    else if (tile.labelKey === 'dehari') navigation.replace('DehariEntry');
+    else if (tile.labelKey === 'transferTitleV2') navigation.replace('Transfer');
+    else if (tile.labelKey === 'udhaar') navigation.replace('Udhaar');
     else if (tile.labelKey === 'investor') navigation.replace('Investment');
     else navigation.replace('ComingSoon', { titleKey: tile.labelKey });
   };

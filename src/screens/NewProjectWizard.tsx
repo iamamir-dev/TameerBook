@@ -1,6 +1,6 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -10,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
@@ -25,13 +26,14 @@ import {
 import {
   addInvestment,
   addInvestor,
-  addParty,
   addProjectInvestor,
-  addProperty,
   createProject,
+  listAccountsWithBalance,
   listInvestors,
+  listPlots,
+  type AccountWithBalance,
   type InvestorRow,
-  type SizeUnit,
+  type PlotRow,
 } from '@/db';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -46,132 +48,123 @@ import { formatRupees } from '@/utils/money';
 interface DraftInvestor {
   investorId: string | null;
   name: string;
+  /** What they PROMISED to invest  no money moves for this. */
   amount: number;
+  /** What they handed over right now  only this hits the account. */
+  given: number;
   profitPct: number;
+  /** The account the given cash lands in (needed only when given > 0). */
+  accountId: string | null;
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const UNIT_LABEL: Record<SizeUnit, TranslationKey> = {
-  MARLA: 'unitMarla',
-  KANAL: 'unitKanal',
-  SQYD: 'unitSqyd',
-};
-
-const STEPS: { title: TranslationKey; icon: IconKey; guide: TranslationKey }[] = [
-  { title: 'plotInfo', icon: 'project', guide: 'guidePlot' },
-  { title: 'priceSeller', icon: 'investor', guide: 'guidePrice' },
-  { title: 'investors', icon: 'investor', guide: 'guideInvestors' },
+const STEPS: { title: TranslationKey; icon: IconKey; guide: TranslationKey | null }[] = [
+  { title: 'projectName', icon: 'project', guide: null },
+  { title: 'tabInvestors', icon: 'investor', guide: 'guideInvestors' },
   { title: 'review', icon: 'checkCircle', guide: 'guideReview' },
 ];
 
 /**
- * Three-step "New Project" wizard — one focused screen per step with progress
- * dots, floating-label inputs, and big Back/Next buttons. Step 3 reviews then
- * creates the project, its property, and the seller/dealer parties.
+ * v2 "New Project" wizard  3 steps: name + (optional) plot to include,
+ * investors with their capital (landing in an account), then review + create.
+ * Plots are created standalone (New Plot) and picked here.
  */
 export function NewProjectWizard(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const refreshProjects = useProjectsStore((s) => s.refresh);
+  const defaultPct = useSettingsStore((s) => s.investorProfitPct);
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [unitSheet, setUnitSheet] = useState(false);
 
-  const [society, setSociety] = useState('');
-  const [block, setBlock] = useState('');
-  const [plotNo, setPlotNo] = useState('');
-  const [sizeValue, setSizeValue] = useState('');
-  const [sizeUnit, setSizeUnit] = useState<SizeUnit>('MARLA');
-  const [agreedPrice, setAgreedPrice] = useState(0);
-  const [sellerName, setSellerName] = useState('');
-  const [sellerPhone, setSellerPhone] = useState('');
-  const [dealer, setDealer] = useState('');
+  const [name, setName] = useState('');
+  const [plots, setPlots] = useState<PlotRow[]>([]);
+  const [plotId, setPlotId] = useState<string | null>(null);
 
   // Investors entered during creation + the add-investor sheet's draft state.
-  const defaultPct = useSettingsStore((s) => s.investorProfitPct);
   const [investors, setInvestors] = useState<DraftInvestor[]>([]);
   const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [accountSheet, setAccountSheet] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftAmount, setDraftAmount] = useState(0);
+  const [draftGiven, setDraftGiven] = useState(0);
   const [draftPct, setDraftPct] = useState(defaultPct);
+  const [draftAccountId, setDraftAccountId] = useState<string | null>(null);
+
+  // Reload free plots on focus  the user may return from "New Plot".
+  useFocusEffect(
+    useCallback(() => {
+      listPlots('OWNED').then(setPlots).catch(() => undefined);
+      listInvestors().then(setAllInvestors).catch(() => undefined);
+      listAccountsWithBalance().then(setAccounts).catch(() => undefined);
+    }, [])
+  );
 
   useEffect(() => {
-    listInvestors()
-      .then(setAllInvestors)
-      .catch(() => undefined);
-  }, []);
+    if (!draftAccountId && accounts.length > 0) setDraftAccountId(accounts[0].id);
+  }, [accounts, draftAccountId]);
 
-  const projectName = useMemo(() => {
-    const plot = block && plotNo ? `${block}-${plotNo}` : plotNo;
-    return [society.trim(), plot.trim()].filter(Boolean).join(' ').trim();
-  }, [society, block, plotNo]);
+  const selectedPlot = plots.find((p) => p.id === plotId) ?? null;
+  const draftAccount = accounts.find((a) => a.id === draftAccountId) ?? null;
 
-  const unitOptions: SelectOption[] = useMemo(
+  const accountOptions: SelectOption[] = useMemo(
     () =>
-      (Object.keys(UNIT_LABEL) as SizeUnit[]).map((u) => ({ id: u, label: t(UNIT_LABEL[u]) })),
-    [t]
+      accounts.map((a) => ({
+        id: a.id,
+        label: a.name,
+        subtitle: formatRupees(a.balance),
+        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
+      })),
+    [accounts]
   );
 
   const goBack = () => (step === 0 ? navigation.goBack() : setStep((s) => s - 1));
   const goNext = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
 
-  // Required fields per step (investors + review are optional → always proceed).
-  const canProceed = useMemo(() => {
-    if (step === 0) return projectName.trim().length > 0;
-    if (step === 1) return agreedPrice > 0 && sellerName.trim().length > 0;
-    return true;
-  }, [step, projectName, agreedPrice, sellerName]);
+  const canProceed = step !== 0 || name.trim().length > 0;
 
   const openAddInvestor = () => {
     setDraftId(null);
     setDraftName('');
     setDraftAmount(0);
+    setDraftGiven(0);
     setDraftPct(defaultPct);
     setAddOpen(true);
   };
 
   const confirmAddInvestor = () => {
     if (!draftName.trim() || draftAmount <= 0) return;
+    if (draftGiven > 0 && !draftAccountId) return;
     setInvestors((list) => [
       ...list,
-      { investorId: draftId, name: draftName.trim(), amount: draftAmount, profitPct: draftPct },
+      {
+        investorId: draftId,
+        name: draftName.trim(),
+        amount: draftAmount,
+        given: draftGiven,
+        profitPct: draftPct,
+        accountId: draftGiven > 0 ? draftAccountId : null,
+      },
     ]);
     setAddOpen(false);
   };
 
-
   const onCreate = async () => {
     setSaving(true);
     try {
-      const project = await createProject({
-        name: projectName || t('newProject'),
-        stage: 'TOKEN_PAID',
-        startDate: todayISO(),
-      });
-      await addProperty({
-        projectId: project.id,
-        society: society || null,
-        block: block || null,
-        plotNo: plotNo || null,
-        sizeValue: sizeValue ? Number(sizeValue) : null,
-        sizeUnit,
-        agreedPrice: agreedPrice || null,
-        sellerName: sellerName || null,
-        sellerPhone: sellerPhone || null,
-      });
-      if (sellerName.trim()) {
-        await addParty({ type: 'SELLER', name: sellerName.trim(), phone: sellerPhone || null });
-      }
-      if (dealer.trim()) await addParty({ type: 'DEALER', name: dealer.trim() });
+      const project = await createProject({ name: name.trim(), plotId });
 
-      // Attach investors: link the participation (committed + profit %), then
-      // record the amount as paid-in capital (INITIAL).
+      // Attach investors: link the participation (the committed PROMISE +
+      // profit %); only what was actually handed over now posts to an account
+      // as paid-in capital. Later instalments go through Add Investment.
       const today = todayISO();
       for (const inv of investors) {
         const investorId = inv.investorId ?? (await addInvestor({ name: inv.name })).id;
@@ -181,8 +174,14 @@ export function NewProjectWizard(): React.JSX.Element {
           committedAmount: inv.amount,
           profitPct: inv.profitPct,
         });
-        if (inv.amount > 0) {
-          await addInvestment({ investorId, projectId: project.id, amount: inv.amount, date: today, mode: 'CASH' });
+        if (inv.given > 0 && inv.accountId) {
+          await addInvestment({
+            investorId,
+            projectId: project.id,
+            amount: inv.given,
+            date: today,
+            accountId: inv.accountId,
+          });
         }
       }
 
@@ -213,7 +212,7 @@ export function NewProjectWizard(): React.JSX.Element {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.content}
@@ -224,79 +223,63 @@ export function NewProjectWizard(): React.JSX.Element {
           <View style={styles.stepIcon}>
             <AppIcon name={STEPS[step].icon} size={28} color="accent" />
           </View>
-          <AppText size="sm" color="textSecondary" center style={styles.guide}>
-            {t(STEPS[step].guide)}
-          </AppText>
+          {STEPS[step].guide ? (
+            <AppText size="sm" color="textSecondary" center style={styles.guide}>
+              {t(STEPS[step].guide as TranslationKey)}
+            </AppText>
+          ) : null}
 
           {step === 0 ? (
             <>
-              <FloatingLabelInput
-                label={t('society')}
-                value={society}
-                onChangeText={setSociety}
-                hint={t('hintSociety')}
-              />
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <FloatingLabelInput label={t('block')} value={block} onChangeText={setBlock} />
-                </View>
-                <View style={styles.flex}>
-                  <FloatingLabelInput label={t('plotNo')} value={plotNo} onChangeText={setPlotNo} />
-                </View>
-              </View>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <FloatingLabelInput
-                    label={t('size')}
-                    value={sizeValue}
-                    onChangeText={setSizeValue}
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <Pressable
-                  onPress={() => setUnitSheet(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('sizeUnit')}
-                  style={styles.selectBox}
-                >
-                  <AppText size="xs" weight="semibold" color="accent" style={styles.selectLabel}>
-                    {t('sizeUnit')}
+              <FloatingLabelInput label={t('projectName')} value={name} onChangeText={setName} />
+
+              {/* Plot picker  optional but recommended */}
+              <AppText size="sm" weight="semibold" color="textSecondary">
+                {t('selectPlot')}
+              </AppText>
+              {plots.length === 0 ? (
+                <>
+                  <AppText size="sm" color="textSecondary" center style={styles.guide}>
+                    {t('noFreePlots')}
                   </AppText>
-                  <View style={styles.selectValue}>
-                    <AppText size="md" weight="semibold">
-                      {t(UNIT_LABEL[sizeUnit])}
-                    </AppText>
-                    <AppIcon name="forward" size={18} color="textSecondary" />
-                  </View>
-                </Pressable>
-              </View>
+                  <AppButton
+                    label={t('newPlot')}
+                    icon="add"
+                    variant="secondary"
+                    onPress={() => navigation.navigate('NewPlot')}
+                  />
+                </>
+              ) : (
+                plots.map((p) => {
+                  const selected = p.id === plotId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setPlotId(selected ? null : p.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      style={[styles.plotCard, selected && styles.plotCardActive]}
+                    >
+                      <View style={[styles.plotIcon, selected && styles.plotIconActive]}>
+                        <AppIcon name="plot" size={20} color={selected ? 'onAccent' : 'primary'} />
+                      </View>
+                      <View style={styles.flex}>
+                        <AppText size="sm" weight="bold" numberOfLines={1}>
+                          {p.name}
+                        </AppText>
+                        <AppText size="xs" color="textSecondary" tabular>
+                          {`${t('dealPrice')}: ${formatRupees(p.deal_price)}`}
+                        </AppText>
+                      </View>
+                      {selected ? <AppIcon name="checkCircle" size={22} color="accent" /> : null}
+                    </Pressable>
+                  );
+                })
+              )}
             </>
           ) : null}
 
           {step === 1 ? (
-            <>
-              <AmountInput label={t('agreedPrice')} value={agreedPrice} onChange={setAgreedPrice} />
-              <FloatingLabelInput
-                label={t('sellerName')}
-                value={sellerName}
-                onChangeText={setSellerName}
-              />
-              <FloatingLabelInput
-                label={t('sellerPhone')}
-                value={sellerPhone}
-                onChangeText={setSellerPhone}
-                keyboardType="phone-pad"
-                hint={t('hintPhone')}
-              />
-              <FloatingLabelInput
-                label={t('dealerOptional')}
-                value={dealer}
-                onChangeText={setDealer}
-              />
-            </>
-          ) : null}
-
-          {step === 2 ? (
             <>
               {investors.length === 0 ? (
                 <AppText size="sm" color="textSecondary" center style={styles.guide}>
@@ -305,7 +288,7 @@ export function NewProjectWizard(): React.JSX.Element {
               ) : (
                 <View style={styles.reviewCard}>
                   {investors.map((inv, i) => (
-                    <View key={`${inv.name}-${i}`} style={[styles.invRow, i > 0 && styles.invRowBordered]}>
+                    <View key={`${inv.name}-${i}`} style={[styles.invRow, i > 0 && styles.ruled]}>
                       <View style={styles.invIcon}>
                         <AppIcon name="investor" size={18} color="gold" />
                       </View>
@@ -314,7 +297,11 @@ export function NewProjectWizard(): React.JSX.Element {
                           {inv.name}
                         </AppText>
                         <AppText size="xs" color="textSecondary">
-                          {`${formatRupees(inv.amount)} · ${inv.profitPct}% ${t('profitPct')}`}
+                          {`${t('committedAmount')} ${formatRupees(inv.amount)} · ${inv.profitPct}%${inv.given > 0
+                              ? ` · ${t('givenNow')} ${formatRupees(inv.given)} (${accounts.find((a) => a.id === inv.accountId)?.name ?? ''
+                              })`
+                              : ''
+                            }`}
                         </AppText>
                       </View>
                       <Pressable
@@ -338,29 +325,32 @@ export function NewProjectWizard(): React.JSX.Element {
             </>
           ) : null}
 
-          {step === 3 ? (
+          {step === 2 ? (
             <View style={styles.reviewCard}>
-              <ReviewRow label={t('projectName')} value={projectName || ''} first />
-              <ReviewRow label={t('society')} value={society || ''} />
-              <ReviewRow label={t('block')} value={block || ''} />
-              <ReviewRow label={t('plotNo')} value={plotNo || ''} />
+              <ReviewRow label={t('projectName')} value={name.trim()} first />
               <ReviewRow
-                label={t('size')}
-                value={sizeValue ? `${sizeValue} ${t(UNIT_LABEL[sizeUnit])}` : ''}
+                label={t('phasePlot')}
+                value={
+                  selectedPlot
+                    ? `${selectedPlot.name} · ${formatRupees(selectedPlot.deal_price)}`
+                    : ''
+                }
               />
-              <ReviewRow
-                label={t('agreedPrice')}
-                value={agreedPrice ? formatRupees(agreedPrice) : ''}
-              />
-              <ReviewRow label={t('sellerName')} value={sellerName || ''} />
-              <ReviewRow label={t('sellerPhone')} value={sellerPhone || ''} />
-              <ReviewRow label={t('investors')} value={String(investors.length)} />
+              {investors.map((inv, i) => (
+                <ReviewRow
+                  key={`${inv.name}-${i}`}
+                  label={inv.name}
+                  value={`${formatRupees(inv.amount)} · ${inv.profitPct}%${inv.given > 0 ? ` · ${t('givenNow')} ${formatRupees(inv.given)}` : ''
+                    }`}
+                />
+              ))}
+              <ReviewRow label={t('tabInvestors')} value={String(investors.length)} />
             </View>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
         <View style={styles.backBtn}>
           <AppButton label={t('back')} icon="back" variant="secondary" onPress={goBack} />
         </View>
@@ -368,31 +358,31 @@ export function NewProjectWizard(): React.JSX.Element {
           {step < STEPS.length - 1 ? (
             <AppButton label={t('next')} icon="forward" onPress={goNext} disabled={!canProceed} />
           ) : (
-            <AppButton label={t('create')} icon="check" onPress={onCreate} loading={saving} />
+            <AppButton
+              label={t('create')}
+              icon="check"
+              onPress={onCreate}
+              loading={saving}
+              disabled={name.trim().length === 0}
+            />
           )}
         </View>
       </View>
 
-      <SelectSheet
-        visible={unitSheet}
-        onClose={() => setUnitSheet(false)}
-        options={unitOptions}
-        selectedId={sizeUnit}
-        title={t('sizeUnit')}
-        searchable={false}
-        onSelect={(o) => setSizeUnit(o.id as SizeUnit)}
-      />
-
       {/* Add-investor sheet */}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable style={styles.backdrop} onPress={() => setAddOpen(false)} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
           <AppText size="lg" weight="bold" center>
             {t('addInvestor')}
           </AppText>
 
-          {/* Existing investors — tap a chip to pick one (inline, no nested modal) */}
+          {/* Existing investors  tap a chip to pick one (inline, no nested modal) */}
           {allInvestors.length > 0 ? (
             <>
               <AppText size="sm" weight="semibold" color="textSecondary">
@@ -416,7 +406,7 @@ export function NewProjectWizard(): React.JSX.Element {
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
                       accessibilityLabel={inv.name}
-                      style={[styles.existChip, selected && styles.existChipActive]}
+                      style={[styles.chip, selected && styles.chipActive]}
                     >
                       <AppIcon name="investor" size={16} color={selected ? 'onPrimary' : 'primary'} />
                       <AppText
@@ -446,7 +436,23 @@ export function NewProjectWizard(): React.JSX.Element {
             }}
           />
 
-          <AmountInput label={t('committedAmount')} value={draftAmount} onChange={setDraftAmount} />
+          {/* The promise  no money moves for this. */}
+          <AmountInput
+            label={t('committedAmount')}
+            value={draftAmount}
+            onChange={setDraftAmount}
+            floating
+            surface={theme.colors.card}
+          />
+
+          {/* What they handed over right now  only this hits the account. */}
+          <AmountInput
+            label={t('givenNow')}
+            value={draftGiven}
+            onChange={setDraftGiven}
+            floating
+            surface={theme.colors.card}
+          />
 
           <View style={styles.pctRow}>
             <AppText size="md" weight="semibold" style={styles.flex}>
@@ -456,16 +462,18 @@ export function NewProjectWizard(): React.JSX.Element {
               <Pressable
                 onPress={() => setDraftPct((p) => Math.max(0, p - 5))}
                 hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
                 style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
               >
                 <AppText size="lg" weight="bold" color="primary">−</AppText>
               </Pressable>
               <AppText size="md" weight="bold" tabular style={styles.stepValue}>
-                {draftPct}%
+                {`${draftPct}%`}
               </AppText>
               <Pressable
                 onPress={() => setDraftPct((p) => Math.min(100, p + 5))}
                 hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
                 style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
               >
                 <AppText size="lg" weight="bold" color="primary">+</AppText>
@@ -473,14 +481,36 @@ export function NewProjectWizard(): React.JSX.Element {
             </View>
           </View>
 
+          {/* Destination account  only needed when cash is given now */}
+          {draftGiven > 0 ? (
+            <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
+              <AppIcon name={draftAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
+              <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                {draftAccount ? `${draftAccount.name} · ${formatRupees(draftAccount.balance)}` : t('selectAccount')}
+              </AppText>
+              <AppIcon name="forward" size={18} color="textSecondary" />
+            </Pressable>
+          ) : null}
+
           <AppButton
             label={t('add')}
             icon="check"
             onPress={confirmAddInvestor}
-            disabled={!draftName.trim() || draftAmount <= 0}
+            disabled={!draftName.trim() || draftAmount <= 0 || (draftGiven > 0 && !draftAccountId)}
           />
         </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accountOptions}
+        selectedId={draftAccountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setDraftAccountId(o.id)}
+      />
     </View>
   );
 }
@@ -497,7 +527,7 @@ function ReviewRow({
   const theme = useTheme();
   const styles = makeStyles(theme);
   return (
-    <View style={[styles.reviewRow, first ? null : styles.reviewRowBordered]}>
+    <View style={[styles.reviewRow, first ? null : styles.ruled]}>
       <AppText size="sm" color="textSecondary">
         {label}
       </AppText>
@@ -538,29 +568,28 @@ const makeStyles = (theme: Theme) =>
       marginBottom: theme.spacing.sm,
     },
     guide: { marginBottom: theme.spacing.sm },
-    row: { flexDirection: 'row', gap: theme.spacing.md },
-    selectBox: {
-      flex: 1,
-      minHeight: theme.touch.minTarget,
-      backgroundColor: theme.colors.background,
-      borderRadius: theme.radius.md,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-      paddingHorizontal: theme.spacing.lg,
-      justifyContent: 'center',
-    },
-    selectLabel: {
-      position: 'absolute',
-      left: theme.spacing.md,
-      top: -10,
-      backgroundColor: theme.colors.background,
-      paddingHorizontal: theme.spacing.xs,
-    },
-    selectValue: {
+    /* plot picker */
+    plotCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      gap: theme.spacing.md,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.card,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      padding: theme.spacing.md,
     },
+    plotCardActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
+    plotIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: theme.radius.chip,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.primarySoft,
+    },
+    plotIconActive: { backgroundColor: theme.colors.accent },
+    /* review */
     reviewCard: {
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.card,
@@ -574,7 +603,7 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.md,
       paddingVertical: theme.spacing.md,
     },
-    reviewRowBordered: {
+    ruled: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.border,
     },
@@ -584,7 +613,6 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.md,
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.lg,
     },
     backBtn: { flex: 1 },
     nextBtn: { flex: 2 },
@@ -594,10 +622,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: theme.spacing.md,
       paddingVertical: theme.spacing.md,
-    },
-    invRowBordered: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: theme.colors.border,
     },
     invIcon: {
       width: 36,
@@ -623,7 +647,7 @@ const makeStyles = (theme: Theme) =>
     },
     grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     chipRow: { gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-    existChip: {
+    chip: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.xs,
@@ -633,7 +657,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.primarySoft,
       maxWidth: 200,
     },
-    existChipActive: { backgroundColor: theme.colors.primary },
+    chipActive: { backgroundColor: theme.colors.primary },
     pctRow: { flexDirection: 'row', alignItems: 'center' },
     stepper: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     stepBtn: {
@@ -645,5 +669,14 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     stepValue: { minWidth: 48, textAlign: 'center' },
+    accountChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.primarySoft,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
+    },
     pressed: { opacity: 0.6 },
   });

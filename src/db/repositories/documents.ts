@@ -41,7 +41,7 @@ export async function listDocuments(
   );
 }
 
-/** All documents for an entity type — handy for building an id → uri map. */
+/** All documents for an entity type  handy for building an id → uri map. */
 export async function listDocumentsForType(entityType: string): Promise<DocumentRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<DocumentRow>(

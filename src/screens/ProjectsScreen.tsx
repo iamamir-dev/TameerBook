@@ -8,14 +8,13 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
 import type { ProjectSummary } from '@/db';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { PROJECT_STAGE_LABEL, projectStageTone } from '@/utils/projectStage';
-import { softToneColor } from '@/utils/tones';
+import { softToneColor, type ColorKey } from '@/utils/tones';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -39,7 +38,14 @@ export function ProjectsScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('projects')} />
+      <AppHeader
+        title={t('projects')}
+        rightAction={{
+          icon: 'plot',
+          onPress: () => navigation.navigate('Tabs', { screen: 'Plots' }),
+          accessibilityLabel: t('plotsTitle'),
+        }}
+      />
 
       {items.length === 0 ? (
         <EmptyState
@@ -100,9 +106,9 @@ function ProjectCard({
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
-  const { project, progressPercent, totalOut } = summary;
-  const tone = projectStageTone(project.stage);
-  const completed = project.stage === 'CLOSED' || project.status === 'COMPLETED';
+  const { project, progressPercent, cost, saleReceived } = summary;
+  const completed = project.status === 'COMPLETED';
+  const tone = completed ? ('success' as const) : ('accent' as const);
   const shownProgress = completed ? 100 : Math.round(progressPercent);
 
   return (
@@ -116,7 +122,7 @@ function ProjectCard({
             {project.name}
           </AppText>
           <View style={styles.badgeWrap}>
-            <StageBadge tone={tone} label={t(PROJECT_STAGE_LABEL[project.stage] as TranslationKey)} />
+            <StageBadge tone={tone} label={completed ? t('statusDone') : t('statusCurrent')} />
           </View>
         </View>
         <AppIcon name="forward" size={20} color="textSecondary" />
@@ -131,15 +137,47 @@ function ProjectCard({
         </AppText>
       </View>
 
-      <View style={styles.spentRow}>
-        <AppText size="xs" color="textSecondary">
-          {t('totalSpent')}
-        </AppText>
-        <AppText size="sm" weight="bold" color="danger" tabular>
-          {formatRupees(totalOut)}
-        </AppText>
+      {/* Cost breakdown  the same "read it like a notebook" style as plots. */}
+      <View style={styles.mathBlock}>
+        <MathRow label={t('phasePlot')} value={formatRupees(cost.plotCost)} />
+        <MathRow label={t('phaseConstruction')} value={formatRupees(cost.constructionCost)} />
+        {saleReceived > 0 ? (
+          <MathRow label={t('phaseSale')} value={formatRupees(saleReceived)} valueColor="success" />
+        ) : null}
+        <View style={styles.divider} />
+        <View style={styles.mathRow}>
+          <AppText size="sm" weight="bold">
+            {t('projectTotalCost')}
+          </AppText>
+          <AppText size="md" weight="bold" tabular>
+            {formatRupees(cost.totalCost)}
+          </AppText>
+        </View>
       </View>
     </AppCard>
+  );
+}
+
+function MathRow({
+  label,
+  value,
+  valueColor = 'textPrimary',
+}: {
+  label: string;
+  value: string;
+  valueColor?: ColorKey;
+}): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.mathRow}>
+      <AppText size="sm" color="textSecondary">
+        {label}
+      </AppText>
+      <AppText size="sm" weight="semibold" color={valueColor} tabular>
+        {value}
+      </AppText>
+    </View>
   );
 }
 
@@ -168,10 +206,17 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.sm,
     },
     progressBar: { flex: 1 },
-    spentRow: {
+    mathBlock: { gap: theme.spacing.xs },
+    mathRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      gap: theme.spacing.md,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
     },
     fab: {
       position: 'absolute',
