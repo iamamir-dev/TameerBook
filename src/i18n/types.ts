@@ -485,12 +485,25 @@ export interface TranslationKeys {
   duplicateAccount: string;
   exceedsRemaining: string;
   tabCash: string;
-  givenNow: string;
+  receivedNow: string;
   obWelcomeBody: string;
   optionalDetails: string;
   companyNameHint: string;
   openingCashHint: string;
   setupFinalStep: string;
+  edit: string;
+  editInvestor: string;
+  deleteInvestorConfirm: string;
+  investorInUse: string;
+  investmentInProject: string;
+  enterInvestorAmounts: string;
+  noCommittedSet: string;
+  expand: string;
+  collapse: string;
+  selectInvestorsNote: string;
+  receivePayment: string;
+  receivedLabel: string;
+  ownershipAutoNote: string;
 
   // v2  Company / onboarding
   companyTitle: string;

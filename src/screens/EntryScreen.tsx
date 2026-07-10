@@ -30,6 +30,7 @@ import {
   AppText,
   ICONS,
   SelectSheet,
+  StickyFooter,
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
@@ -268,7 +269,7 @@ export function EntryScreen(): React.JSX.Element {
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -359,22 +360,22 @@ export function EntryScreen(): React.JSX.Element {
           ) : (
             <AppButton label={t('photoReceipt')} icon="camera" variant="secondary" onPress={onPickReceipt} />
           )}
-
-          {/* Save */}
-          <View style={styles.saveBtn}>
-            <AppButton
-              label={t('save')}
-              icon="check"
-              onPress={onSave}
-              loading={saving}
-              disabled={
-                amount <= 0 ||
-                !accountId ||
-                (direction === 'OUT' && !!selectedAccount && amount > selectedAccount.balance)
-              }
-            />
-          </View>
         </ScrollView>
+
+        {/* Save  pinned to the bottom, always in reach */}
+        <StickyFooter>
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={onSave}
+            loading={saving}
+            disabled={
+              amount <= 0 ||
+              !accountId ||
+              (direction === 'OUT' && !!selectedAccount && amount > selectedAccount.balance)
+            }
+          />
+        </StickyFooter>
       </KeyboardAvoidingView>
 
       {/* Toast */}
@@ -506,7 +507,6 @@ const makeStyles = (theme: Theme) =>
       padding: theme.spacing.sm,
     },
     receiptThumb: { width: 44, height: 44, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
-    saveBtn: { marginTop: theme.spacing.sm },
     toast: {
       position: 'absolute',
       alignSelf: 'center',

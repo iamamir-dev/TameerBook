@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AmountInput,
   AppButton,
+  StickyFooter,
   AppHeader,
   AppIcon,
   AppText,
@@ -147,7 +148,7 @@ export function InvestmentEntryScreen(): React.JSX.Element {
       <AppHeader title={t('addInvestment')} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -186,6 +187,9 @@ export function InvestmentEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
+        </ScrollView>
+
+        <StickyFooter>
           <AppButton
             label={t('save')}
             icon="check"
@@ -193,7 +197,7 @@ export function InvestmentEntryScreen(): React.JSX.Element {
             loading={saving}
             disabled={!investorId || !projectId || amount <= 0}
           />
-        </ScrollView>
+        </StickyFooter>
       </KeyboardAvoidingView>
 
       <SelectSheet visible={investorSheet} onClose={() => setInvestorSheet(false)} options={investors.map((i) => ({ id: i.id, label: i.name, icon: 'investor' as IconKey }))} selectedId={investorId ?? undefined} title={t('selectInvestor')} onSelect={(o) => setInvestorId(o.id)} />

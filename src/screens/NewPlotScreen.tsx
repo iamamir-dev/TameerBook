@@ -15,6 +15,7 @@ import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AmountInput,
   AppButton,
+  StickyFooter,
   AppHeader,
   AppIcon,
   AppText,
@@ -94,10 +95,7 @@ export function NewPlotScreen(): React.JSX.Element {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: insets.bottom + theme.spacing.xxxl },
-          ]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -149,16 +147,17 @@ export function NewPlotScreen(): React.JSX.Element {
             hint={t('hintPhone')}
           />
 
-          <View style={styles.saveBtn}>
-            <AppButton
-              label={t('create')}
-              icon="check"
-              onPress={onCreate}
-              loading={saving}
-              disabled={!canCreate}
-            />
-          </View>
         </ScrollView>
+
+        <StickyFooter>
+          <AppButton
+            label={t('create')}
+            icon="check"
+            onPress={onCreate}
+            loading={saving}
+            disabled={!canCreate}
+          />
+        </StickyFooter>
       </KeyboardAvoidingView>
 
       <SelectSheet
@@ -195,5 +194,4 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.card,
     },
-    saveBtn: { marginTop: theme.spacing.sm },
   });

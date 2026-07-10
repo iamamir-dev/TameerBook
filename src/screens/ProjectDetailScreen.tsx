@@ -11,6 +11,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
 import {
   AmountInput,
   AppButton,
@@ -25,6 +26,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
+  addCapitalEntry,
   addInvestment,
   addInvestor,
   addProjectInvestor,
@@ -83,17 +85,10 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [shares, setShares] = useState<OwnershipShare[]>([]);
   const [settlement, setSettlement] = useState<SettlementSummary | null>(null);
 
-  // Attach-investor sheet state.
+  // Attach-investor sheet (form lives in the shared <InvestorSheet>).
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [accountSheet, setAccountSheet] = useState(false);
-  const [draftId, setDraftId] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState('');
-  const [draftAmount, setDraftAmount] = useState(0);
-  const [draftGiven, setDraftGiven] = useState(0);
-  const [draftPct, setDraftPct] = useState(defaultPct);
-  const [draftAccountId, setDraftAccountId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const loadAll = useCallback(async () => {
@@ -123,11 +118,6 @@ export function ProjectDetailScreen(): React.JSX.Element {
     }, [loadAll])
   );
 
-  // Default the destination account for new capital.
-  useEffect(() => {
-    if (!draftAccountId && accounts.length > 0) setDraftAccountId(accounts[0].id);
-  }, [accounts, draftAccountId]);
-
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
 
@@ -152,18 +142,6 @@ export function ProjectDetailScreen(): React.JSX.Element {
     return rows;
   }, [constr, catLabel, t]);
 
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        id: a.id,
-        label: a.name,
-        subtitle: formatRupees(a.balance),
-        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-      })),
-    [accounts]
-  );
-  const draftAccount = accounts.find((a) => a.id === draftAccountId) ?? null;
-
   const showSummary = (saleSum?.receiptsTotal ?? 0) > 0 || completed;
   const canSettle =
     !!project &&
@@ -172,42 +150,40 @@ export function ProjectDetailScreen(): React.JSX.Element {
     saleSum.outstanding <= 0 &&
     saleSum.receiptsTotal > 0;
 
-  const openAttach = () => {
-    setDraftId(null);
-    setDraftName('');
-    setDraftAmount(0);
-    setDraftGiven(0);
-    setDraftPct(defaultPct);
-    setAttachOpen(true);
-  };
+  // Investors not yet on this project (so the sheet doesn't offer duplicates).
+  const attachedIds = new Set(shares.map((s) => s.investorId));
+  const availableInvestors: InvestorOption[] = allInvestors
+    .filter((i) => !attachedIds.has(i.id))
+    .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount }));
+
+  const openAttach = () => setAttachOpen(true);
 
   /**
-   * Commitment vs cash: `draftAmount` is what the investor PROMISED (no money
-   * moves); `draftGiven` is what they handed over right now  only that posts
-   * to the account. Later instalments go through Add Investment, and if the
-   * paid-in total ever exceeds the commitment it auto-raises.
+   * Include the selected investors: each brings the amount entered in the
+   * drawer as their project stake (recorded as INITIAL capital so ownership %
+   * is derived from those amounts). Profit % comes from Settings, same for all.
+   * The cash was already handled when the investor was added, so no account here.
    */
-  const onAttachInvestor = async () => {
-    const name = draftName.trim();
-    if (!name || draftAmount <= 0) return;
-    if (draftGiven > 0 && !draftAccountId) return;
+  const onAttachInvestors = async (inclusions: InvestorInclusion[]) => {
     setSaving(true);
     try {
-      const investorId = draftId ?? (await addInvestor({ name })).id;
-      await addProjectInvestor({
-        projectId,
-        investorId,
-        committedAmount: draftAmount,
-        profitPct: draftPct,
-      });
-      if (draftGiven > 0 && draftAccountId) {
-        await addInvestment({
-          investorId,
+      for (const { investorId: id, amount } of inclusions) {
+        const inv = allInvestors.find((i) => i.id === id);
+        if (!inv) continue;
+        const pi = await addProjectInvestor({
           projectId,
-          amount: draftGiven,
-          date: todayISO(),
-          accountId: draftAccountId,
+          investorId: id,
+          committedAmount: amount,
+          profitPct: defaultPct,
         });
+        if (amount > 0) {
+          await addCapitalEntry({
+            projectInvestorId: pi.id,
+            entryType: 'INITIAL',
+            amount,
+            date: todayISO(),
+          });
+        }
       }
       setAttachOpen(false);
       await Promise.all([loadAll(), refreshProjects()]);
@@ -460,141 +436,13 @@ export function ProjectDetailScreen(): React.JSX.Element {
         </AppCard>
       </ScrollView>
 
-      {/* Attach-investor sheet */}
-      <Modal visible={attachOpen} transparent animationType="slide" onRequestClose={() => setAttachOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <Pressable style={styles.backdrop} onPress={() => setAttachOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          <AppText size="lg" weight="bold" center>
-            {t('attachInvestor')}
-          </AppText>
-
-          {allInvestors.length > 0 ? (
-            <>
-              <AppText size="sm" weight="semibold" color="textSecondary">
-                {t('selectInvestor')}
-              </AppText>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.chipRow}
-              >
-                {allInvestors.map((inv) => {
-                  const selected = draftId === inv.id;
-                  return (
-                    <Pressable
-                      key={inv.id}
-                      onPress={() => {
-                        setDraftId(inv.id);
-                        setDraftName(inv.name);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={inv.name}
-                      style={[styles.chip, selected && styles.chipActive]}
-                    >
-                      <AppIcon name="investor" size={16} color={selected ? 'onPrimary' : 'primary'} />
-                      <AppText size="sm" weight="bold" color={selected ? 'onPrimary' : 'textPrimary'} numberOfLines={1}>
-                        {inv.name}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              <AppText size="xs" color="textSecondary" center>
-                {t('orAddNew')}
-              </AppText>
-            </>
-          ) : null}
-
-          <FloatingLabelInput
-            label={t('newInvestor')}
-            value={draftId ? '' : draftName}
-            onChangeText={(v) => {
-              setDraftId(null);
-              setDraftName(v);
-            }}
-          />
-
-          {/* The promise  no money moves for this. */}
-          <AmountInput
-            label={t('committedAmount')}
-            value={draftAmount}
-            onChange={setDraftAmount}
-            floating
-            surface={theme.colors.card}
-          />
-
-          {/* What they handed over right now  only this hits the account. */}
-          <AmountInput
-            label={t('givenNow')}
-            value={draftGiven}
-            onChange={setDraftGiven}
-            floating
-            surface={theme.colors.card}
-          />
-
-          {/* Profit % stepper */}
-          <View style={styles.pctRow}>
-            <AppText size="md" weight="semibold" style={styles.flex}>
-              {t('profitPct')}
-            </AppText>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => setDraftPct((p) => Math.max(0, p - 5))}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">−</AppText>
-              </Pressable>
-              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
-                {`${draftPct}%`}
-              </AppText>
-              <Pressable
-                onPress={() => setDraftPct((p) => Math.min(100, p + 5))}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">+</AppText>
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Destination account  the capital lands here */}
-          <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
-            <AppIcon name={draftAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
-            <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
-              {draftAccount ? `${draftAccount.name} · ${formatRupees(draftAccount.balance)}` : t('selectAccount')}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </Pressable>
-
-          <AppButton
-            label={t('add')}
-            icon="check"
-            onPress={onAttachInvestor}
-            loading={saving}
-            disabled={!draftName.trim() || draftAmount <= 0 || (draftGiven > 0 && !draftAccountId)}
-          />
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <SelectSheet
-        visible={accountSheet}
-        onClose={() => setAccountSheet(false)}
-        options={accountOptions}
-        selectedId={draftAccountId ?? undefined}
-        title={t('selectAccount')}
-        searchable={false}
-        onSelect={(o) => setDraftAccountId(o.id)}
+      {/* Attach-investor sheet — the ONE shared investor drawer. */}
+      <InvestorSheet
+        visible={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        existingInvestors={availableInvestors}
+        saving={saving}
+        onSubmit={onAttachInvestors}
       />
     </View>
   );

@@ -14,6 +14,8 @@ interface AppCardProps {
   children: ReactNode;
   /** Optional tap handler  makes the whole card a touch target. */
   onPress?: () => void;
+  /** Optional long-press handler (e.g. to open an edit/delete menu). */
+  onLongPress?: () => void;
   /** Use the stronger floating shadow instead of the resting card shadow. */
   raised?: boolean;
   /** Tighter inner padding (e.g. for list-style cards). */
@@ -31,6 +33,7 @@ interface AppCardProps {
 export function AppCard({
   children,
   onPress,
+  onLongPress,
   raised = false,
   compact = false,
   bordered = false,
@@ -46,10 +49,11 @@ export function AppCard({
     style,
   ];
 
-  if (onPress) {
+  if (onPress || onLongPress) {
     return (
       <Pressable
         onPress={onPress}
+        onLongPress={onLongPress}
         accessibilityRole="button"
         style={({ pressed }) => [cardStyle, pressed && styles.pressed]}
       >

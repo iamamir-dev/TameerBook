@@ -215,6 +215,8 @@ export interface TransactionRow extends Base {
   udhaar_id: string | null;
   /** Links a wage payment to the worker's project attachment. */
   labor_id: string | null;
+  /** Links a payment received to the investor it came from (like plot_id). */
+  investor_id: string | null;
   description: string | null;
   doc_id: string | null;
   is_void: number; // 0 | 1
@@ -229,6 +231,10 @@ export interface InvestorRow extends Base {
   photo_uri: string | null;
   bank_info: string | null;
   status: InvestorStatus;
+  /** Total the investor has pledged to invest (their stake basis). */
+  committed_amount: number;
+  /** How much of that pledge they've actually handed over so far. */
+  given_amount: number;
 }
 
 export interface ProjectInvestorRow extends Base {
@@ -676,9 +682,31 @@ UPDATE transactions SET company_id = '__default__' WHERE company_id IS NULL AND 
  * so existing dev installs (user_version ≤ 6) and fresh installs both land on
  * version 7 directly, then 8 adds companies.
  */
+/**
+ * Schema version 9 — an investor carries a global pledge (`committed_amount`)
+ * and how much they've paid in so far (`given_amount`). Project ownership % is
+ * derived from committed amounts.
+ */
+export const SCHEMA_V9_INVESTOR_PLEDGE = `
+ALTER TABLE investors ADD COLUMN committed_amount REAL NOT NULL DEFAULT 0;
+ALTER TABLE investors ADD COLUMN given_amount REAL NOT NULL DEFAULT 0;
+`;
+
+/**
+ * Schema version 10 — payments received from an investor are tracked like a
+ * plot's payments: each is a transaction tagged with `investor_id`, so
+ * "received so far" = Σ those (against their committed pledge).
+ */
+export const SCHEMA_V10_INVESTOR_PAYMENTS = `
+ALTER TABLE transactions ADD COLUMN investor_id TEXT;
+CREATE INDEX idx_txn_investor ON transactions (investor_id);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
+  { version: 9, sql: SCHEMA_V9_INVESTOR_PLEDGE },
+  { version: 10, sql: SCHEMA_V10_INVESTOR_PAYMENTS },
 ];
 
 /* -------------------------------------------------------------------------- */

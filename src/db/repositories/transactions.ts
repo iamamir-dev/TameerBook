@@ -26,6 +26,7 @@ export interface NewTransaction {
   transferId?: string | null;
   udhaarId?: string | null;
   laborId?: string | null;
+  investorId?: string | null;
   description?: string | null;
   docId?: string | null;
   createdBy?: string;
@@ -98,8 +99,8 @@ export async function addTransaction(input: NewTransaction): Promise<Transaction
     `INSERT INTO transactions
        (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
         phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-        labor_id, description, doc_id, is_void, void_of_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+        labor_id, investor_id, description, doc_id, is_void, void_of_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -118,6 +119,7 @@ export async function addTransaction(input: NewTransaction): Promise<Transaction
     input.transferId ?? null,
     input.udhaarId ?? null,
     input.laborId ?? null,
+    input.investorId ?? null,
     input.description ?? null,
     input.docId ?? null
   );
@@ -156,8 +158,8 @@ export async function voidTransaction(
       `INSERT INTO transactions
          (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
           phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-          labor_id, description, doc_id, is_void, void_of_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          labor_id, investor_id, description, doc_id, is_void, void_of_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       reversalId,
       nowISO(),
       createdBy,
@@ -176,6 +178,7 @@ export async function voidTransaction(
       original.transfer_id,
       original.udhaar_id,
       original.labor_id,
+      original.investor_id,
       `Reversal of ${id}`,
       original.doc_id,
       id

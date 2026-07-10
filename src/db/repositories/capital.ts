@@ -145,19 +145,22 @@ export async function getInvestorTotalCapital(investorId: string): Promise<numbe
 }
 
 export interface InvestorWithCapital extends InvestorRow {
-  totalCapital: number;
+  /** Received so far (Σ their payment transactions) — their "paid". */
+  received: number;
 }
 
-/** All investors with their total active capital across projects. */
+/**
+ * All investors with how much has been RECEIVED from each (Σ payments), to
+ * show against their committed pledge — the plot-style deal/paid/remaining.
+ */
 export async function listInvestorsWithCapital(): Promise<InvestorWithCapital[]> {
   const db = await getDatabase();
   return db.getAllAsync<InvestorWithCapital>(
     `SELECT inv.*,
        COALESCE((
-         SELECT ${CAPITAL_SUM} FROM capital_ledger cl
-         JOIN project_investors pi ON pi.id = cl.project_investor_id
-         WHERE pi.investor_id = inv.id
-       ), 0) AS totalCapital
+         SELECT SUM(t.amount) FROM transactions t
+         WHERE t.investor_id = inv.id AND t.direction = 'IN' AND t.is_void = 0
+       ), 0) AS received
      FROM investors inv
      WHERE inv.company_id = ?
      ORDER BY inv.name`,

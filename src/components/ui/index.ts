@@ -17,5 +17,6 @@ export { PhaseCard, type PhaseMetric } from './PhaseCard';
 export { StageTracker, type Stage, type StageStatus } from './StageTracker';
 export { EmptyState } from './EmptyState';
 export { AppHeader } from './AppHeader';
+export { StickyFooter } from './StickyFooter';
 export { SelectSheet, type SelectOption } from './SelectSheet';
 export { ICONS, iconFor, type GlyphName, type IconKey } from './icons';

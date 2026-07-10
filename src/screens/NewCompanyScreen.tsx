@@ -5,7 +5,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AmountInput, AppButton, AppHeader, AppText } from '@/components/ui';
+import { AmountInput, AppButton, AppHeader, AppText, StickyFooter } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -57,7 +57,7 @@ export function NewCompanyScreen(): React.JSX.Element {
       <AppHeader title={t('newCompany')} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -80,6 +80,9 @@ export function NewCompanyScreen(): React.JSX.Element {
             value={openingCash}
             onChange={setOpeningCash}
           />
+        </ScrollView>
+
+        <StickyFooter>
           <AppButton
             label={t('createCompanyLabel')}
             icon="check"
@@ -87,7 +90,7 @@ export function NewCompanyScreen(): React.JSX.Element {
             loading={saving}
             disabled={!name.trim()}
           />
-        </ScrollView>
+        </StickyFooter>
       </KeyboardAvoidingView>
     </View>
   );

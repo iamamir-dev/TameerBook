@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AppButton,
+  StickyFooter,
   AppHeader,
   AppIcon,
   AppText,
@@ -221,7 +222,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
       <AppHeader title={t('material')} onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -300,6 +301,9 @@ export function MaterialEntryScreen(): React.JSX.Element {
             />
           )}
 
+        </ScrollView>
+
+        <StickyFooter>
           <AppButton
             label={t('save')}
             icon="check"
@@ -312,7 +316,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
               (!!selectedAccount && total > selectedAccount.balance)
             }
           />
-        </ScrollView>
+        </StickyFooter>
       </KeyboardAvoidingView>
 
       <SelectSheet

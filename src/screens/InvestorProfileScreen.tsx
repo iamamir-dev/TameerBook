@@ -4,20 +4,26 @@ import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
-import { AppButton, AppCard, AppHeader, AppIcon, AppText } from '@/components/ui';
+import { AmountInput, AppButton, AppCard, AppHeader, AppIcon, AppText, SelectSheet, StickyFooter, type IconKey, type SelectOption } from '@/components/ui';
 import {
+  addInvestorPayment,
   getInvestor,
   getInvestorProjectReturns,
-  getInvestorTotalCapital,
+  getInvestorSummary,
+  isInsufficientFunds,
+  isLimitExceeded,
+  listAccountsWithBalance,
+  type AccountWithBalance,
   type InvestorLedgerEntry,
   type InvestorProjectReturn,
   type InvestorRow,
   listInvestorLedger,
 } from '@/db';
+import { todayISO } from '@/utils/date';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -48,20 +54,35 @@ export function InvestorProfileScreen(): React.JSX.Element {
   const [investor, setInvestor] = useState<InvestorRow | null>(null);
   const [ledger, setLedger] = useState<InvestorLedgerEntry[]>([]);
   const [returns, setReturns] = useState<InvestorProjectReturn[]>([]);
-  const [total, setTotal] = useState(0);
+  const [committed, setCommitted] = useState(0);
+  const [received, setReceived] = useState(0);
   const [sharing, setSharing] = useState(false);
 
+  // Receive-payment sheet.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState(0);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
+  const [payAccountId, setPayAccountId] = useState<string | null>(null);
+  const [accountSheet, setAccountSheet] = useState(false);
+  const [savingPay, setSavingPay] = useState(false);
+
+  const remaining = Math.max(0, committed - received);
+
   const load = useCallback(async () => {
-    const [inv, entries, cap, rets] = await Promise.all([
+    const [inv, entries, summary, rets, accs] = await Promise.all([
       getInvestor(investorId),
       listInvestorLedger(investorId),
-      getInvestorTotalCapital(investorId),
+      getInvestorSummary(investorId),
       getInvestorProjectReturns(investorId),
+      listAccountsWithBalance(),
     ]);
     setInvestor(inv);
     setLedger(entries);
-    setTotal(cap);
+    setCommitted(summary.committed);
+    setReceived(summary.received);
     setReturns(rets);
+    setAccounts(accs);
+    setPayAccountId((prev) => prev ?? accs[0]?.id ?? null);
   }, [investorId]);
 
   useFocusEffect(
@@ -71,6 +92,35 @@ export function InvestorProfileScreen(): React.JSX.Element {
   );
 
   const plColor = (v: number): ColorKey => (v >= 0 ? 'success' : 'danger');
+
+  const payAccount = accounts.find((a) => a.id === payAccountId) ?? null;
+  const accountOptions: SelectOption[] = accounts.map((a) => ({
+    id: a.id,
+    label: a.name,
+    subtitle: formatRupees(a.balance),
+    icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
+  }));
+
+  const openReceive = () => {
+    setPayAmount(0);
+    setPayOpen(true);
+  };
+
+  const onReceivePayment = async () => {
+    if (payAmount <= 0 || !payAccountId || savingPay) return;
+    setSavingPay(true);
+    try {
+      await addInvestorPayment({ investorId, amount: payAmount, date: todayISO().slice(0, 10), accountId: payAccountId });
+      setPayOpen(false);
+      await load();
+    } catch (e) {
+      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
+      else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
+      else throw e;
+    } finally {
+      setSavingPay(false);
+    }
+  };
 
   const onShareStatement = async () => {
     if (!investor) return;
@@ -94,8 +144,8 @@ export function InvestorProfileScreen(): React.JSX.Element {
         </style></head><body>
         <h1>TameerBook</h1>
         <div class="sub">${t('statement')}  ${investor.name}${investor.phone ? ' · ' + investor.phone : ''}</div>
-        <div>${t('totalCapital')}</div>
-        <div class="total">${formatRupees(total)}</div>
+        <div>${t('receivedLabel')} / ${t('committedAmount')}</div>
+        <div class="total">${formatRupees(received)} / ${formatRupees(committed)}</div>
         <table><thead><tr><th>${t('date')}</th><th>${t('category')}</th><th>${t('projects')}</th><th style="text-align:right">${t('amount')}</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
         <p class="sub">${dayjs().format('DD MMM YYYY')}</p>
@@ -114,33 +164,23 @@ export function InvestorProfileScreen(): React.JSX.Element {
       <AppHeader title={investor?.name ?? t('investors')} onBack={() => navigation.goBack()} />
 
       <ScrollView
+        style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+        contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
       >
-        {/* Total capital */}
+        {/* Received vs committed — the plot-style deal/paid/remaining. */}
         <View style={styles.hero}>
           <AppText size="overline" weight="semibold" color="onPrimaryMuted" uppercase>
-            {t('totalCapital')}
+            {t('receivedLabel')}
           </AppText>
           <AppText size="display" weight="bold" color="onHero" tabular numberOfLines={1} adjustsFontSizeToFit>
-            {formatRupees(total)}
+            {formatRupees(received)}
           </AppText>
-        </View>
-
-        {/* Add more investment for this investor (to any project) */}
-        <AppButton
-          label={t('addInvestment')}
-          icon="add"
-          onPress={() => navigation.navigate('Investment', { investorId })}
-        />
-
-        <View style={styles.actions}>
-          <View style={styles.flex}>
-            <AppButton label={t('statement')} icon="statement" variant="secondary" onPress={onShareStatement} loading={sharing} />
-          </View>
-          <View style={styles.flex}>
-            <AppButton label={t('exitTitle')} icon="forward" variant="secondary" onPress={() => navigation.navigate('ExitWizard', { investorId })} />
-          </View>
+          {committed > 0 ? (
+            <AppText size="sm" color="onPrimaryMuted">
+              {`${t('committedAmount')} ${formatRupees(committed)} · ${t('remaining')} ${formatRupees(remaining)}`}
+            </AppText>
+          ) : null}
         </View>
 
         {/* Project history  invested + realized profit/loss, tap to open */}
@@ -230,6 +270,68 @@ export function InvestorProfileScreen(): React.JSX.Element {
           ) : null}
         </AppCard>
       </ScrollView>
+
+      {/* Primary actions  pinned to the bottom, always in reach */}
+      <StickyFooter>
+        <AppButton label={t('receivePayment')} icon="add" onPress={openReceive} />
+        <AppButton
+          label={t('addInvestment')}
+          icon="add"
+          variant="secondary"
+          onPress={() => navigation.navigate('Investment', { investorId })}
+        />
+        <View style={styles.actions}>
+          <View style={styles.flex}>
+            <AppButton label={t('statement')} icon="statement" variant="secondary" onPress={onShareStatement} loading={sharing} />
+          </View>
+          <View style={styles.flex}>
+            <AppButton label={t('exitTitle')} icon="forward" variant="secondary" onPress={() => navigation.navigate('ExitWizard', { investorId })} />
+          </View>
+        </View>
+      </StickyFooter>
+
+      {/* Receive-payment sheet */}
+      <Modal visible={payOpen} transparent animationType="slide" onRequestClose={() => setPayOpen(false)}>
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.backdrop} onPress={() => setPayOpen(false)} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+            <View style={styles.grabber} />
+            <AppText size="lg" weight="bold">
+              {t('receivePayment')}
+            </AppText>
+            {committed > 0 ? (
+              <AppText size="sm" color="textSecondary">
+                {`${t('remaining')}: ${formatRupees(remaining)}`}
+              </AppText>
+            ) : null}
+            <AmountInput label={t('amount')} value={payAmount} onChange={setPayAmount} floating surface={theme.colors.card} />
+            <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
+              <AppIcon name={payAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
+              <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                {payAccount ? `${payAccount.name} · ${formatRupees(payAccount.balance)}` : t('selectAccount')}
+              </AppText>
+              <AppIcon name="forward" size={18} color="textSecondary" />
+            </Pressable>
+            <AppButton
+              label={t('save')}
+              icon="check"
+              onPress={onReceivePayment}
+              loading={savingPay}
+              disabled={payAmount <= 0 || !payAccountId}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accountOptions}
+        selectedId={payAccountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setPayAccountId(o.id)}
+      />
     </View>
   );
 }
@@ -238,6 +340,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    scroll: { flex: 1 },
     actions: { flexDirection: 'row', gap: theme.spacing.md },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: {
@@ -254,4 +357,29 @@ const makeStyles = (theme: Theme) =>
     lRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
     chip: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderRadius: theme.radius.pill },
     empty: { paddingVertical: theme.spacing.lg },
+    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
+    sheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: theme.colors.card,
+      borderTopLeftRadius: theme.radius.hero,
+      borderTopRightRadius: theme.radius.hero,
+      padding: theme.spacing.xl,
+      gap: theme.spacing.md,
+      ...theme.shadows.raised,
+    },
+    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
+    accountChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
+    },
   });

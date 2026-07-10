@@ -43,6 +43,8 @@ import {
   upsertSale,
   voidTransaction,
   addInvestment,
+  addInvestorPayment,
+  getInvestorSummary,
   getUdhaar,
   createCompany,
   getActiveCompanyId,
@@ -497,6 +499,45 @@ async function testUdhaarFlow(): Promise<TestResult> {
 /*  T-INV  commitment is a promise; only cash given moves; auto-raise        */
 /* -------------------------------------------------------------------------- */
 
+async function testInvestorPayments(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST IP-Acc', type: 'CASH', openingBalance: 0 });
+    c.accounts.push(acc.id);
+    // Investor pledges 4000 (their "deal"), pays nothing yet.
+    const inv = await addInvestor({ name: 'DBTEST IP-Amir', committedAmount: 4000 });
+    c.investors.push(inv.id);
+
+    const checks: Check[] = [];
+    let s = await getInvestorSummary(inv.id);
+    checks.push(['committed 4000 / received 0 / remaining 4000', near(s.committed, 4000) && near(s.received, 0) && near(s.remaining, 4000)]);
+
+    // Receives 2000 now → account rises, remaining 2000 (like a plot payment).
+    await addInvestorPayment({ investorId: inv.id, amount: 2000, date: D, accountId: acc.id });
+    s = await getInvestorSummary(inv.id);
+    checks.push(['received 2000 / remaining 2000', near(s.received, 2000) && near(s.remaining, 2000)]);
+    checks.push(['account holds the 2000', near(await getAccountBalance(acc.id), 2000)]);
+
+    // The rest on a later date → fully received.
+    await addInvestorPayment({ investorId: inv.id, amount: 2000, date: D, accountId: acc.id });
+    s = await getInvestorSummary(inv.id);
+    checks.push(['received 4000 / remaining 0', near(s.received, 4000) && near(s.remaining, 0)]);
+
+    // Can't receive beyond the pledge.
+    checks.push([
+      'over-pledge payment blocked',
+      await expectThrow(
+        () => addInvestorPayment({ investorId: inv.id, amount: 100, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+
+    return report('T-IPAY investor received vs committed', checks);
+  } finally {
+    await c.run();
+  }
+}
+
 async function testInvestorCommitmentVsCash(): Promise<TestResult> {
   const c = new Cleanup();
   try {
@@ -744,6 +785,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testSettlementProfitWithDonation,
     testSettlementLossIncludesOwner,
     testUdhaarFlow,
+    testInvestorPayments,
     testInvestorCommitmentVsCash,
     testValidationGuards,
     testCompanyIsolation,

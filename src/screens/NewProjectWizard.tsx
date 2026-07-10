@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
 import {
   AmountInput,
   AppButton,
@@ -24,8 +25,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
-  addInvestment,
-  addInvestor,
+  addCapitalEntry,
   addProjectInvestor,
   createProject,
   listAccountsWithBalance,
@@ -44,17 +44,12 @@ import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
-/** A to-be-saved investor entered during creation. `investorId` null = new. */
+/** An investor staged for this project (persisted on Create). */
 interface DraftInvestor {
-  investorId: string | null;
+  investorId: string;
   name: string;
-  /** What they PROMISED to invest  no money moves for this. */
+  /** How much they invest in THIS project — their stake / ownership basis. */
   amount: number;
-  /** What they handed over right now  only this hits the account. */
-  given: number;
-  profitPct: number;
-  /** The account the given cash lands in (needed only when given > 0). */
-  accountId: string | null;
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -91,13 +86,6 @@ export function NewProjectWizard(): React.JSX.Element {
   const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [addOpen, setAddOpen] = useState(false);
-  const [accountSheet, setAccountSheet] = useState(false);
-  const [draftId, setDraftId] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState('');
-  const [draftAmount, setDraftAmount] = useState(0);
-  const [draftGiven, setDraftGiven] = useState(0);
-  const [draftPct, setDraftPct] = useState(defaultPct);
-  const [draftAccountId, setDraftAccountId] = useState<string | null>(null);
 
   // Reload free plots on focus  the user may return from "New Plot".
   useFocusEffect(
@@ -108,52 +96,33 @@ export function NewProjectWizard(): React.JSX.Element {
     }, [])
   );
 
-  useEffect(() => {
-    if (!draftAccountId && accounts.length > 0) setDraftAccountId(accounts[0].id);
-  }, [accounts, draftAccountId]);
-
   const selectedPlot = plots.find((p) => p.id === plotId) ?? null;
-  const draftAccount = accounts.find((a) => a.id === draftAccountId) ?? null;
-
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        id: a.id,
-        label: a.name,
-        subtitle: formatRupees(a.balance),
-        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-      })),
-    [accounts]
-  );
 
   const goBack = () => (step === 0 ? navigation.goBack() : setStep((s) => s - 1));
   const goNext = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
 
   const canProceed = step !== 0 || name.trim().length > 0;
 
-  const openAddInvestor = () => {
-    setDraftId(null);
-    setDraftName('');
-    setDraftAmount(0);
-    setDraftGiven(0);
-    setDraftPct(defaultPct);
-    setAddOpen(true);
-  };
+  // Investors not yet staged (so the sheet doesn't offer duplicates).
+  const stagedIds = new Set(investors.map((i) => i.investorId));
+  const availableInvestors: InvestorOption[] = allInvestors
+    .filter((i) => !stagedIds.has(i.id))
+    .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount }));
 
-  const confirmAddInvestor = () => {
-    if (!draftName.trim() || draftAmount <= 0) return;
-    if (draftGiven > 0 && !draftAccountId) return;
-    setInvestors((list) => [
-      ...list,
-      {
-        investorId: draftId,
-        name: draftName.trim(),
-        amount: draftAmount,
-        given: draftGiven,
-        profitPct: draftPct,
-        accountId: draftGiven > 0 ? draftAccountId : null,
-      },
-    ]);
+  const openAddInvestor = () => setAddOpen(true);
+
+  // Wizard STAGES the chosen investors — the actual DB writes happen on Create.
+  const confirmAddInvestors = (inclusions: InvestorInclusion[]) => {
+    setInvestors((list) => {
+      const have = new Set(list.map((i) => i.investorId));
+      const additions = inclusions
+        .filter(({ investorId }) => !have.has(investorId))
+        .map(({ investorId, amount }) => {
+          const inv = allInvestors.find((i) => i.id === investorId);
+          return { investorId, name: inv?.name ?? '', amount };
+        });
+      return [...list, ...additions];
+    });
     setAddOpen(false);
   };
 
@@ -162,25 +131,23 @@ export function NewProjectWizard(): React.JSX.Element {
     try {
       const project = await createProject({ name: name.trim(), plotId });
 
-      // Attach investors: link the participation (the committed PROMISE +
-      // profit %); only what was actually handed over now posts to an account
-      // as paid-in capital. Later instalments go through Add Investment.
+      // Each investor's entered amount is their stake (recorded as INITIAL
+      // capital so ownership % derives from those amounts). Profit % comes from
+      // Settings; the cash was handled when the investor was added.
       const today = todayISO();
       for (const inv of investors) {
-        const investorId = inv.investorId ?? (await addInvestor({ name: inv.name })).id;
-        await addProjectInvestor({
+        const pi = await addProjectInvestor({
           projectId: project.id,
-          investorId,
+          investorId: inv.investorId,
           committedAmount: inv.amount,
-          profitPct: inv.profitPct,
+          profitPct: defaultPct,
         });
-        if (inv.given > 0 && inv.accountId) {
-          await addInvestment({
-            investorId,
-            projectId: project.id,
-            amount: inv.given,
+        if (inv.amount > 0) {
+          await addCapitalEntry({
+            projectInvestorId: pi.id,
+            entryType: 'INITIAL',
+            amount: inv.amount,
             date: today,
-            accountId: inv.accountId,
           });
         }
       }
@@ -297,11 +264,7 @@ export function NewProjectWizard(): React.JSX.Element {
                           {inv.name}
                         </AppText>
                         <AppText size="xs" color="textSecondary">
-                          {`${t('committedAmount')} ${formatRupees(inv.amount)} · ${inv.profitPct}%${inv.given > 0
-                              ? ` · ${t('givenNow')} ${formatRupees(inv.given)} (${accounts.find((a) => a.id === inv.accountId)?.name ?? ''
-                              })`
-                              : ''
-                            }`}
+                          {`${t('investmentInProject')}: ${formatRupees(inv.amount)}`}
                         </AppText>
                       </View>
                       <Pressable
@@ -337,12 +300,7 @@ export function NewProjectWizard(): React.JSX.Element {
                 }
               />
               {investors.map((inv, i) => (
-                <ReviewRow
-                  key={`${inv.name}-${i}`}
-                  label={inv.name}
-                  value={`${formatRupees(inv.amount)} · ${inv.profitPct}%${inv.given > 0 ? ` · ${t('givenNow')} ${formatRupees(inv.given)}` : ''
-                    }`}
-                />
+                <ReviewRow key={`${inv.name}-${i}`} label={inv.name} value={formatRupees(inv.amount)} />
               ))}
               <ReviewRow label={t('tabInvestors')} value={String(investors.length)} />
             </View>
@@ -369,147 +327,12 @@ export function NewProjectWizard(): React.JSX.Element {
         </View>
       </View>
 
-      {/* Add-investor sheet */}
-      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <Pressable style={styles.backdrop} onPress={() => setAddOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          <AppText size="lg" weight="bold" center>
-            {t('addInvestor')}
-          </AppText>
-
-          {/* Existing investors  tap a chip to pick one (inline, no nested modal) */}
-          {allInvestors.length > 0 ? (
-            <>
-              <AppText size="sm" weight="semibold" color="textSecondary">
-                {t('selectInvestor')}
-              </AppText>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.chipRow}
-              >
-                {allInvestors.map((inv) => {
-                  const selected = draftId === inv.id;
-                  return (
-                    <Pressable
-                      key={inv.id}
-                      onPress={() => {
-                        setDraftId(inv.id);
-                        setDraftName(inv.name);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={inv.name}
-                      style={[styles.chip, selected && styles.chipActive]}
-                    >
-                      <AppIcon name="investor" size={16} color={selected ? 'onPrimary' : 'primary'} />
-                      <AppText
-                        size="sm"
-                        weight="bold"
-                        color={selected ? 'onPrimary' : 'textPrimary'}
-                        numberOfLines={1}
-                      >
-                        {inv.name}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              <AppText size="xs" color="textSecondary" center>
-                {t('orAddNew')}
-              </AppText>
-            </>
-          ) : null}
-
-          <FloatingLabelInput
-            label={t('newInvestor')}
-            value={draftId ? '' : draftName}
-            onChangeText={(v) => {
-              setDraftId(null);
-              setDraftName(v);
-            }}
-          />
-
-          {/* The promise  no money moves for this. */}
-          <AmountInput
-            label={t('committedAmount')}
-            value={draftAmount}
-            onChange={setDraftAmount}
-            floating
-            surface={theme.colors.card}
-          />
-
-          {/* What they handed over right now  only this hits the account. */}
-          <AmountInput
-            label={t('givenNow')}
-            value={draftGiven}
-            onChange={setDraftGiven}
-            floating
-            surface={theme.colors.card}
-          />
-
-          <View style={styles.pctRow}>
-            <AppText size="md" weight="semibold" style={styles.flex}>
-              {t('profitPct')}
-            </AppText>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => setDraftPct((p) => Math.max(0, p - 5))}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">−</AppText>
-              </Pressable>
-              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
-                {`${draftPct}%`}
-              </AppText>
-              <Pressable
-                onPress={() => setDraftPct((p) => Math.min(100, p + 5))}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">+</AppText>
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Destination account  only needed when cash is given now */}
-          {draftGiven > 0 ? (
-            <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
-              <AppIcon name={draftAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
-              <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
-                {draftAccount ? `${draftAccount.name} · ${formatRupees(draftAccount.balance)}` : t('selectAccount')}
-              </AppText>
-              <AppIcon name="forward" size={18} color="textSecondary" />
-            </Pressable>
-          ) : null}
-
-          <AppButton
-            label={t('add')}
-            icon="check"
-            onPress={confirmAddInvestor}
-            disabled={!draftName.trim() || draftAmount <= 0 || (draftGiven > 0 && !draftAccountId)}
-          />
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <SelectSheet
-        visible={accountSheet}
-        onClose={() => setAccountSheet(false)}
-        options={accountOptions}
-        selectedId={draftAccountId ?? undefined}
-        title={t('selectAccount')}
-        searchable={false}
-        onSelect={(o) => setDraftAccountId(o.id)}
+      {/* Add-investor sheet — the ONE shared investor drawer. */}
+      <InvestorSheet
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        existingInvestors={availableInvestors}
+        onSubmit={confirmAddInvestors}
       />
     </View>
   );

@@ -16,6 +16,7 @@ import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AmountInput,
   AppButton,
+  StickyFooter,
   AppHeader,
   AppIcon,
   AppText,
@@ -120,7 +121,7 @@ export function TransferScreen(): React.JSX.Element {
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+          contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -160,11 +161,11 @@ export function TransferScreen(): React.JSX.Element {
           {/* Note (optional) */}
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
-          {/* Save */}
-          <View style={styles.saveBtn}>
-            <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />
-          </View>
         </ScrollView>
+
+        <StickyFooter>
+          <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />
+        </StickyFooter>
       </KeyboardAvoidingView>
 
       {/* Sheets */}
@@ -206,5 +207,4 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
-    saveBtn: { marginTop: theme.spacing.sm },
   });
