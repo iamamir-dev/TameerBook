@@ -1,10 +1,10 @@
-import { type RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
@@ -14,8 +14,6 @@ import {
   getInvestor,
   getInvestorProjectReturns,
   getInvestorSummary,
-  isInsufficientFunds,
-  isLimitExceeded,
   listAccountsWithBalance,
   type AccountWithBalance,
   type InvestorLedgerEntry,
@@ -23,6 +21,7 @@ import {
   type InvestorRow,
   listInvestorLedger,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { todayISO } from '@/utils/date';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -64,7 +63,6 @@ export function InvestorProfileScreen(): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [savingPay, setSavingPay] = useState(false);
 
   const remaining = Math.max(0, committed - received);
 
@@ -85,11 +83,8 @@ export function InvestorProfileScreen(): React.JSX.Element {
     setPayAccountId((prev) => prev ?? accs[0]?.id ?? null);
   }, [investorId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
+  const { saving: savingPay, run: runSave } = useSaveAction();
 
   const plColor = (v: number): ColorKey => (v >= 0 ? 'success' : 'danger');
 
@@ -108,18 +103,12 @@ export function InvestorProfileScreen(): React.JSX.Element {
 
   const onReceivePayment = async () => {
     if (payAmount <= 0 || !payAccountId || savingPay) return;
-    setSavingPay(true);
-    try {
+    const ok = await runSave(async () => {
       await addInvestorPayment({ investorId, amount: payAmount, date: todayISO().slice(0, 10), accountId: payAccountId });
-      setPayOpen(false);
-      await load();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
-      else throw e;
-    } finally {
-      setSavingPay(false);
-    }
+    });
+    if (!ok) return;
+    setPayOpen(false);
+    await reload();
   };
 
   const onShareStatement = async () => {

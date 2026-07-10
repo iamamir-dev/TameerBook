@@ -1,12 +1,11 @@
 import {
   type RouteProp,
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,10 +25,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
-  addCapitalEntry,
-  addInvestment,
-  addInvestor,
-  addProjectInvestor,
+  attachInvestorsToProject,
   getConstructionSummary,
   getPlotSummary,
   getProjectCapitalSummary,
@@ -49,13 +45,14 @@ import {
   type SaleSummary,
   type SettlementSummary,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -89,7 +86,8 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  const { saving, run: runSave } = useSaveAction();
 
   const loadAll = useCallback(async () => {
     const s = await getProjectSummary(projectId);
@@ -110,13 +108,15 @@ export function ProjectDetailScreen(): React.JSX.Element {
     setPlotSum(plot);
   }, [projectId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadAll().catch(() => undefined);
-      listInvestors().then(setAllInvestors).catch(() => undefined);
-      listAccountsWithBalance().then(setAccounts).catch(() => undefined);
-    }, [loadAll])
-  );
+  const load = useCallback(async () => {
+    await Promise.all([
+      loadAll(),
+      listInvestors().then(setAllInvestors),
+      listAccountsWithBalance().then(setAccounts),
+    ]);
+  }, [loadAll]);
+
+  const { reload } = useFocusReload(load);
 
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
@@ -151,10 +151,14 @@ export function ProjectDetailScreen(): React.JSX.Element {
     saleSum.receiptsTotal > 0;
 
   // Investors not yet on this project (so the sheet doesn't offer duplicates).
-  const attachedIds = new Set(shares.map((s) => s.investorId));
-  const availableInvestors: InvestorOption[] = allInvestors
-    .filter((i) => !attachedIds.has(i.id))
-    .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount }));
+  const attachedIds = useMemo(() => new Set(shares.map((s) => s.investorId)), [shares]);
+  const availableInvestors: InvestorOption[] = useMemo(
+    () =>
+      allInvestors
+        .filter((i) => !attachedIds.has(i.id))
+        .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount })),
+    [allInvestors, attachedIds]
+  );
 
   const openAttach = () => setAttachOpen(true);
 
@@ -165,32 +169,17 @@ export function ProjectDetailScreen(): React.JSX.Element {
    * The cash was already handled when the investor was added, so no account here.
    */
   const onAttachInvestors = async (inclusions: InvestorInclusion[]) => {
-    setSaving(true);
-    try {
-      for (const { investorId: id, amount } of inclusions) {
-        const inv = allInvestors.find((i) => i.id === id);
-        if (!inv) continue;
-        const pi = await addProjectInvestor({
-          projectId,
-          investorId: id,
-          committedAmount: amount,
-          profitPct: defaultPct,
-        });
-        if (amount > 0) {
-          await addCapitalEntry({
-            projectInvestorId: pi.id,
-            entryType: 'INITIAL',
-            amount,
-            date: todayISO(),
-          });
-        }
-      }
-      setAttachOpen(false);
-      await Promise.all([loadAll(), refreshProjects()]);
-      setAccounts(await listAccountsWithBalance());
-    } finally {
-      setSaving(false);
-    }
+    const ok = await runSave(async () => {
+      await attachInvestorsToProject(
+        projectId,
+        inclusions
+          .filter(({ investorId }) => allInvestors.some((i) => i.id === investorId))
+          .map(({ investorId, amount }) => ({ investorId, amount, profitPct: defaultPct }))
+      );
+    });
+    if (!ok) return;
+    setAttachOpen(false);
+    await Promise.all([reload(), refreshProjects().catch(swallow('project:refresh'))]);
   };
 
   if (!project || !cost || !constr || !saleSum) {

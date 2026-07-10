@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -12,6 +12,7 @@ import {
   type InvestorWithCapital,
   listInvestorsWithCapital,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
@@ -37,11 +38,8 @@ export function InvestorsScreen(): React.JSX.Element {
     setInvestors(await listInvestorsWithCapital());
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
+  const { run: runSave } = useSaveAction();
 
   const openAdd = () => {
     setEditing(null);
@@ -58,7 +56,7 @@ export function InvestorsScreen(): React.JSX.Element {
   const onSaved = () => {
     setSheetOpen(false);
     setEditing(null);
-    load().catch(() => undefined);
+    void reload();
   };
 
   const onDelete = (inv: InvestorWithCapital) => {
@@ -69,13 +67,19 @@ export function InvestorsScreen(): React.JSX.Element {
         text: t('delete'),
         style: 'destructive',
         onPress: async () => {
-          try {
-            await deleteInvestor(inv.id);
-            await load();
-          } catch (e) {
-            if (isInvestorInUse(e)) Alert.alert(t('investorInUse'));
-            else throw e;
-          }
+          await runSave(async () => {
+            try {
+              await deleteInvestor(inv.id);
+            } catch (e) {
+              // Business guard with its own message — keep the specific alert.
+              if (isInvestorInUse(e)) {
+                Alert.alert(t('investorInUse'));
+                return;
+              }
+              throw e;
+            }
+            await reload();
+          });
         },
       },
     ]);

@@ -1,6 +1,5 @@
 import {
   type RouteProp,
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
@@ -30,6 +29,7 @@ import {
   type TransactionRow,
   voidTransaction,
 } from '@/db';
+import { useFocusReload } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -83,11 +83,7 @@ export function TransactionsScreen(): React.JSX.Element {
     setReceipts(map);
   }, [projectId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  useFocusReload(load);
 
   const catName = useCallback(
     (id: string | null) => {

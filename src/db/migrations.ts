@@ -14,11 +14,25 @@ export async function runMigrations(db: SQLiteDatabase): Promise<void> {
 
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
-    // Run DDL directly (not inside an explicit transaction): the schema sets
-    // `PRAGMA journal_mode = WAL`, which is rejected inside a transaction.
-    await db.execAsync(migration.sql);
-    // PRAGMA can't be parameterized; version is an integer literal we control.
-    await db.execAsync(`PRAGMA user_version = ${migration.version}`);
+    // `PRAGMA journal_mode = WAL` (v7) is rejected inside a transaction, so
+    // that migration runs bare. Everything else runs atomically WITH its
+    // user_version bump: a mid-migration failure rolls back cleanly instead
+    // of leaving a half-applied schema that re-runs (and breaks) next launch.
+    if (/journal_mode/i.test(migration.sql)) {
+      await db.execAsync(migration.sql);
+      // PRAGMA can't be parameterized; version is an integer literal we control.
+      await db.execAsync(`PRAGMA user_version = ${migration.version}`);
+    } else {
+      await db.execAsync('BEGIN IMMEDIATE');
+      try {
+        await db.execAsync(migration.sql);
+        await db.execAsync(`PRAGMA user_version = ${migration.version}`);
+        await db.execAsync('COMMIT');
+      } catch (e) {
+        await db.execAsync('ROLLBACK');
+        throw e;
+      }
+    }
   }
 
   await seedDefaults(db);

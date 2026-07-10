@@ -23,6 +23,7 @@ import Animated, {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ErrorBoundary, ErrorFallback } from '@/components/ErrorBoundary';
 import { AppText } from '@/components/ui';
 import { initDatabase } from '@/db/database';
 import { useTranslation } from '@/i18n';
@@ -32,6 +33,7 @@ import { OnboardingScreen } from '@/screens/OnboardingScreen';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ThemeProvider, useTheme } from '@/theme';
+import { reportError, swallow } from '@/utils/log';
 
 /** Minimum time (ms) the branded splash stays up so it never just flickers. */
 const SPLASH_MIN_MS = 1300;
@@ -102,6 +104,8 @@ function ThemedApp(): React.JSX.Element {
   const theme = useTheme();
   const [booted, setBooted] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  const [bootError, setBootError] = useState(false);
+  const [bootAttempt, setBootAttempt] = useState(0);
   const companyReady = useCompanyStore((s) => s.ready);
   const activeCompanyId = useCompanyStore((s) => s.activeCompanyId);
   const switchCount = useCompanyStore((s) => s.switchCount);
@@ -114,13 +118,18 @@ function ThemedApp(): React.JSX.Element {
       .then(() => useSettingsStore.getState().hydrate())
       .then(() => useCompanyStore.getState().hydrate())
       .then(() => rescheduleReminders(useSettingsStore.getState().reminders))
-      .catch(() => undefined)
+      // A boot failure used to be swallowed, leaving the splash up forever.
+      // Now it's logged and the user gets a retry screen instead.
+      .catch((e) => {
+        reportError('App:boot', e);
+        setBootError(true);
+      })
       .finally(() => {
         setBooted(true);
         const remaining = Math.max(0, SPLASH_MIN_MS - (Date.now() - start));
         setTimeout(() => setSplashDone(true), remaining);
       });
-  }, []);
+  }, [bootAttempt]);
 
   const navTheme: NavTheme = {
     ...DefaultTheme,
@@ -136,25 +145,35 @@ function ThemedApp(): React.JSX.Element {
     },
   };
 
-  const showSplash = !booted || !splashDone || !companyReady;
-  const needsOnboarding = !showSplash && !activeCompanyId;
+  const showSplash = !bootError && (!booted || !splashDone || !companyReady);
+  const needsOnboarding = !showSplash && !bootError && !activeCompanyId;
 
   return (
     <View style={styles.flex}>
       <StatusBar style={showSplash || theme.darkMode ? 'light' : 'dark'} />
-      {showSplash ? (
+      {bootError && booted ? (
+        <ErrorFallback
+          onRetry={() => {
+            setBootError(false);
+            setBooted(false);
+            setBootAttempt((n) => n + 1);
+          }}
+        />
+      ) : showSplash ? (
         <Splash />
       ) : needsOnboarding ? (
         <OnboardingScreen
           onDone={() => {
             // createCompany already activated it  just re-hydrate the store.
-            useCompanyStore.getState().hydrate().catch(() => undefined);
+            useCompanyStore.getState().hydrate().catch(swallow('App:onboarding-hydrate'));
           }}
         />
       ) : (
         // Re-key the whole tree on company switch so every screen refetches.
         <NavigationContainer key={`${activeCompanyId}-${switchCount}`} theme={navTheme}>
-          <RootNavigator />
+          <ErrorBoundary>
+            <RootNavigator />
+          </ErrorBoundary>
         </NavigationContainer>
       )}
     </View>

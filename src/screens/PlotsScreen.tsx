@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
 import { listPlotSummaries, type PlotStatus, type PlotSummary } from '@/db';
+import { useFocusReload } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -38,11 +39,11 @@ export function PlotsScreen(): React.JSX.Element {
 
   const [items, setItems] = useState<PlotSummary[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      listPlotSummaries().then(setItems).catch(() => undefined);
-    }, [])
-  );
+  const load = useCallback(async () => {
+    setItems(await listPlotSummaries());
+  }, []);
+
+  useFocusReload(load);
 
   return (
     <View style={styles.screen}>

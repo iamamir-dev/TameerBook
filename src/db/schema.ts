@@ -47,6 +47,14 @@ export type SizeUnit = (typeof SIZE_UNITS)[number];
 export const PAY_TYPES = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
 export type PayType = (typeof PAY_TYPES)[number];
 
+/** i18n label key per pay type (shared by the plot + sale detail screens). */
+export const PAY_TYPE_LABEL_KEYS = {
+  TOKEN: 'ptToken',
+  BAYANA: 'ptBayana',
+  INSTALLMENT: 'ptInstallment',
+  FINAL: 'ptFinal',
+} as const satisfies Record<PayType, string>;
+
 /** Which slice of the business a transaction belongs to. */
 export const TXN_PHASES = ['PLOT', 'CONSTRUCTION', 'SALE', 'GENERAL'] as const;
 export type TxnPhase = (typeof TXN_PHASES)[number];
@@ -702,11 +710,31 @@ ALTER TABLE transactions ADD COLUMN investor_id TEXT;
 CREATE INDEX idx_txn_investor ON transactions (investor_id);
 `;
 
+/**
+ * Schema version 11 — indexes for the columns the app actually filters and
+ * joins on (ledgers by date, labor/party/transfer lookups, receipts per sale,
+ * per-company lists). Purely additive; `IF NOT EXISTS` keeps it re-runnable.
+ */
+export const SCHEMA_V11_INDEXES = `
+CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions (date);
+CREATE INDEX IF NOT EXISTS idx_txn_labor ON transactions (labor_id);
+CREATE INDEX IF NOT EXISTS idx_txn_party ON transactions (party_id);
+CREATE INDEX IF NOT EXISTS idx_txn_transfer ON transactions (transfer_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_sale ON sale_receipts (sale_id);
+CREATE INDEX IF NOT EXISTS idx_pi_investor ON project_investors (investor_id);
+CREATE INDEX IF NOT EXISTS idx_pl_laborer ON project_laborers (laborer_id);
+CREATE INDEX IF NOT EXISTS idx_inv_company ON investors (company_id);
+CREATE INDEX IF NOT EXISTS idx_lab_company ON laborers (company_id);
+CREATE INDEX IF NOT EXISTS idx_udhaar_company ON udhaar (company_id);
+CREATE INDEX IF NOT EXISTS idx_party_company ON parties (company_id);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
   { version: 9, sql: SCHEMA_V9_INVESTOR_PLEDGE },
   { version: 10, sql: SCHEMA_V10_INVESTOR_PAYMENTS },
+  { version: 11, sql: SCHEMA_V11_INDEXES },
 ];
 
 /* -------------------------------------------------------------------------- */

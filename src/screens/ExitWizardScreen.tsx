@@ -1,6 +1,5 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -31,12 +30,16 @@ import {
   type OwnershipShare,
   type ProjectInvestorRow,
 } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { computeExitPreview } from '@/utils/exitPreview';
+import { exitReceiptHtml } from '@/utils/exporter';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -49,12 +52,6 @@ const SCENARIOS: { id: ExitScenario; labelKey: TranslationKey; icon: IconKey }[]
   { id: 'PARTIAL', labelKey: 'scPartial', icon: 'moneyOut' },
   { id: 'COMMITTED_UNPAID', labelKey: 'scCommitted', icon: 'empty' },
 ];
-
-interface ShareView {
-  name: string;
-  capital: number;
-  pct: number;
-}
 
 export function ExitWizardScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -78,26 +75,54 @@ export function ExitWizardScreen(): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [portion, setPortion] = useState(0);
   const [buyerSheet, setBuyerSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  const { saving, run: runSave } = useSaveAction();
 
   useEffect(() => {
-    getInvestor(investorId).then(setInvestor).catch(() => undefined);
+    let cancelled = false;
+    getInvestor(investorId)
+      .then((row) => {
+        if (!cancelled) setInvestor(row);
+      })
+      .catch(swallow('exitWizard:investor'));
     listInvestorParticipations(investorId)
       .then((p) => {
+        if (cancelled) return;
         setParts(p);
         if (p.length === 1) setPiId(p[0].id);
       })
-      .catch(() => undefined);
+      .catch(swallow('exitWizard:participations'));
+    return () => {
+      cancelled = true;
+    };
   }, [investorId]);
 
   const selectedPart = parts.find((p) => p.id === piId) ?? null;
+  const selectedProjectId = selectedPart?.project_id ?? null;
 
-  // Load the project's capital picture when a participation is chosen.
+  // Load the project's capital picture when a participation is chosen; clear
+  // it when the selection goes away so stale rows never leak into the preview.
   useEffect(() => {
-    if (!selectedPart) return;
-    getProjectCapitalSummary(selectedPart.project_id).then((s) => setShares(s.shares)).catch(() => undefined);
-    listProjectInvestors(selectedPart.project_id).then(setPis).catch(() => undefined);
-  }, [selectedPart]);
+    if (!selectedProjectId) {
+      setShares([]);
+      setPis([]);
+      return;
+    }
+    let cancelled = false;
+    getProjectCapitalSummary(selectedProjectId)
+      .then((s) => {
+        if (!cancelled) setShares(s.shares);
+      })
+      .catch(swallow('exitWizard:capital'));
+    listProjectInvestors(selectedProjectId)
+      .then((rows) => {
+        if (!cancelled) setPis(rows);
+      })
+      .catch(swallow('exitWizard:projectInvestors'));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectId]);
 
   const leaverShare = shares.find((s) => s.projectInvestorId === piId) ?? null;
   const statusById = useMemo(() => new Map(pis.map((p) => [p.id, p.status])), [pis]);
@@ -110,48 +135,24 @@ export function ExitWizardScreen(): React.JSX.Element {
     [shares, piId, statusById]
   );
 
-  // ---- before / after preview ----
-  const { before, after } = useMemo(() => {
-    const bvList: ShareView[] = shares.map((s) => ({
-      name: s.name,
-      capital: s.capital,
-      pct: pis.find((p) => p.id === s.projectInvestorId)?.profit_pct ?? 0,
-    }));
-    const bTotal0 = bvList.reduce((s, x) => s + x.capital, 0);
-    const beforeWithPct0 = bvList.map((x) => ({ ...x, ownership: bTotal0 > 0 ? (x.capital / bTotal0) * 100 : 0 }));
-    if (!leaverShare || !scenario) return { before: beforeWithPct0, after: beforeWithPct0 };
+  // ---- before / after preview (pure math lives in utils/exitPreview) ----
+  const { before, after } = useMemo(
+    () =>
+      computeExitPreview({
+        shares,
+        pis,
+        leaverPiId: piId,
+        scenario,
+        portion,
+        buyerPiId,
+        newInvestorName: newName,
+        ownerLabel: t('scOwnerBuy'),
+        buyerFallbackLabel: t('buyer'),
+      }),
+    [shares, pis, piId, scenario, portion, buyerPiId, newName, t]
+  );
 
-    const amount = scenario === 'PARTIAL' ? portion : leaverShare.capital;
-    const av: ShareView[] = shares.map((s) => ({
-      name: s.name,
-      capital: s.capital,
-      pct: pis.find((p) => p.id === s.projectInvestorId)?.profit_pct ?? 0,
-    }));
-    const leaver = av.find((_, i) => shares[i].projectInvestorId === piId);
-    const leaverPct = leaver?.pct ?? 0;
-    if (leaver) leaver.capital = Math.max(0, leaver.capital - amount);
-
-    if (scenario === 'PARTNER_BUY' && buyerPiId) {
-      const idx = shares.findIndex((s) => s.projectInvestorId === buyerPiId);
-      if (idx >= 0) {
-        av[idx].capital += amount;
-        av[idx].pct += leaverPct;
-      }
-      if (leaver) leaver.pct = 0;
-    } else if (scenario === 'NEW_INVESTOR' || scenario === 'OWNER_BUY') {
-      av.push({ name: scenario === 'OWNER_BUY' ? t('scOwnerBuy') : newName || t('buyer'), capital: amount, pct: leaverPct });
-      if (leaver) leaver.pct = 0;
-    } else if (scenario === 'COMMITTED_UNPAID') {
-      if (leaver) leaver.pct = 0;
-    }
-    const total = av.reduce((s, x) => s + x.capital, 0);
-    const withPct = av.map((x) => ({ ...x, ownership: total > 0 ? (x.capital / total) * 100 : 0 }));
-    const bTotal = bvList.reduce((s, x) => s + x.capital, 0);
-    const beforeWithPct = bvList.map((x) => ({ ...x, ownership: bTotal > 0 ? (x.capital / bTotal) * 100 : 0 }));
-    return { before: beforeWithPct, after: withPct };
-  }, [shares, pis, leaverShare, scenario, portion, buyerPiId, newName, piId, t]);
-
-  const canNext = (): boolean => {
+  const canNext = useMemo((): boolean => {
     if (step === 0) return !!piId;
     if (step === 1) return !!scenario;
     if (step === 2) return valuation > 0 && agreed;
@@ -162,26 +163,28 @@ export function ExitWizardScreen(): React.JSX.Element {
       return true;
     }
     return true;
-  };
+  }, [step, piId, scenario, valuation, agreed, buyerPiId, newName, portion, leaverShare]);
 
   const goBack = () => (step === 0 ? navigation.goBack() : setStep((s) => s - 1));
   const goNext = () => setStep((s) => Math.min(4, s + 1));
 
   const sharePdf = async (buyerName: string, amount: number) => {
     if (!investor || !selectedPart) return;
-    const html = `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
-      <style>body{font-family:-apple-system,Roboto,sans-serif;padding:24px;color:#211F1B}
-      h1{color:#1D1C18;margin:0}.r{margin:6px 0}.lbl{color:#9A958B}.sig{margin-top:48px;display:flex;justify-content:space-between}
-      .sig div{border-top:1px solid #211F1B;width:40%;text-align:center;padding-top:6px;color:#9A958B}</style></head><body>
-      <h1>TameerBook</h1><h2>${t('exitReceipt')}</h2>
-      <div class="r"><span class="lbl">${t('projects')}:</span> ${selectedPart.projectName}</div>
-      <div class="r"><span class="lbl">${t('exitWho')}</span> ${investor.name}</div>
-      <div class="r"><span class="lbl">${t('buyer')}:</span> ${buyerName}</div>
-      <div class="r"><span class="lbl">${t('exitValue')}:</span> <b>${formatRupees(amount)}</b></div>
-      <div class="r"><span class="lbl">${t('date')}:</span> ${dayjs().format('DD MMM YYYY')}</div>
-      <div class="r">${t('exitValueNote')}</div>
-      <div class="sig"><div>${investor.name}</div><div>${buyerName}</div></div>
-      </body></html>`;
+    const html = exitReceiptHtml({
+      projectName: selectedPart.projectName,
+      investorName: investor.name,
+      buyerName,
+      amount,
+      labels: {
+        title: t('exitReceipt'),
+        project: t('projects'),
+        who: t('exitWho'),
+        buyer: t('buyer'),
+        value: t('exitValue'),
+        date: t('date'),
+        note: t('exitValueNote'),
+      },
+    });
     const { uri } = await Print.printToFileAsync({ html });
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: t('exitReceipt') });
@@ -190,8 +193,7 @@ export function ExitWizardScreen(): React.JSX.Element {
 
   const onConfirm = async () => {
     if (!selectedPart || !scenario || !leaverShare) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       let newInvestorId: string | null = null;
       let buyerName = t('scOwnerBuy');
       if (scenario === 'NEW_INVESTOR') {
@@ -216,10 +218,8 @@ export function ExitWizardScreen(): React.JSX.Element {
       });
       await refreshProjects();
       await sharePdf(buyerName, scenario === 'PARTIAL' ? portion : amount);
-      navigation.goBack();
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (ok) navigation.goBack();
   };
 
   return (
@@ -398,7 +398,7 @@ export function ExitWizardScreen(): React.JSX.Element {
         </View>
         <View style={styles.flex2}>
           {step < 4 ? (
-            <AppButton label={t('next')} icon="forward" onPress={goNext} disabled={!canNext()} />
+            <AppButton label={t('next')} icon="forward" onPress={goNext} disabled={!canNext} />
           ) : (
             <AppButton label={t('confirm')} icon="check" onPress={onConfirm} loading={saving} />
           )}

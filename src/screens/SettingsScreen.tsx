@@ -21,6 +21,7 @@ import { useCompanyStore } from '@/stores/useCompanyStore';
 import { type ReminderKey, useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const APP_VERSION: string = (require('../../app.json') as { expo: { version: string } }).expo
@@ -53,7 +54,7 @@ export function SettingsScreen(): React.JSX.Element {
 
   const onToggleReminder = (key: ReminderKey, value: boolean) => {
     setReminder(key, value);
-    rescheduleReminders({ ...reminders, [key]: value }).catch(() => undefined);
+    rescheduleReminders({ ...reminders, [key]: value }).catch(swallow('settings:rescheduleReminders'));
   };
 
   const REMINDER_ROWS: { key: ReminderKey; labelKey: TranslationKey }[] = [
@@ -293,7 +294,7 @@ export function SettingsScreen(): React.JSX.Element {
         searchable={false}
         onSelect={(o) => {
           if (o.id === NEW_COMPANY_ID) navigation.navigate('NewCompany');
-          else switchTo(o.id).catch(() => undefined);
+          else switchTo(o.id).catch(swallow('settings:switchCompany'));
         }}
       />
 

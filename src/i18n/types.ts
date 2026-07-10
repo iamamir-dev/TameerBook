@@ -482,6 +482,9 @@ export interface TranslationKeys {
 
   // v2  Validation / cash tab
   insufficientFunds: string;
+  errorTitle: string;
+  errorBody: string;
+  retry: string;
   duplicateAccount: string;
   exceedsRemaining: string;
   tabCash: string;

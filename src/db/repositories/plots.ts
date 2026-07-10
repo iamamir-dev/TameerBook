@@ -289,21 +289,38 @@ export async function listPlotSummaries(status?: PlotStatus): Promise<PlotSummar
  */
 export async function includePlotInProject(plotId: string, projectId: string): Promise<void> {
   const db = await getDatabase();
+  await assertPlotIncludable(plotId, projectId);
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await linkPlotToProject(tx, plotId, projectId);
+  });
+}
+
+/** Validate that a plot exists and isn't already claimed by another project. */
+export async function assertPlotIncludable(plotId: string, projectId: string): Promise<void> {
   const plot = await getPlot(plotId);
   if (!plot) throw new Error(`includePlotInProject: plot ${plotId} not found`);
   if (plot.project_id && plot.project_id !== projectId) {
     throw new Error('includePlotInProject: plot already belongs to another project');
   }
+}
 
-  await db.withExclusiveTransactionAsync(async (tx) => {
-    await tx.runAsync(
-      "UPDATE plots SET project_id = ?, status = 'IN_PROJECT' WHERE id = ?",
-      projectId,
-      plotId
-    );
-    await tx.runAsync('UPDATE projects SET plot_id = ? WHERE id = ?', plotId, projectId);
-    await tx.runAsync('UPDATE transactions SET project_id = ? WHERE plot_id = ?', projectId, plotId);
-  });
+/**
+ * The link/backfill writes behind `includePlotInProject`, runnable inside an
+ * already-open transaction (used by `createProject` so project + plot link
+ * commit atomically). Callers validate with `assertPlotIncludable` first.
+ */
+export async function linkPlotToProject(
+  tx: { runAsync: (sql: string, ...params: (string | number | null)[]) => Promise<unknown> },
+  plotId: string,
+  projectId: string
+): Promise<void> {
+  await tx.runAsync(
+    "UPDATE plots SET project_id = ?, status = 'IN_PROJECT' WHERE id = ?",
+    projectId,
+    plotId
+  );
+  await tx.runAsync('UPDATE projects SET plot_id = ? WHERE id = ?', plotId, projectId);
+  await tx.runAsync('UPDATE transactions SET project_id = ? WHERE plot_id = ?', projectId, plotId);
 }
 
 export interface TransferDeadlineRow {

@@ -9,11 +9,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppCard, AppHeader, AppText } from '@/components/ui';
 import { computeSettlement, getProject, type Settlement, settleProject } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -30,7 +32,7 @@ export function SettlementScreen(): React.JSX.Element {
 
   const [data, setData] = useState<Settlement | null>(null);
   const [projectName, setProjectName] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { saving, run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
     const [s, p] = await Promise.all([computeSettlement(projectId), getProject(projectId)]);
@@ -39,7 +41,7 @@ export function SettlementScreen(): React.JSX.Element {
   }, [projectId]);
 
   useEffect(() => {
-    load().catch(() => undefined);
+    load().catch(swallow('settlement:load'));
   }, [load]);
 
   const sharePdf = async (s: Settlement) => {
@@ -73,15 +75,13 @@ export function SettlementScreen(): React.JSX.Element {
 
   const onConfirm = async () => {
     if (!data) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await settleProject(projectId);
       await refreshProjects();
       await sharePdf(data);
-      navigation.goBack();
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    navigation.goBack();
   };
 
   return (

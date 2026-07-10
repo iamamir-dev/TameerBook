@@ -31,6 +31,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -79,7 +80,7 @@ export function ReportScreen(): React.JSX.Element {
   }, [type]);
 
   useEffect(() => {
-    load().catch(() => undefined);
+    load().catch(swallow('report:load'));
   }, [load]);
 
   const cn = (en: string, ur: string) => (language === 'ur' ? ur : en);

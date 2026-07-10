@@ -1,3 +1,5 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
 import { getDatabase } from '../database';
 import {
   DEFAULT_USER,
@@ -8,6 +10,9 @@ import {
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { requireCompanyId } from './companies';
+
+/** Anything that can run statements: the shared connection or an open transaction. */
+export type SQLiteExecutor = Pick<SQLiteDatabase, 'runAsync' | 'getFirstAsync'>;
 
 export interface NewTransaction {
   direction: TxnDirection;
@@ -75,7 +80,19 @@ export function isLimitExceeded(e: unknown): e is LimitExceededError {
  */
 export async function addTransaction(input: NewTransaction): Promise<TransactionRow> {
   const db = await getDatabase();
+  const id = await insertTransaction(db, input);
+  return getTransaction(id) as Promise<TransactionRow>;
+}
 
+/**
+ * The guard + INSERT behind `addTransaction`, runnable on an open transaction
+ * so multi-posting operations (transfers, sale receipts) stay atomic.
+ * Returns the new row's id.
+ */
+export async function insertTransaction(
+  db: SQLiteExecutor,
+  input: NewTransaction
+): Promise<string> {
   if (input.direction === 'OUT' && input.accountId) {
     const row = await db.getFirstAsync<{ balance: number }>(
       `SELECT a.opening_balance + COALESCE(SUM(
@@ -123,7 +140,7 @@ export async function addTransaction(input: NewTransaction): Promise<Transaction
     input.description ?? null,
     input.docId ?? null
   );
-  return getTransaction(id) as Promise<TransactionRow>;
+  return id;
 }
 
 export async function getTransaction(id: string): Promise<TransactionRow | null> {

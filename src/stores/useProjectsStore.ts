@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { listProjectSummaries, type ProjectSummary } from '@/db';
+import { reportError } from '@/utils/log';
 
 /**
  * Projects loaded from SQLite (with live progress + money totals). Screens call
@@ -23,7 +24,10 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     try {
       const items = await listProjectSummaries();
       set({ items, loading: false, loaded: true });
-    } catch {
+    } catch (e) {
+      // Keep the last-good list on screen, but never silently: without the
+      // log a failed refresh is indistinguishable from "no projects".
+      reportError('projects:refresh', e);
       set({ loading: false, loaded: true });
     }
   },

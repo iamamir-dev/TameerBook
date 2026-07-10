@@ -452,6 +452,9 @@ export const ur: TranslationKeys = {
 
   // v2  Validation / cash tab
   insufficientFunds: 'Is account mein itni raqam nahi hai.',
+  errorTitle: 'Kuch ghalat ho gaya',
+  errorBody: 'Ek unexpected masla aa gaya. Aap ka data mehfooz hai — dobara koshish karein.',
+  retry: 'Dobara koshish karein',
   duplicateAccount: 'Is naam ka account pehle se mojood hai.',
   exceedsRemaining: 'Raqam baqaya se zyada hai.',
   tabCash: 'Cash',

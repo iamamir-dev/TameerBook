@@ -1,6 +1,5 @@
 import {
   type RouteProp,
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
@@ -26,6 +25,7 @@ import {
   type CategoryRow,
   type TransactionRow,
 } from '@/db';
+import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -65,11 +65,7 @@ export function AccountDetailScreen(): React.JSX.Element {
     setCategories(cats);
   }, [accountId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData().catch(() => undefined);
-    }, [loadData])
-  );
+  useFocusReload(loadData);
 
   const catName = (id: string | null): string => {
     if (!id) return '';

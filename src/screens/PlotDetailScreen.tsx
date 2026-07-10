@@ -1,8 +1,7 @@
-import { type RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -37,18 +36,18 @@ import {
   type CategoryRow,
   type DocumentRow,
   getPlotSummary,
-  isInsufficientFunds,
-  isLimitExceeded,
   listAccountsWithBalance,
   listCategories,
   listDocuments,
   listPlotTransactions,
+  PAY_TYPE_LABEL_KEYS,
   PAY_TYPES,
   type PayType,
   type PlotSummary,
   type TransactionRow,
 } from '@/db';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useAccountOptions, useCategoryLabel, useFocusReload, useSaveAction } from '@/hooks';
+import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -59,13 +58,6 @@ import type { ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PlotRoute = RouteProp<RootStackParamList, 'PlotDetail'>;
-
-const PT_LABEL: Record<PayType, TranslationKey> = {
-  TOKEN: 'ptToken',
-  BAYANA: 'ptBayana',
-  INSTALLMENT: 'ptInstallment',
-  FINAL: 'ptFinal',
-};
 
 /** Categories offered in the plot-expense sheet (plot-phase costs). */
 const PLOT_EXPENSE_CATEGORIES = new Set([
@@ -81,7 +73,7 @@ const PLOT_EXPENSE_CATEGORIES = new Set([
  */
 export function PlotDetailScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const { plotId } = useRoute<PlotRoute>().params;
   const insets = useSafeAreaInsets();
@@ -99,7 +91,6 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [payAmount, setPayAmount] = useState(0);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [payReceiptUri, setPayReceiptUri] = useState<string | null>(null);
-  const [savingPay, setSavingPay] = useState(false);
 
   // Expense sheet
   const [expSheet, setExpSheet] = useState(false);
@@ -108,7 +99,6 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [expAccountId, setExpAccountId] = useState<string | null>(null);
   const [expNote, setExpNote] = useState('');
   const [expReceiptUri, setExpReceiptUri] = useState<string | null>(null);
-  const [savingExp, setSavingExp] = useState(false);
 
   // Pickers
   const [accountSheetFor, setAccountSheetFor] = useState<'pay' | 'exp' | null>(null);
@@ -132,16 +122,10 @@ export function PlotDetailScreen(): React.JSX.Element {
     setTxns(transactions);
   }, [plotId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
+  const { saving, run: runSave } = useSaveAction();
 
-  const catName = useCallback(
-    (c: CategoryRow) => (language === 'ur' ? c.name_ur : c.name_en),
-    [language]
-  );
+  const catName = useCategoryLabel();
 
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -150,16 +134,7 @@ export function PlotDetailScreen(): React.JSX.Element {
     [categories]
   );
 
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        id: a.id,
-        label: a.name,
-        subtitle: formatRupees(a.balance),
-        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-      })),
-    [accounts]
-  );
+  const accountOptions = useAccountOptions(accounts);
 
   const categoryOptions: SelectOption[] = useMemo(
     () =>
@@ -175,7 +150,7 @@ export function PlotDetailScreen(): React.JSX.Element {
     () =>
       txns.map((txn) => {
         const cat = txn.category_id ? catById.get(txn.category_id) : undefined;
-        const payLabel = txn.pay_type ? t(PT_LABEL[txn.pay_type]) : undefined;
+        const payLabel = txn.pay_type ? t(PAY_TYPE_LABEL_KEYS[txn.pay_type]) : undefined;
         return {
           id: txn.id,
           title: txn.description || payLabel || (cat ? catName(cat) : t('transactions')),
@@ -193,9 +168,8 @@ export function PlotDetailScreen(): React.JSX.Element {
   const expCategory = expenseCategories.find((c) => c.id === expCategoryId) ?? null;
 
   const onSavePayment = async () => {
-    if (payAmount <= 0 || !payAccountId || savingPay) return;
-    setSavingPay(true);
-    try {
+    if (payAmount <= 0 || !payAccountId || saving) return;
+    const ok = await runSave(async () => {
       await addPlotPayment({
         plotId,
         payType,
@@ -204,23 +178,17 @@ export function PlotDetailScreen(): React.JSX.Element {
         accountId: payAccountId,
         receiptUri: payReceiptUri,
       });
-      setPaySheet(false);
-      setPayAmount(0);
-      setPayReceiptUri(null);
-      await load();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
-      else throw e;
-    } finally {
-      setSavingPay(false);
-    }
+    });
+    if (!ok) return;
+    setPaySheet(false);
+    setPayAmount(0);
+    setPayReceiptUri(null);
+    await reload();
   };
 
   const onSaveExpense = async () => {
-    if (expAmount <= 0 || !expAccountId || !expCategoryId || savingExp) return;
-    setSavingExp(true);
-    try {
+    if (expAmount <= 0 || !expAccountId || !expCategoryId || saving) return;
+    const ok = await runSave(async () => {
       await addPlotExpense({
         plotId,
         categoryId: expCategoryId,
@@ -230,18 +198,14 @@ export function PlotDetailScreen(): React.JSX.Element {
         note: expNote.trim() || null,
         receiptUri: expReceiptUri,
       });
-      setExpSheet(false);
-      setExpAmount(0);
-      setExpNote('');
-      setExpCategoryId(null);
-      setExpReceiptUri(null);
-      await load();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSavingExp(false);
-    }
+    });
+    if (!ok) return;
+    setExpSheet(false);
+    setExpAmount(0);
+    setExpNote('');
+    setExpCategoryId(null);
+    setExpReceiptUri(null);
+    await reload();
   };
 
   const onAddDocument = async () => {
@@ -385,7 +349,7 @@ export function PlotDetailScreen(): React.JSX.Element {
                   style={[styles.modeBtn, selected && styles.modeBtnActive]}
                 >
                   <AppText size="sm" weight={selected ? 'bold' : 'semibold'} color={selected ? 'accent' : 'textSecondary'}>
-                    {t(PT_LABEL[pt])}
+                    {t(PAY_TYPE_LABEL_KEYS[pt])}
                   </AppText>
                 </Pressable>
               );
@@ -432,7 +396,7 @@ export function PlotDetailScreen(): React.JSX.Element {
             label={t('save')}
             icon="check"
             onPress={onSavePayment}
-            loading={savingPay}
+            loading={saving}
             disabled={
               payAmount <= 0 ||
               !payAccountId ||
@@ -513,7 +477,7 @@ export function PlotDetailScreen(): React.JSX.Element {
             label={t('save')}
             icon="check"
             onPress={onSaveExpense}
-            loading={savingExp}
+            loading={saving}
             disabled={
               expAmount <= 0 ||
               !expAccountId ||

@@ -1,7 +1,7 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -15,11 +15,11 @@ import {
 import {
   addAccount,
   getTotalBalance,
-  isDuplicateAccount,
   listAccountsWithBalance,
   type AccountType,
   type AccountWithBalance,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -48,7 +48,6 @@ export function AccountsScreen(): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<AccountType>('BANK');
   const [newOpening, setNewOpening] = useState(0);
-  const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     const [tot, accs] = await Promise.all([getTotalBalance(), listAccountsWithBalance()]);
@@ -56,11 +55,8 @@ export function AccountsScreen(): React.JSX.Element {
     setAccounts(accs);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData().catch(() => undefined);
-    }, [loadData])
-  );
+  const { reload } = useFocusReload(loadData);
+  const { saving, run: runSave } = useSaveAction();
 
   const typeLabel = (type: AccountType) =>
     t(type === 'BANK' ? 'accountBank' : type === 'CASH' ? 'accountCash' : 'accountWallet');
@@ -68,20 +64,15 @@ export function AccountsScreen(): React.JSX.Element {
   const onAddAccount = async () => {
     const name = newName.trim();
     if (!name) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await addAccount({ name, type: newType, openingBalance: newOpening });
-      await loadData();
-      setNewName('');
-      setNewType('BANK');
-      setNewOpening(0);
-      setAddOpen(false);
-    } catch (e) {
-      if (isDuplicateAccount(e)) Alert.alert(t('duplicateAccount'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    await reload();
+    setNewName('');
+    setNewType('BANK');
+    setNewOpening(0);
+    setAddOpen(false);
   };
 
   return (

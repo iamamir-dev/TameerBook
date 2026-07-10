@@ -16,6 +16,8 @@ import {
   addPlotPayment,
   addProjectInvestor,
   addSaleCost,
+  attachInvestorsToProject,
+  getProjectCapitalSummary,
   addSaleReceipt,
   addTransaction,
   attachLaborerToProject,
@@ -538,6 +540,40 @@ async function testInvestorPayments(): Promise<TestResult> {
   }
 }
 
+async function testAttachInvestors(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const project = await createProject({ name: 'DBTEST AT-Proj' }, { withDefaultMilestones: false });
+    c.projects.push(project.id);
+    const a = await addInvestor({ name: 'DBTEST AT-A' });
+    const b = await addInvestor({ name: 'DBTEST AT-B' });
+    c.investors.push(a.id, b.id);
+
+    // One atomic call: participation + INITIAL capital per investor.
+    await attachInvestorsToProject(
+      project.id,
+      [
+        { investorId: a.id, amount: 3000, profitPct: 40 },
+        { investorId: b.id, amount: 1000, profitPct: 40 },
+      ],
+      { date: D }
+    );
+
+    const summary = await getProjectCapitalSummary(project.id);
+    const shareA = summary.shares.find((s) => s.investorId === a.id);
+    const shareB = summary.shares.find((s) => s.investorId === b.id);
+    const checks: Check[] = [
+      ['both participations created', summary.shares.length === 2],
+      ['total capital 4000', near(summary.totalCapital, 4000)],
+      ['A capital 3000 → 75%', near(shareA?.capital ?? 0, 3000) && near(shareA?.ownershipPct ?? 0, 75)],
+      ['B capital 1000 → 25%', near(shareB?.capital ?? 0, 1000) && near(shareB?.ownershipPct ?? 0, 25)],
+    ];
+    return report('T-ATTACH investors attach atomically', checks);
+  } finally {
+    await c.run();
+  }
+}
+
 async function testInvestorCommitmentVsCash(): Promise<TestResult> {
   const c = new Cleanup();
   try {
@@ -756,7 +792,12 @@ async function testReconciliation(): Promise<TestResult> {
   const sum = accounts.reduce((s, a) => s + a.balance, 0);
 
   const db = await getDatabase();
-  const checks: Check[] = [['total = Σ account balances', near(total, sum)]];
+  const checks: Check[] = [
+    // Guard against a degenerate pass: with zero accounts the loop below adds
+    // no checks and 0 === 0 would "pass" without reconciling anything.
+    ['at least one account exists', accounts.length > 0],
+    ['total = Σ account balances', near(total, sum)],
+  ];
   for (const a of accounts) {
     const row = await db.getFirstAsync<{ s: number }>(
       `SELECT COALESCE(SUM(CASE WHEN direction = 'IN' THEN amount ELSE -amount END), 0) AS s
@@ -786,6 +827,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testSettlementLossIncludesOwner,
     testUdhaarFlow,
     testInvestorPayments,
+    testAttachInvestors,
     testInvestorCommitmentVsCash,
     testValidationGuards,
     testCompanyIsolation,

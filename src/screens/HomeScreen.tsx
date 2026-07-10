@@ -1,7 +1,6 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +29,7 @@ import {
   type ProjectSummary,
   type TransactionRow,
 } from '@/db';
+import { useCategoryLabel, useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
@@ -37,6 +37,7 @@ import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { softToneColor, type ColorKey } from '@/utils/tones';
 
@@ -49,7 +50,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export function HomeScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
@@ -66,7 +67,7 @@ export function HomeScreen(): React.JSX.Element {
   const [receivable, setReceivable] = useState(0);
   const [recent, setRecent] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [deadlineWarn, setDeadlineWarn] = useState<{ plotId: string; plotName: string; days: number } | null>(null);
+  const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
 
   const loadData = useCallback(async () => {
     const [tot, accs, udhaar, txns, cats, deadlines, companyAssets] = await Promise.all([
@@ -84,42 +85,41 @@ export function HomeScreen(): React.JSX.Element {
     setReceivable(udhaar.receivable);
     setRecent(txns);
     setCategories(cats);
-    const soonest = deadlines
-      .map((d) => ({
-        plotId: d.plot_id,
-        plotName: d.plot_name,
-        days: dayjs(d.transfer_deadline).startOf('day').diff(dayjs().startOf('day'), 'day'),
-      }))
-      .filter((d) => d.days <= 7)
-      .sort((a, b) => a.days - b.days)[0];
-    setDeadlineWarn(soonest ?? null);
+    setDeadlineWarn(nearestTransferDeadline(deadlines));
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      refreshProjects().catch(() => undefined);
-      loadData().catch(() => undefined);
-    }, [refreshProjects, loadData])
+  const load = useCallback(async () => {
+    await Promise.all([refreshProjects(), loadData()]);
+  }, [refreshProjects, loadData]);
+
+  useFocusReload(load);
+
+  const catLabel = useCategoryLabel();
+  const catName = useCallback(
+    (id: string | null): string => {
+      if (!id) return '';
+      const c = categories.find((x) => x.id === id);
+      return c ? catLabel(c) : '';
+    },
+    [categories, catLabel]
   );
 
-  const catName = (id: string | null): string => {
-    if (!id) return '';
-    const c = categories.find((x) => x.id === id);
-    return c ? (language === 'ur' ? c.name_ur : c.name_en) : '';
-  };
-
-  const ledgerRows: LedgerRow[] = recent.map((txn) => ({
-    id: txn.id,
-    title:
-      txn.description ||
-      catName(txn.category_id) ||
-      txn.counterparty_name ||
-      t(txn.direction === 'IN' ? 'aamdani' : 'kharcha'),
-    date: txn.date,
-    amount: txn.amount,
-    direction: txn.direction === 'IN' ? 'in' : 'out',
-    typeLabel: catName(txn.category_id) || undefined,
-  }));
+  const ledgerRows: LedgerRow[] = useMemo(
+    () =>
+      recent.map((txn) => ({
+        id: txn.id,
+        title:
+          txn.description ||
+          catName(txn.category_id) ||
+          txn.counterparty_name ||
+          t(txn.direction === 'IN' ? 'aamdani' : 'kharcha'),
+        date: txn.date,
+        amount: txn.amount,
+        direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
+        typeLabel: catName(txn.category_id) || undefined,
+      })),
+    [recent, catName, t]
+  );
 
   const accountTypeLabel = (a: AccountWithBalance) =>
     t(a.type === 'BANK' ? 'accountBank' : a.type === 'CASH' ? 'accountCash' : 'accountWallet');

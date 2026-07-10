@@ -1,6 +1,6 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
 import type { ProjectSummary } from '@/db';
+import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
@@ -30,11 +31,7 @@ export function ProjectsScreen(): React.JSX.Element {
   const items = useProjectsStore((s) => s.items);
   const refresh = useProjectsStore((s) => s.refresh);
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh().catch(() => undefined);
-    }, [refresh])
-  );
+  useFocusReload(refresh);
 
   return (
     <View style={styles.screen}>

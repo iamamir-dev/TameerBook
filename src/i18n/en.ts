@@ -449,6 +449,9 @@ export const en: TranslationKeys = {
 
   // v2  Validation / cash tab
   insufficientFunds: 'Not enough balance in this account.',
+  errorTitle: 'Something went wrong',
+  errorBody: 'An unexpected problem occurred. Your data is safe — try again.',
+  retry: 'Try again',
   duplicateAccount: 'An account with this name already exists.',
   exceedsRemaining: 'Amount is more than what is remaining.',
   tabCash: 'Cash',

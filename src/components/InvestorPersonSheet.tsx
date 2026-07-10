@@ -15,20 +15,19 @@ import {
 import {
   addInvestor,
   addInvestorPayment,
-  isInsufficientFunds,
-  isLimitExceeded,
   listAccountsWithBalance,
   updateInvestor,
   type AccountWithBalance,
   type InvestorRow,
 } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
-import { Alert } from 'react-native';
 
 interface InvestorPersonSheetProps {
   visible: boolean;
@@ -67,7 +66,7 @@ export function InvestorPersonSheet({
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { saving, run: runSave } = useSaveAction();
 
   useEffect(() => {
     if (!visible) return;
@@ -83,7 +82,7 @@ export function InvestorPersonSheet({
         setAccounts(a);
         setAccountId(a[0]?.id ?? null);
       })
-      .catch(() => undefined);
+      .catch(swallow('investorPersonSheet:load'));
   }, [visible, editing]);
 
   const account = accounts.find((a) => a.id === accountId) ?? null;
@@ -101,8 +100,7 @@ export function InvestorPersonSheet({
   const save = async () => {
     const clean = name.trim();
     if (!clean || saving || (needsAccount && !accountId)) return;
-    setSaving(true);
-    try {
+    await runSave(async () => {
       let investor: InvestorRow;
       if (editing) {
         await updateInvestor(editing.id, {
@@ -141,13 +139,7 @@ export function InvestorPersonSheet({
       }
       onSaved(investor);
       onClose();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

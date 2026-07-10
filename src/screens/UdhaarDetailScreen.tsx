@@ -1,8 +1,7 @@
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -28,8 +27,6 @@ import {
 } from '@/components/ui';
 import {
   giveUdhaar,
-  isInsufficientFunds,
-  isLimitExceeded,
   listAccountsWithBalance,
   listUdhaar,
   listUdhaarTransactions,
@@ -38,6 +35,7 @@ import {
   type TransactionRow,
   type UdhaarWithBalance,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -71,7 +69,6 @@ export function UdhaarDetailScreen(): React.JSX.Element {
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [rows, list, accs] = await Promise.all([
@@ -85,11 +82,8 @@ export function UdhaarDetailScreen(): React.JSX.Element {
     setAccountId((prev) => prev ?? accs[0]?.id ?? null);
   }, [udhaarId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
+  const { saving, run: runSave } = useSaveAction();
 
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
@@ -124,20 +118,14 @@ export function UdhaarDetailScreen(): React.JSX.Element {
 
   const onSave = async () => {
     if (!move || amount <= 0 || !accountId) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       const input = { udhaarId, amount, date: todayISO().slice(0, 10), accountId };
       if (move === 'give') await giveUdhaar(input);
       else await returnUdhaar(input);
-      setMove(null);
-      await load();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    setMove(null);
+    await reload();
   };
 
   const balance = udhaar?.balance ?? 0;

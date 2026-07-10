@@ -60,17 +60,21 @@ export async function listCapitalEntries(projectInvestorId: string): Promise<Cap
 }
 
 /**
- * SQL expression for net paid-in capital. Capital-affecting entries add or
- * subtract; profit/loss entries (PROFIT_PAYOUT, LOSS_ADJ) are not capital.
+ * SQL expression for net paid-in capital (aliased on `cl`). Capital-affecting
+ * entries add or subtract; profit/loss entries (PROFIT_PAYOUT, LOSS_ADJ) are
+ * not capital. THE single copy of this accounting rule — analytics imports it
+ * too, so the two can never diverge.
  */
-const CAPITAL_SUM = `COALESCE(SUM(CASE cl.entry_type
+export const CAPITAL_SUM_SQL = `SUM(CASE cl.entry_type
     WHEN 'INITIAL'         THEN cl.amount
     WHEN 'ADDITIONAL'      THEN cl.amount
     WHEN 'TRANSFER_IN'     THEN cl.amount
     WHEN 'WITHDRAWAL'      THEN -cl.amount
     WHEN 'TRANSFER_OUT'    THEN -cl.amount
     WHEN 'EXIT_SETTLEMENT' THEN -cl.amount
-    ELSE 0 END), 0)`;
+    ELSE 0 END)`;
+
+const CAPITAL_SUM = `COALESCE(${CAPITAL_SUM_SQL}, 0)`;
 
 /** Net paid-in capital for one project-investor participation. */
 export async function getInvestorCapital(projectInvestorId: string): Promise<number> {

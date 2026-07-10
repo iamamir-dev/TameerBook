@@ -1,12 +1,11 @@
 import {
   type RouteProp,
-  useFocusEffect,
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -19,16 +18,12 @@ import {
   AppText,
   LedgerTable,
   SelectSheet,
-  type IconKey,
   type LedgerRow,
-  type SelectOption,
 } from '@/components/ui';
 import {
   addSaleCost,
   addSaleReceipt,
   getSaleSummary,
-  isInsufficientFunds,
-  isLimitExceeded,
   listAccountsWithBalance,
   listProjectPhaseTransactions,
   upsertSale,
@@ -36,8 +31,9 @@ import {
   type SaleSummary,
   type TransactionRow,
 } from '@/db';
-import { PAY_TYPES, type PayType } from '@/db/schema';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { PAY_TYPE_LABEL_KEYS, PAY_TYPES, type PayType } from '@/db/schema';
+import { useAccountOptions, useFocusReload, useSaveAction } from '@/hooks';
+import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -46,13 +42,6 @@ import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type SaleRoute = RouteProp<RootStackParamList, 'SaleDetail'>;
-
-const PAY_TYPE_KEY: Record<PayType, TranslationKey> = {
-  TOKEN: 'ptToken',
-  BAYANA: 'ptBayana',
-  INSTALLMENT: 'ptInstallment',
-  FINAL: 'ptFinal',
-};
 
 /**
  * The SALE phase of a project: the deal with the buyer (agreed price), money
@@ -93,7 +82,8 @@ export function SaleDetailScreen(): React.JSX.Element {
   // Shared: the account the money moves through.
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  const { saving, run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
     const [sum, rows, accs] = await Promise.all([
@@ -106,11 +96,7 @@ export function SaleDetailScreen(): React.JSX.Element {
     setAccounts(accs);
   }, [projectId]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
 
   useEffect(() => {
     if (!accountId && accounts.length > 0) setAccountId(accounts[0].id);
@@ -119,16 +105,7 @@ export function SaleDetailScreen(): React.JSX.Element {
   const sale = summary?.sale ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        id: a.id,
-        label: a.name,
-        subtitle: formatRupees(a.balance),
-        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-      })),
-    [accounts]
-  );
+  const accountOptions = useAccountOptions(accounts);
 
   const ledgerRows: LedgerRow[] = useMemo(
     () =>
@@ -136,32 +113,29 @@ export function SaleDetailScreen(): React.JSX.Element {
         id: txn.id,
         title:
           txn.description ||
-          (txn.pay_type ? t(PAY_TYPE_KEY[txn.pay_type]) : '') ||
+          (txn.pay_type ? t(PAY_TYPE_LABEL_KEYS[txn.pay_type]) : '') ||
           txn.counterparty_name ||
           t('phaseSale'),
         date: txn.date,
         amount: txn.amount,
         direction: txn.direction === 'IN' ? 'in' : 'out',
-        typeLabel: txn.pay_type ? t(PAY_TYPE_KEY[txn.pay_type]) : undefined,
+        typeLabel: txn.pay_type ? t(PAY_TYPE_LABEL_KEYS[txn.pay_type]) : undefined,
       })),
     [txns, t]
   );
 
   const onCreateDeal = async () => {
     if (dealPrice <= 0) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await upsertSale(projectId, { agreedPrice: dealPrice, buyerName: dealBuyer.trim() || null });
-      await load();
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    await reload();
   };
 
   const onSaveReceipt = async () => {
     if (!sale || receiptAmount <= 0 || !accountId) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await addSaleReceipt({
         saleId: sale.id,
         amount: receiptAmount,
@@ -169,23 +143,17 @@ export function SaleDetailScreen(): React.JSX.Element {
         accountId,
         payType,
       });
-      setReceiptOpen(false);
-      setReceiptAmount(0);
-      setPayType(null);
-      await load();
-    } catch (e) {
-      if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
-      else if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    setReceiptOpen(false);
+    setReceiptAmount(0);
+    setPayType(null);
+    await reload();
   };
 
   const onSaveExpense = async () => {
     if (expenseAmount <= 0 || !accountId || !expenseName.trim()) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await addSaleCost({
         projectId,
         name: expenseName.trim(),
@@ -193,16 +161,12 @@ export function SaleDetailScreen(): React.JSX.Element {
         date: todayISO(),
         accountId,
       });
-      setExpenseOpen(false);
-      setExpenseName('');
-      setExpenseAmount(0);
-      await load();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    setExpenseOpen(false);
+    setExpenseName('');
+    setExpenseAmount(0);
+    await reload();
   };
 
   const openEdit = () => {
@@ -214,14 +178,12 @@ export function SaleDetailScreen(): React.JSX.Element {
 
   const onSaveEdit = async () => {
     if (editPrice <= 0) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await upsertSale(projectId, { agreedPrice: editPrice, buyerName: editBuyer.trim() || null });
-      setEditOpen(false);
-      await load();
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    setEditOpen(false);
+    await reload();
   };
 
   /** The account chip used by every sheet (money always lands in an account). */
@@ -336,7 +298,7 @@ export function SaleDetailScreen(): React.JSX.Element {
                   style={[styles.chip, selected && styles.chipActive]}
                 >
                   <AppText size="sm" weight="bold" color={selected ? 'onPrimary' : 'textPrimary'}>
-                    {t(PAY_TYPE_KEY[pt])}
+                    {t(PAY_TYPE_LABEL_KEYS[pt])}
                   </AppText>
                 </Pressable>
               );

@@ -8,7 +8,7 @@ import {
 import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { addDocument } from './documents';
-import { addTransaction, LimitExceededError } from './transactions';
+import { addTransaction, insertTransaction, LimitExceededError } from './transactions';
 
 export interface NewSale {
   projectId: string;
@@ -77,39 +77,44 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
   }
 
   const id = uuid();
-  await db.runAsync(
-    `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, doc_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    id,
-    nowISO(),
-    input.createdBy ?? DEFAULT_USER,
-    input.saleId,
-    input.amount,
-    input.date,
-    input.accountId,
-    input.payType ?? null,
-    null
-  );
-
   const categoryId = await categoryIdByName('Buyer Receipt', 'INCOME', 'خریدار کی رقم');
-  const txn = await addTransaction({
-    direction: 'IN',
-    amount: input.amount,
-    date: input.date,
-    accountId: input.accountId,
-    projectId: sale.project_id,
-    phase: 'SALE',
-    categoryId,
-    payType: input.payType ?? null,
-    partyId: sale.buyer_party_id,
-    counterpartyName: sale.buyer_name,
-    createdBy: input.createdBy,
+
+  // Receipt row + matching cash movement post atomically: a failure can never
+  // leave settlement revenue recorded without the money in an account.
+  let txnId = '';
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await tx.runAsync(
+      `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, doc_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      nowISO(),
+      input.createdBy ?? DEFAULT_USER,
+      input.saleId,
+      input.amount,
+      input.date,
+      input.accountId,
+      input.payType ?? null,
+      null
+    );
+    txnId = await insertTransaction(tx, {
+      direction: 'IN',
+      amount: input.amount,
+      date: input.date,
+      accountId: input.accountId,
+      projectId: sale.project_id,
+      phase: 'SALE',
+      categoryId,
+      payType: input.payType ?? null,
+      partyId: sale.buyer_party_id,
+      counterpartyName: sale.buyer_name,
+      createdBy: input.createdBy,
+    });
   });
 
   if (input.receiptUri) {
     await addDocument({
       entityType: 'transaction',
-      entityId: txn.id,
+      entityId: txnId,
       label: 'photoReceipt',
       fileUri: input.receiptUri,
     });

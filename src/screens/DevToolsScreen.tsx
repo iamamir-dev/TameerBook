@@ -10,6 +10,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -33,7 +34,7 @@ export function DevToolsScreen(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    refreshCounts().catch(() => undefined);
+    refreshCounts().catch(swallow('devtools:load'));
   }, [refreshCounts]);
 
   const onLoadDemo = useCallback(async () => {

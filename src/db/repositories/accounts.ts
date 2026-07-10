@@ -1,7 +1,7 @@
 import { getDatabase } from '../database';
 import { DEFAULT_USER, type AccountRow, type AccountType } from '../schema';
 import { nowISO, uuid } from '../uuid';
-import { addTransaction } from './transactions';
+import { insertTransaction } from './transactions';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 
@@ -158,8 +158,9 @@ export interface TransferInput {
 
 /**
  * Move money between two accounts: two linked transactions (OUT of `from`,
- * IN to `to`) sharing one `transfer_id`. Neither is income nor expense 
- * total balance is unchanged.
+ * IN to `to`) sharing one `transfer_id`. Neither is income nor expense
+ * total balance is unchanged. Both legs post in ONE transaction so a failure
+ * can never leave money withdrawn but not deposited.
  */
 export async function transferBetween(input: TransferInput): Promise<string> {
   if (input.fromAccountId === input.toAccountId) {
@@ -167,6 +168,7 @@ export async function transferBetween(input: TransferInput): Promise<string> {
   }
   if (input.amount <= 0) throw new Error('transferBetween: amount must be positive');
 
+  const db = await getDatabase();
   const transferId = uuid();
   const categoryId = await categoryIdByName('Transfer', 'EXPENSE', 'ٹرانسفر');
   const common = {
@@ -177,7 +179,9 @@ export async function transferBetween(input: TransferInput): Promise<string> {
     description: input.note ?? null,
     createdBy: input.createdBy,
   };
-  await addTransaction({ ...common, direction: 'OUT', accountId: input.fromAccountId });
-  await addTransaction({ ...common, direction: 'IN', accountId: input.toAccountId });
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await insertTransaction(tx, { ...common, direction: 'OUT', accountId: input.fromAccountId });
+    await insertTransaction(tx, { ...common, direction: 'IN', accountId: input.toAccountId });
+  });
   return transferId;
 }

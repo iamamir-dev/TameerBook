@@ -1,7 +1,7 @@
-import { type RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,6 +23,7 @@ import {
   listAccountsWithBalance,
   listInvestors,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
@@ -30,6 +31,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -56,21 +58,17 @@ export function InvestmentEntryScreen(): React.JSX.Element {
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
-  const [saving, setSaving] = useState(false);
   const [investorSheet, setInvestorSheet] = useState(false);
   const [projectSheet, setProjectSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
   const [dateSheet, setDateSheet] = useState(false);
 
   useEffect(() => {
-    listInvestors().then(setInvestors).catch(() => undefined);
-    listAccountsWithBalance().then(setAccounts).catch(() => undefined);
+    listInvestors().then(setInvestors).catch(swallow('investment:load'));
+    listAccountsWithBalance().then(setAccounts).catch(swallow('investment:load'));
   }, []);
-  useFocusEffect(
-    useCallback(() => {
-      refreshProjects().catch(() => undefined);
-    }, [refreshProjects])
-  );
+  useFocusReload(refreshProjects);
+  const { saving, run: runSave } = useSaveAction();
   useEffect(() => {
     if (projectId) return;
     const fb = projects.find((p) => p.project.id === lastProjectId) ?? projects[0];
@@ -113,16 +111,14 @@ export function InvestmentEntryScreen(): React.JSX.Element {
       setAccountSheet(true);
       return;
     }
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await addInvestment({ investorId, projectId, amount, date, accountId });
       setLastProjectId(projectId);
       setLastAccountId(accountId);
       await refreshProjects();
-      navigation.goBack();
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    navigation.goBack();
   };
 
   if (projects.length === 0 || investors.length === 0) {

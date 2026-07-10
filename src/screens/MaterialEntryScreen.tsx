@@ -2,7 +2,6 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -31,12 +30,12 @@ import {
   addTransaction,
   type AccountWithBalance,
   type CategoryRow,
-  isInsufficientFunds,
   listAccountsWithBalance,
   listCategories,
   listParties,
   type PartyRow,
 } from '@/db';
+import { useAccountOptions, useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
@@ -44,6 +43,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 
@@ -67,7 +67,7 @@ const ADD_PARTY_ID = '__add__';
 
 export function MaterialEntryScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
@@ -82,15 +82,17 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [items, setItems] = useState<CategoryRow[]>([]);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  // `undefined` = user hasn't chosen yet (fall back to last-used below).
+  // Keeping the distinction in state (instead of effects that write defaults
+  // back) means a refresh can never clobber a deliberate selection.
+  const [projectChoice, setProjectChoice] = useState<string | undefined>(undefined);
   const [itemId, setItemId] = useState<string | null>(null);
   const [qty, setQty] = useState('');
   const [unit, setUnit] = useState('');
   const [rate, setRate] = useState('');
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountChoice, setAccountChoice] = useState<string | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | null>(null);
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const [projectSheet, setProjectSheet] = useState(false);
   const [itemSheet, setItemSheet] = useState(false);
@@ -98,6 +100,8 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [partySheet, setPartySheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState('');
+
+  const { saving, run: runSave } = useSaveAction();
 
   const loadParties = useCallback(async () => setParties(await listParties()), []);
 
@@ -107,35 +111,32 @@ export function MaterialEntryScreen(): React.JSX.Element {
         const byName = (n: string) => cats.find((c) => c.name_en === n);
         setItems(MATERIAL_ITEMS.map(byName).filter((c): c is CategoryRow => !!c));
       })
-      .catch(() => undefined);
-    loadParties().catch(() => undefined);
-    listAccountsWithBalance().then(setAccounts).catch(() => undefined);
+      .catch(swallow('material:categories'));
+    loadParties().catch(swallow('material:parties'));
+    listAccountsWithBalance().then(setAccounts).catch(swallow('material:accounts'));
   }, [loadParties]);
 
   useFocusEffect(
     useCallback(() => {
-      refreshProjects().catch(() => undefined);
+      refreshProjects().catch(swallow('material:projects'));
     }, [refreshProjects])
   );
 
-  useEffect(() => {
-    if (projectId) return;
-    const fallback = projects.find((p) => p.project.id === lastProjectId) ?? projects[0];
-    if (fallback) setProjectId(fallback.project.id);
-  }, [projects, lastProjectId, projectId]);
-
-  // Default the account to last-used (or the first account).
-  useEffect(() => {
-    if (accountId || accounts.length === 0) return;
-    const fallback = accounts.find((a) => a.id === lastAccountId) ?? accounts[0];
-    if (fallback) setAccountId(fallback.id);
-  }, [accounts, lastAccountId, accountId]);
+  // Defaults are computed, not written back by effects: last-used project (or
+  // the first one), last-used account (or the first one).
+  const projectId =
+    projectChoice ??
+    (projects.find((p) => p.project.id === lastProjectId) ?? projects[0])?.project.id ??
+    null;
+  const accountId =
+    accountChoice ??
+    (accounts.some((a) => a.id === lastAccountId) ? lastAccountId : accounts[0]?.id ?? null);
 
   const total = (Number(qty) || 0) * (Number(rate) || 0);
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
-  const itemLabel = (c: CategoryRow) =>
-    c.name_en === 'Misc' ? t('feeOther') : language === 'ur' ? c.name_ur : c.name_en;
+  const catName = useCategoryLabel();
+  const itemLabel = (c: CategoryRow) => (c.name_en === 'Misc' ? t('feeOther') : catName(c));
   const selectedItem = items.find((c) => c.id === itemId) ?? null;
   const selectedParty = parties.find((p) => p.id === partyId) ?? null;
 
@@ -147,16 +148,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
     [parties, t]
   );
 
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      accounts.map((a) => ({
-        id: a.id,
-        label: a.name,
-        subtitle: formatRupees(a.balance),
-        icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-      })),
-    [accounts]
-  );
+  const accountOptions = useAccountOptions(accounts);
 
   const onSave = async () => {
     if (!projectId || !itemId || total <= 0) return;
@@ -164,8 +156,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
       setAccountSheet(true);
       return;
     }
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       const desc = `${selectedItem ? itemLabel(selectedItem) : ''} ${qty}${unit ? ' ' + unit : ''} @ ${rate}`.trim();
       const txn = await addTransaction({
         direction: 'OUT',
@@ -184,21 +175,20 @@ export function MaterialEntryScreen(): React.JSX.Element {
       setLastProjectId(projectId);
       setLastAccountId(accountId);
       await refreshProjects();
-      navigation.goBack();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    navigation.goBack();
   };
 
   const onAddParty = async () => {
     const name = newPartyName.trim();
     if (!name) return;
-    const created = await addParty({ type: 'SUPPLIER', name });
-    await loadParties();
-    setPartyId(created.id);
+    const ok = await runSave(async () => {
+      const created = await addParty({ type: 'SUPPLIER', name });
+      await loadParties();
+      setPartyId(created.id);
+    });
+    if (!ok) return;
     setNewPartyName('');
     setAddPartyOpen(false);
   };
@@ -325,7 +315,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
         options={projects.map((p) => ({ id: p.project.id, label: p.project.name, icon: 'project' as IconKey }))}
         selectedId={projectId ?? undefined}
         title={t('selectProject')}
-        onSelect={(o) => setProjectId(o.id)}
+        onSelect={(o) => setProjectChoice(o.id)}
       />
       <SelectSheet
         visible={itemSheet}
@@ -342,7 +332,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
         selectedId={accountId ?? undefined}
         title={t('selectAccount')}
         searchable={false}
-        onSelect={(o) => setAccountId(o.id)}
+        onSelect={(o) => setAccountChoice(o.id)}
       />
       <SelectSheet
         visible={partySheet}

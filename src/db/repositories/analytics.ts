@@ -1,16 +1,7 @@
 import { getDatabase } from '../database';
 import type { ProjectStatus } from '../schema';
+import { CAPITAL_SUM_SQL as CAP_SUM } from './capital';
 import { requireCompanyId } from './companies';
-
-/** Signed capital sum (matches the capital ledger rules). */
-const CAP_SUM = `SUM(CASE cl.entry_type
-    WHEN 'INITIAL' THEN cl.amount
-    WHEN 'ADDITIONAL' THEN cl.amount
-    WHEN 'TRANSFER_IN' THEN cl.amount
-    WHEN 'WITHDRAWAL' THEN -cl.amount
-    WHEN 'TRANSFER_OUT' THEN -cl.amount
-    WHEN 'EXIT_SETTLEMENT' THEN -cl.amount
-    ELSE 0 END)`;
 
 export interface ProjectReportRow {
   id: string;

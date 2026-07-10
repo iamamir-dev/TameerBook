@@ -7,10 +7,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText } from '@/components/ui';
 import { addDocument, type DocumentRow, listDocuments } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -25,7 +27,7 @@ export function PhotoDiaryScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [photos, setPhotos] = useState<DocumentRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  const { saving: busy, run: runSave } = useSaveAction();
   const [viewer, setViewer] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -33,7 +35,7 @@ export function PhotoDiaryScreen(): React.JSX.Element {
   }, [projectId]);
 
   useEffect(() => {
-    load().catch(() => undefined);
+    load().catch(swallow('photoDiary:load'));
   }, [load]);
 
   // Group photos by day (newest first).
@@ -49,16 +51,13 @@ export function PhotoDiaryScreen(): React.JSX.Element {
   }, [photos]);
 
   const onCapture = async () => {
-    setBusy(true);
-    try {
+    await runSave(async () => {
       const uri = await captureReceipt();
       if (uri) {
         await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
         await load();
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   return (

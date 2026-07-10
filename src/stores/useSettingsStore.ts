@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { loadSettings, saveSetting } from '@/db/repositories/settings';
+import { swallow } from '@/utils/log';
 import type { Language } from '@/i18n/types';
 
 /**
@@ -48,6 +49,11 @@ interface SettingsState {
 
 const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
+/** Mirror a preference to the DB; a failed write is logged, never unhandled. */
+const persist = (key: string, value: string): void => {
+  void saveSetting(key, value).catch(swallow('settings:persist'));
+};
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   language: 'en', // English is the default; users can switch to Roman Urdu in Settings.
   darkMode: false, // Light mode is the default per the design spec.
@@ -78,21 +84,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setLanguage: (language) => {
     set({ language });
-    void saveSetting('language', language);
+    persist('language', language);
   },
   toggleLanguage: () => {
     const language = get().language === 'ur' ? 'en' : 'ur';
     set({ language });
-    void saveSetting('language', language);
+    persist('language', language);
   },
   setDarkMode: (darkMode) => {
     set({ darkMode });
-    void saveSetting('darkMode', darkMode ? '1' : '0');
+    persist('darkMode', darkMode ? '1' : '0');
   },
   toggleDarkMode: () => {
     const darkMode = !get().darkMode;
     set({ darkMode });
-    void saveSetting('darkMode', darkMode ? '1' : '0');
+    persist('darkMode', darkMode ? '1' : '0');
   },
   setReminder: (key, value) => {
     const reminders = { ...get().reminders, [key]: value };

@@ -1,8 +1,7 @@
-import { type RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,11 +24,11 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
-  isInsufficientFunds,
   listAccountsWithBalance,
   transferBetween,
   type AccountWithBalance,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -61,17 +60,17 @@ export function TransferScreen(): React.JSX.Element {
   const [toId, setToId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
   const [fromSheet, setFromSheet] = useState(false);
   const [toSheet, setToSheet] = useState(false);
 
   const date = todayISO().slice(0, 10);
 
-  useFocusEffect(
-    useCallback(() => {
-      listAccountsWithBalance().then(setAccounts).catch(() => undefined);
-    }, [])
-  );
+  const load = useCallback(async () => {
+    setAccounts(await listAccountsWithBalance());
+  }, []);
+
+  useFocusReload(load);
+  const { saving, run: runSave } = useSaveAction();
 
   const accountOptions: SelectOption[] = useMemo(
     () =>
@@ -97,8 +96,7 @@ export function TransferScreen(): React.JSX.Element {
 
   const onSave = async () => {
     if (!canSave || !fromId || !toId) return;
-    setSaving(true);
-    try {
+    const ok = await runSave(async () => {
       await transferBetween({
         fromAccountId: fromId,
         toAccountId: toId,
@@ -106,13 +104,9 @@ export function TransferScreen(): React.JSX.Element {
         date,
         note: note.trim() || null,
       });
-      navigation.goBack();
-    } catch (e) {
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    });
+    if (!ok) return;
+    navigation.goBack();
   };
 
   return (

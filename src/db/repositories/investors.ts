@@ -231,6 +231,64 @@ export async function addProjectInvestor(input: NewProjectInvestor): Promise<Pro
   ))!;
 }
 
+export interface InvestorAttachment {
+  investorId: string;
+  /** Their stake: recorded as committed amount AND (when > 0) INITIAL capital. */
+  amount: number;
+  profitPct?: number | null;
+}
+
+/**
+ * Attach several investors to a project in ONE transaction: each gets a
+ * participation row plus (for a non-zero stake) an INITIAL capital-ledger
+ * entry, so ownership % derives from the entered amounts. Shared by the
+ * new-project wizard and the project screen's "include investors" drawer.
+ */
+export async function attachInvestorsToProject(
+  projectId: string,
+  attachments: InvestorAttachment[],
+  opts: { date?: string; createdBy?: string } = {}
+): Promise<void> {
+  if (attachments.length === 0) return;
+  const db = await getDatabase();
+  const createdAt = nowISO();
+  const date = opts.date ?? createdAt.slice(0, 10);
+  const createdBy = opts.createdBy ?? DEFAULT_USER;
+
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const a of attachments) {
+      const piId = uuid();
+      await tx.runAsync(
+        `INSERT INTO project_investors
+           (id, created_at, created_by, project_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, NULL)`,
+        piId,
+        createdAt,
+        createdBy,
+        projectId,
+        a.investorId,
+        a.amount,
+        a.profitPct ?? null,
+        createdAt
+      );
+      if (a.amount > 0) {
+        await tx.runAsync(
+          `INSERT INTO capital_ledger
+             (id, created_at, created_by, project_investor_id, entry_type, amount, counterparty_pi_id,
+              valuation_amount, date, note, doc_id)
+           VALUES (?, ?, ?, ?, 'INITIAL', ?, NULL, NULL, ?, NULL, NULL)`,
+          uuid(),
+          createdAt,
+          createdBy,
+          piId,
+          a.amount,
+          date
+        );
+      }
+    }
+  });
+}
+
 export async function listProjectInvestors(projectId: string): Promise<ProjectInvestorRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<ProjectInvestorRow>(

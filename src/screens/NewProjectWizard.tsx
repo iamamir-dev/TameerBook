@@ -1,6 +1,6 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -25,8 +25,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import {
-  addCapitalEntry,
-  addProjectInvestor,
+  attachInvestorsToProject,
   createProject,
   listAccountsWithBalance,
   listInvestors,
@@ -35,13 +34,14 @@ import {
   type InvestorRow,
   type PlotRow,
 } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 /** An investor staged for this project (persisted on Create). */
@@ -75,7 +75,7 @@ export function NewProjectWizard(): React.JSX.Element {
   const defaultPct = useSettingsStore((s) => s.investorProfitPct);
 
   const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
+  const { saving, run: runSave } = useSaveAction();
 
   const [name, setName] = useState('');
   const [plots, setPlots] = useState<PlotRow[]>([]);
@@ -90,9 +90,9 @@ export function NewProjectWizard(): React.JSX.Element {
   // Reload free plots on focus  the user may return from "New Plot".
   useFocusEffect(
     useCallback(() => {
-      listPlots('OWNED').then(setPlots).catch(() => undefined);
-      listInvestors().then(setAllInvestors).catch(() => undefined);
-      listAccountsWithBalance().then(setAccounts).catch(() => undefined);
+      listPlots('OWNED').then(setPlots).catch(swallow('newProject:plots'));
+      listInvestors().then(setAllInvestors).catch(swallow('newProject:investors'));
+      listAccountsWithBalance().then(setAccounts).catch(swallow('newProject:accounts'));
     }, [])
   );
 
@@ -127,36 +127,20 @@ export function NewProjectWizard(): React.JSX.Element {
   };
 
   const onCreate = async () => {
-    setSaving(true);
-    try {
+    await runSave(async () => {
       const project = await createProject({ name: name.trim(), plotId });
 
       // Each investor's entered amount is their stake (recorded as INITIAL
       // capital so ownership % derives from those amounts). Profit % comes from
       // Settings; the cash was handled when the investor was added.
-      const today = todayISO();
-      for (const inv of investors) {
-        const pi = await addProjectInvestor({
-          projectId: project.id,
-          investorId: inv.investorId,
-          committedAmount: inv.amount,
-          profitPct: defaultPct,
-        });
-        if (inv.amount > 0) {
-          await addCapitalEntry({
-            projectInvestorId: pi.id,
-            entryType: 'INITIAL',
-            amount: inv.amount,
-            date: today,
-          });
-        }
-      }
+      await attachInvestorsToProject(
+        project.id,
+        investors.map(({ investorId, amount }) => ({ investorId, amount, profitPct: defaultPct }))
+      );
 
       await refreshProjects();
       navigation.replace('ProjectDetail', { projectId: project.id });
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

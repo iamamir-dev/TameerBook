@@ -8,7 +8,7 @@ import {
 import { nowISO, uuid } from '../uuid';
 import { requireCompanyId } from './companies';
 import { getProjectProgress } from './milestones';
-import { includePlotInProject } from './plots';
+import { assertPlotIncludable, linkPlotToProject } from './plots';
 import { getSaleSummary } from './sales';
 import { getProjectTotals } from './transactions';
 
@@ -36,6 +36,8 @@ export async function createProject(
   const id = uuid();
   const createdAt = nowISO();
   const createdBy = input.createdBy ?? DEFAULT_USER;
+
+  if (input.plotId) await assertPlotIncludable(input.plotId, id);
 
   await db.withExclusiveTransactionAsync(async (tx) => {
     await tx.runAsync(
@@ -66,10 +68,10 @@ export async function createProject(
         );
       }
     }
-  });
 
-  // Outside the exclusive transaction  includePlotInProject runs its own.
-  if (input.plotId) await includePlotInProject(input.plotId, id);
+    // Same transaction: a project is never committed without its plot link.
+    if (input.plotId) await linkPlotToProject(tx, input.plotId, id);
+  });
 
   return getProject(id) as Promise<ProjectRow>;
 }

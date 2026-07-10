@@ -1,8 +1,7 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -31,7 +30,6 @@ import {
   deleteUdhaarIfEmpty,
   getUdhaarTotals,
   giveUdhaar,
-  isInsufficientFunds,
   listAccountsWithBalance,
   listUdhaar,
   type AccountWithBalance,
@@ -39,11 +37,13 @@ import {
   type UdhaarTotals,
   type UdhaarWithBalance,
 } from '@/db';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -71,7 +71,6 @@ export function UdhaarScreen(): React.JSX.Element {
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [rows, tot, accs] = await Promise.all([
@@ -85,11 +84,8 @@ export function UdhaarScreen(): React.JSX.Element {
     setAccounts(accs);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load().catch(() => undefined);
-    }, [load])
-  );
+  const { reload } = useFocusReload(load);
+  const { saving, run: runSave } = useSaveAction();
 
   // Default the account to the first one once accounts arrive.
   useEffect(() => {
@@ -125,27 +121,26 @@ export function UdhaarScreen(): React.JSX.Element {
 
   const onSave = async () => {
     if (!canSave || !accountId) return;
-    setSaving(true);
-    let created: string | null = null;
-    try {
-      const u = await createUdhaar({ personName: personName.trim(), direction });
-      created = u.id;
-      await giveUdhaar({
-        udhaarId: u.id,
-        amount,
-        date: todayISO().slice(0, 10),
-        accountId,
-      });
-      setNewOpen(false);
-      await load();
-    } catch (e) {
-      // Don't leave an empty udhaar behind when the first give is blocked.
-      if (created) await deleteUdhaarIfEmpty(created).catch(() => undefined);
-      if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
-      else throw e;
-    } finally {
-      setSaving(false);
-    }
+    const ok = await runSave(async () => {
+      let created: string | null = null;
+      try {
+        const u = await createUdhaar({ personName: personName.trim(), direction });
+        created = u.id;
+        await giveUdhaar({
+          udhaarId: u.id,
+          amount,
+          date: todayISO().slice(0, 10),
+          accountId,
+        });
+      } catch (e) {
+        // Don't leave an empty udhaar behind when the first give is blocked.
+        if (created) await deleteUdhaarIfEmpty(created).catch(swallow('udhaar:cleanup'));
+        throw e;
+      }
+    });
+    if (!ok) return;
+    setNewOpen(false);
+    await reload();
   };
 
   return (

@@ -16,3 +16,24 @@ export const formatTime = (iso: string): string => dayjs(iso).format('h:mm A');
 
 /** True if the given ISO date is today. */
 export const isToday = (iso: string): boolean => dayjs(iso).isSame(dayjs(), 'day');
+
+/** A plot transfer deadline that is due soon (≤ 7 days away). */
+export interface TransferDeadlineWarning {
+  plotId: string;
+  plotName: string;
+  /** Whole days from today to the deadline (can be negative when overdue). */
+  days: number;
+}
+
+/** The soonest transfer deadline within the next 7 days, or null. */
+export const nearestTransferDeadline = (
+  rows: { plot_id: string; plot_name: string; transfer_deadline: string }[]
+): TransferDeadlineWarning | null =>
+  rows
+    .map((d) => ({
+      plotId: d.plot_id,
+      plotName: d.plot_name,
+      days: dayjs(d.transfer_deadline).startOf('day').diff(dayjs().startOf('day'), 'day'),
+    }))
+    .filter((d) => d.days <= 7)
+    .sort((a, b) => a.days - b.days)[0] ?? null;
