@@ -438,6 +438,12 @@ export interface TranslationKeys {
   projectTotalCost: string;
   viewPlotDetail: string;
 
+  // Investment allocation
+  allocationTitle: string;
+  byProject: string;
+  byInvestor: string;
+  totalInvested: string;
+
   // v2  Labor
   laborTitle: string;
   addWorker: string;
@@ -485,6 +491,50 @@ export interface TranslationKeys {
   errorTitle: string;
   errorBody: string;
   retry: string;
+
+  // Labor section (worker khata)
+  allWorkers: string;
+  workerKhata: string;
+  acrossProjects: string;
+  historyTitle: string;
+  attendanceConflict: string;
+  owedToWorker: string;
+
+  // Project lifecycle & validations
+  markCompleted: string;
+  markCompletedTitle: string;
+  markCompletedBody: string;
+  warnLaborDues: string;
+  warnBuyerOwes: string;
+  settleHint: string;
+  confirmSettleTitle: string;
+  confirmSettleBody: string;
+  projectClosedNote: string;
+  sectionActive: string;
+  sectionCompleted: string;
+  addPlot: string;
+  noPlotChoice: string;
+  ownerFunded: string;
+  plotTaken: string;
+  categoryRequired: string;
+  remainingToInvest: string;
+  investedLabel: string;
+  noEligibleInvestors: string;
+  emptyLedger: string;
+  sharePdf: string;
+  showSections: string;
+  hideSections: string;
+  galleryTitle: string;
+
+  // Settings — font & home layout
+  fontFamilyLabel: string;
+  fontSizeLabel: string;
+  fsSmall: string;
+  fsNormal: string;
+  fsLarge: string;
+  fsXL: string;
+  homeSettingsTitle: string;
+  homeShortcuts: string;
   duplicateAccount: string;
   exceedsRemaining: string;
   tabCash: string;

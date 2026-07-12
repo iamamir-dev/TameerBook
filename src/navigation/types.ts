@@ -27,13 +27,15 @@ export type RootStackParamList = {
   Settings: undefined;
   NewCompany: undefined;
   DevTools: undefined;
-  // Cash flow
-  Cash: undefined;
+  // Cash flow. 'assets' (from the Home hero) widens the page to the full
+  // asset picture; 'cash' / no param (from the Cash tile) is cash-only.
+  Cash: { scope?: 'cash' | 'assets' } | undefined;
   Accounts: undefined;
   AccountDetail: { accountId: string };
   Transfer: { fromAccountId?: string } | undefined;
   // Reports hub (reached from Settings)
   Reports: undefined;
+  Allocation: undefined;
   // Plots
   NewPlot: undefined;
   PlotDetail: { plotId: string };
@@ -52,6 +54,9 @@ export type RootStackParamList = {
   // Udhaar
   Udhaar: undefined;
   UdhaarDetail: { udhaarId: string };
+  // Labor (worker khatas across projects)
+  Labor: undefined;
+  LaborerDetail: { laborerId: string };
   // Investors
   InvestorProfile: { investorId: string };
   ExitWizard: { investorId: string };

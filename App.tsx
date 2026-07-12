@@ -1,9 +1,12 @@
+import { Baloo2_500Medium, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
+import { Fraunces_500Medium, Fraunces_700Bold, Fraunces_800ExtraBold } from '@expo-google-fonts/fraunces';
+import { Inter_500Medium, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import {
-  Inter_400Regular,
-  Inter_600SemiBold,
-  Inter_700Bold,
+  MPLUSRounded1c_500Medium,
+  MPLUSRounded1c_700Bold,
+  MPLUSRounded1c_800ExtraBold,
   useFonts,
-} from '@expo-google-fonts/inter';
+} from '@expo-google-fonts/m-plus-rounded-1c';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -181,16 +184,27 @@ function ThemedApp(): React.JSX.Element {
 }
 
 /**
- * App root. Loads the Inter font families (the theme references them by name,
+ * App root. Loads the M PLUS Rounded 1c font families (the theme references them by name,
  * so nothing renders until they're ready), then mounts the provider stack:
  *
  *   GestureHandlerRootView → SafeAreaProvider → ThemeProvider → ThemedApp
  */
 export default function App(): React.JSX.Element {
+  // Every selectable family (Settings → Font) loads up front, so switching
+  // fonts re-themes instantly with no flash of fallback text.
   const [fontsLoaded] = useFonts({
-    Inter_400Regular,
-    Inter_600SemiBold,
+    MPLUSRounded1c_500Medium,
+    MPLUSRounded1c_700Bold,
+    MPLUSRounded1c_800ExtraBold,
+    Baloo2_500Medium,
+    Baloo2_700Bold,
+    Baloo2_800ExtraBold,
+    Fraunces_500Medium,
+    Fraunces_700Bold,
+    Fraunces_800ExtraBold,
+    Inter_500Medium,
     Inter_700Bold,
+    Inter_800ExtraBold,
   });
 
   if (!fontsLoaded) {

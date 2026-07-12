@@ -1,45 +1,45 @@
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AccountCard,
-  AmountInput,
-  AppButton,
   AppCard,
   AppHeader,
   AppIcon,
   AppText,
   LedgerTable,
-  type IconKey,
   type LedgerRow,
 } from '@/components/ui';
 import {
-  addAccount,
+  getCompanyAssets,
+  getProjectCapitalSummary,
   getTotalBalance,
   getUdhaarTotals,
   listAccountsWithBalance,
   listCategories,
+  listInvestorsWithCapacity,
+  listProjectSummaries,
   listRecentTransactions,
   type AccountType,
   type AccountWithBalance,
   type CategoryRow,
+  type CompanyAssets,
+  type InvestorCapacity,
   type TransactionRow,
   type UdhaarTotals,
 } from '@/db';
-import { ACCOUNT_TYPES } from '@/db/schema';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { formatRupees } from '@/utils/money';
-import { softToneColor, type ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type CashRoute = RouteProp<RootStackParamList, 'Cash'>;
 
 const TYPE_LABEL: Record<AccountType, TranslationKey> = {
   BANK: 'accountBank',
@@ -47,30 +47,42 @@ const TYPE_LABEL: Record<AccountType, TranslationKey> = {
   WALLET: 'accountWallet',
 };
 
+/** How many project/investor rows the compact sections preview. */
+const PREVIEW_ROWS = 4;
+
+interface ProjectStake {
+  projectId: string;
+  name: string;
+  invested: number;
+}
+
 /**
- * The Cash hub (reached from Home)  every kind of money movement handled in
- * one place: total balance + udhaar position, quick actions (income /
- * expense / transfer / udhaar), every account with its live balance (add
- * more inline), and the full recent cash flow as a notebook-style ledger.
+ * The money hub, in two scopes:
+ * - 'cash' (the Cash tile): only cash-related data — balance, udhaar,
+ *   accounts, recent activity.
+ * - 'assets' (the Home TOTAL ASSETS hero): the full picture — the asset
+ *   breakdown (cash / plots / construction) plus how much is invested in each
+ *   project and by each investor.
+ * Accounts are MANAGED from Settings; this page only shows them. The green
+ * bottom-right FAB opens the same Quick Entry chooser as the Home "+".
  */
 export function CashScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const scope = useRoute<CashRoute>().params?.scope ?? 'cash';
+  const assetsMode = scope === 'assets';
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const [total, setTotal] = useState(0);
+  const [assets, setAssets] = useState<CompanyAssets | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
   const [recent, setRecent] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
-
-  // Add-account sheet.
-  const [addOpen, setAddOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState<AccountType>('BANK');
-  const [newOpening, setNewOpening] = useState(0);
+  const [projectStakes, setProjectStakes] = useState<ProjectStake[]>([]);
+  const [investors, setInvestors] = useState<InvestorCapacity[]>([]);
 
   const load = useCallback(async () => {
     const [tot, accs, ud, txns, cats] = await Promise.all([
@@ -85,10 +97,28 @@ export function CashScreen(): React.JSX.Element {
     setUdhaar(ud);
     setRecent(txns);
     setCategories(cats);
-  }, []);
 
-  const { reload } = useFocusReload(load);
-  const { saving, run: runSave } = useSaveAction();
+    // The wider asset picture is only fetched when this page shows it.
+    if (assetsMode) {
+      const [companyAssets, projects, caps] = await Promise.all([
+        getCompanyAssets(),
+        listProjectSummaries(),
+        listInvestorsWithCapacity(),
+      ]);
+      const stakes = await Promise.all(
+        projects.map(async (p) => ({
+          projectId: p.project.id,
+          name: p.project.name,
+          invested: (await getProjectCapitalSummary(p.project.id)).totalCapital,
+        }))
+      );
+      setAssets(companyAssets);
+      setProjectStakes(stakes.filter((s) => s.invested > 0));
+      setInvestors(caps.filter((i) => i.staked > 0));
+    }
+  }, [assetsMode]);
+
+  useFocusReload(load);
 
   const catName = (id: string | null): string => {
     if (!id) return '';
@@ -109,78 +139,89 @@ export function CashScreen(): React.JSX.Element {
     typeLabel: catName(txn.category_id) || undefined,
   }));
 
-  const onAddAccount = async () => {
-    const name = newName.trim();
-    if (!name || saving) return;
-    const ok = await runSave(async () => {
-      await addAccount({ name, type: newType, openingBalance: newOpening });
-    });
-    if (!ok) return;
-    setAddOpen(false);
-    setNewName('');
-    setNewOpening(0);
-    setNewType('BANK');
-    await reload();
-  };
-
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('cashFlowTitle')} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={assetsMode ? t('totalAssets') : t('cashFlowTitle')}
+        onBack={() => navigation.goBack()}
+      />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + theme.spacing.xxxl },
+          { paddingBottom: insets.bottom + theme.spacing.xxxl * 2 },
         ]}
       >
-        {/* Total balance hero + udhaar position */}
+        {/* Hero. Cash scope: the liquid balance. Assets scope: the full asset
+            total with its breakdown as colored-text columns. */}
         <View style={styles.hero}>
           <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
-            {t('totalBalance')}
+            {assetsMode ? t('totalAssets') : t('totalBalance')}
           </AppText>
           <AppText size="display" weight="bold" color="primary" tabular numberOfLines={1} adjustsFontSizeToFit>
-            {formatRupees(total)}
+            {formatRupees(assetsMode ? assets?.total ?? total : total)}
           </AppText>
-          {udhaar.receivable > 0 || udhaar.payable > 0 ? (
-            <View style={styles.udhaarRow}>
-              {udhaar.receivable > 0 ? (
-                <AppText size="sm" weight="semibold" color="textSecondary">
-                  {t('receivable')}: {formatRupees(udhaar.receivable)}
-                </AppText>
-              ) : null}
-              {udhaar.payable > 0 ? (
-                <AppText size="sm" weight="semibold" color="danger">
-                  {t('payable')}: {formatRupees(udhaar.payable)}
-                </AppText>
-              ) : null}
-            </View>
+          {assetsMode ? (
+            <>
+              <View style={styles.heroRule} />
+              <View style={styles.heroColumns}>
+                <View style={styles.heroCol}>
+                  <AppText size="sm" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(assets?.cash ?? total)}
+                  </AppText>
+                  <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                    {t('tabCash')}
+                  </AppText>
+                </View>
+                <View style={styles.heroColDivider} />
+                <View style={styles.heroCol}>
+                  <AppText size="sm" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(assets?.plotsValue ?? 0)}
+                  </AppText>
+                  <AppText size="xs" weight="semibold" color="gold" numberOfLines={1}>
+                    {t('assetPlots')}
+                  </AppText>
+                </View>
+                <View style={styles.heroColDivider} />
+                <View style={styles.heroCol}>
+                  <AppText size="sm" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(assets?.constructionValue ?? 0)}
+                  </AppText>
+                  <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
+                    {t('assetConstruction')}
+                  </AppText>
+                </View>
+              </View>
+            </>
           ) : null}
         </View>
 
-        {/* Quick actions  every kind of cash movement */}
-        <View style={styles.quickRow}>
-          <QuickAction icon="aamdani" tone="success" label={t('aamdani')} onPress={() => navigation.navigate('Entry', { direction: 'IN' })} />
-          <QuickAction icon="kharcha" tone="danger" label={t('kharcha')} onPress={() => navigation.navigate('Entry', { direction: 'OUT' })} />
-          <QuickAction icon="netFlow" tone="accent" label={t('transferTitleV2')} onPress={() => navigation.navigate('Transfer')} />
-          <QuickAction icon="investor" tone="gold" label={t('udhaar')} onPress={() => navigation.navigate('Udhaar')} />
-        </View>
+        {/* Udhaar: the lending position, presented like the accounts. */}
+        <SectionHeader title={t('udhaar')} action={t('seeAll')} onAction={() => navigation.navigate('Udhaar')} />
+        <AppCard compact onPress={() => navigation.navigate('Udhaar')}>
+          <View style={styles.splitRow}>
+            <View style={styles.splitCol}>
+              <AppText size="xs" weight="semibold" color="textSecondary">
+                {t('receivable')}
+              </AppText>
+              <AppText size="md" weight="bold" color="success" tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(udhaar.receivable)}
+              </AppText>
+            </View>
+            <View style={styles.splitDivider} />
+            <View style={styles.splitCol}>
+              <AppText size="xs" weight="semibold" color="textSecondary">
+                {t('payable')}
+              </AppText>
+              <AppText size="md" weight="bold" color={udhaar.payable > 0 ? 'danger' : 'textPrimary'} tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(udhaar.payable)}
+              </AppText>
+            </View>
+          </View>
+        </AppCard>
 
-        {/* Accounts */}
-        <View style={styles.sectionHeader}>
-          <AppText size="lg" weight="bold">
-            {t('accountsTitle')}
-          </AppText>
-          <Pressable
-            onPress={() => setAddOpen(true)}
-            hitSlop={theme.touch.hitSlop}
-            accessibilityRole="button"
-            accessibilityLabel={t('addAccount')}
-          >
-            <AppText size="sm" weight="semibold" color="accent">
-              {t('addAccount')}
-            </AppText>
-          </Pressable>
-        </View>
+        {/* Accounts (view only; add/manage lives in Settings → Accounts). */}
+        <SectionHeader title={t('accountsTitle')} />
         <View style={styles.accountList}>
           {accounts.map((a) => (
             <AccountCard
@@ -194,89 +235,116 @@ export function CashScreen(): React.JSX.Element {
           ))}
         </View>
 
+        {/* Assets scope only: where the money is invested. */}
+        {assetsMode && projectStakes.length > 0 ? (
+          <>
+            <SectionHeader title={t('byProject')} action={t('seeAll')} onAction={() => navigation.navigate('Allocation')} />
+            <AppCard compact>
+              {projectStakes.slice(0, PREVIEW_ROWS).map((s, i) => (
+                <Pressable
+                  key={s.projectId}
+                  onPress={() => navigation.navigate('ProjectDetail', { projectId: s.projectId })}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.listRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                >
+                  <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex}>
+                    {s.name}
+                  </AppText>
+                  <AppText size="sm" weight="bold" color="gold" tabular>
+                    {formatRupees(s.invested)}
+                  </AppText>
+                </Pressable>
+              ))}
+            </AppCard>
+          </>
+        ) : null}
+
+        {assetsMode && investors.length > 0 ? (
+          <>
+            <SectionHeader title={t('byInvestor')} action={t('seeAll')} onAction={() => navigation.navigate('Allocation')} />
+            <AppCard compact>
+              {investors.slice(0, PREVIEW_ROWS).map((inv, i) => (
+                <Pressable
+                  key={inv.id}
+                  onPress={() => navigation.navigate('InvestorProfile', { investorId: inv.id })}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.listRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                >
+                  <View style={styles.flex}>
+                    <AppText size="sm" weight="semibold" numberOfLines={1}>
+                      {inv.name}
+                    </AppText>
+                    <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                      {`${formatRupees(inv.remaining)} ${t('remainingToInvest')}`}
+                    </AppText>
+                  </View>
+                  <AppText size="sm" weight="bold" color="gold" tabular>
+                    {formatRupees(inv.staked)}
+                  </AppText>
+                </Pressable>
+              ))}
+            </AppCard>
+          </>
+        ) : null}
+
         {/* Full recent activity */}
-        <AppText size="lg" weight="bold" style={styles.activityTitle}>
-          {t('recentActivity')}
-        </AppText>
+        <SectionHeader title={t('recentActivity')} />
         <AppCard compact>
           <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
         </AppCard>
       </ScrollView>
 
-      {/* Add-account sheet */}
-      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <Pressable style={styles.backdrop} onPress={() => setAddOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          <AppText size="lg" weight="bold">
-            {t('addAccount')}
-          </AppText>
-          <FloatingLabelInput label={t('accountName')} value={newName} onChangeText={setNewName} />
-          <View style={styles.typeRow}>
-            {ACCOUNT_TYPES.map((type) => {
-              const active = type === newType;
-              return (
-                <Pressable
-                  key={type}
-                  onPress={() => setNewType(type)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={[styles.typeBtn, active && styles.typeBtnActive]}
-                >
-                  <AppText size="sm" weight="bold" color={active ? 'onPrimary' : 'textSecondary'}>
-                    {t(TYPE_LABEL[type])}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-          <AmountInput floating surface={theme.colors.card} label={t('openingBalance')} value={newOpening} onChange={setNewOpening} />
-          <AppButton label={t('save')} icon="check" onPress={onAddAccount} loading={saving} disabled={!newName.trim()} />
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* Green quick-entry FAB — the same chooser as the Home "+". */}
+      <Pressable
+        onPress={() => navigation.navigate('QuickEntry')}
+        accessibilityRole="button"
+        accessibilityLabel={t('quickEntry')}
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: insets.bottom + theme.spacing.xl },
+          pressed && styles.fabPressed,
+        ]}
+      >
+        <AppIcon name="add" size={26} color="onAccent" strokeWidth={2.4} />
+      </Pressable>
     </View>
   );
 }
 
-/** A soft-tinted quick-action tile (income / expense / transfer / udhaar). */
-function QuickAction({
-  icon,
-  tone,
-  label,
-  onPress,
+/** Section title with an optional trailing accent action (e.g. "See all"). */
+function SectionHeader({
+  title,
+  action,
+  onAction,
 }: {
-  icon: IconKey;
-  tone: ColorKey;
-  label: string;
-  onPress: () => void;
+  title: string;
+  action?: string;
+  onAction?: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.quickTile, pressed && styles.pressed]}
-    >
-      <View style={[styles.quickIcon, { backgroundColor: softToneColor(theme, tone) }]}>
-        <AppIcon name={icon} size={20} color={tone} />
-      </View>
-      <AppText size="xs" weight="semibold" center numberOfLines={1}>
-        {label}
+    <View style={styles.sectionHeader}>
+      <AppText size="lg" weight="bold">
+        {title}
       </AppText>
-    </Pressable>
+      {action && onAction ? (
+        <Pressable onPress={onAction} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
+          <AppText size="sm" weight="semibold" color="accent">
+            {action}
+          </AppText>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
+
+const FAB_SIZE = 56;
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
+    flex: { flex: 1 },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },
     hero: {
       backgroundColor: theme.colors.card,
@@ -285,62 +353,62 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.xs,
       ...theme.shadows.card,
     },
-    udhaarRow: {
+    heroRule: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginTop: theme.spacing.sm,
+    },
+    heroColumns: {
       flexDirection: 'row',
-      gap: theme.spacing.lg,
-      marginTop: theme.spacing.xs,
+      alignItems: 'stretch',
+      marginTop: theme.spacing.sm,
     },
-    quickRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    quickTile: {
-      flex: 1,
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.card,
-      paddingVertical: theme.spacing.md,
-      ...theme.shadows.card,
+    heroCol: { flex: 1, alignItems: 'center', gap: 2 },
+    heroColDivider: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
     },
-    quickIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: theme.radius.chip,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    pressed: { opacity: 0.7 },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       marginTop: theme.spacing.sm,
     },
-    accountList: { gap: theme.spacing.md },
-    activityTitle: { marginTop: theme.spacing.sm },
-    /* add-account sheet */
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
+    splitRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      paddingVertical: theme.spacing.xs,
     },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    typeRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    typeBtn: {
-      flex: 1,
-      minHeight: theme.touch.minTarget,
+    splitCol: { flex: 1, alignItems: 'center', gap: 2 },
+    splitDivider: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
+    },
+    accountList: { gap: theme.spacing.md },
+    listRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
+      minHeight: 40,
+    },
+    ruled: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+    },
+    pressed: { opacity: 0.7 },
+    fab: {
+      position: 'absolute',
+      right: theme.spacing.lg,
+      width: FAB_SIZE,
+      height: FAB_SIZE,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.card,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
+      ...theme.shadows.fab,
     },
-    typeBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    fabPressed: { opacity: 0.9 },
   });

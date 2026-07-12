@@ -12,7 +12,7 @@ type ColorKey = keyof ColorPalette;
 interface AppTextProps extends TextProps {
   /** Typography size token. Defaults to `md` (16). Content stays >= 13. */
   size?: SizeKey;
-  /** Font weight token mapped to a concrete Inter family. */
+  /** Font weight token mapped to a concrete M PLUS Rounded 1c family. */
   weight?: WeightKey;
   /** Theme color key. Defaults to primary text. */
   color?: ColorKey;

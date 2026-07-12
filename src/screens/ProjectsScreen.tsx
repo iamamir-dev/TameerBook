@@ -20,7 +20,10 @@ import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-/** Projects list: a card per project + a floating "Naya Project" button. */
+/**
+ * Projects list: Active projects first, Completed below (plain section
+ * headers), a card per project + a floating "Naya Project" button.
+ */
 export function ProjectsScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -32,6 +35,9 @@ export function ProjectsScreen(): React.JSX.Element {
   const refresh = useProjectsStore((s) => s.refresh);
 
   useFocusReload(refresh);
+
+  const active = items.filter((i) => i.project.status !== 'COMPLETED');
+  const done = items.filter((i) => i.project.status === 'COMPLETED');
 
   return (
     <View style={styles.screen}>
@@ -61,7 +67,26 @@ export function ProjectsScreen(): React.JSX.Element {
             { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE + 72 },
           ]}
         >
-          {items.map((item) => (
+          {active.length > 0 ? (
+            <AppText size="lg" weight="bold" style={styles.sectionTitle}>
+              {t('sectionActive')}
+            </AppText>
+          ) : null}
+          {active.map((item) => (
+            <ProjectCard
+              key={item.project.id}
+              summary={item}
+              onPress={() =>
+                navigation.navigate('ProjectDetail', { projectId: item.project.id })
+              }
+            />
+          ))}
+          {done.length > 0 ? (
+            <AppText size="lg" weight="bold" style={styles.sectionTitle}>
+              {t('sectionCompleted')}
+            </AppText>
+          ) : null}
+          {done.map((item) => (
             <ProjectCard
               key={item.project.id}
               summary={item}
@@ -182,6 +207,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    sectionTitle: { marginTop: theme.spacing.sm },
     card: { gap: theme.spacing.md },
     cardHeader: {
       flexDirection: 'row',

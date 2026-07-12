@@ -68,7 +68,7 @@ export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.El
               : { style: [styles.row, i > 0 && styles.ruled] })}
           >
             <View style={styles.left}>
-              <AppText size="md" weight="semibold" numberOfLines={1}>
+              <AppText size="sm" weight="semibold" numberOfLines={1}>
                 {row.title}
               </AppText>
               <AppText size="xs" color="textSecondary">
@@ -77,7 +77,7 @@ export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.El
             </View>
             <View style={styles.right}>
               <AppText
-                size="md"
+                size="sm"
                 weight="bold"
                 tabular
                 color={row.direction === 'in' ? 'success' : 'danger'}
@@ -100,13 +100,15 @@ export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.El
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     table: {},
+    // Slightly denser than the touch minimum: these rows read like notebook
+    // lines (mostly non-pressable), so more entries fit on screen.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: theme.spacing.md,
-      minHeight: theme.touch.minTarget,
-      paddingVertical: theme.spacing.sm,
+      minHeight: 40,
+      paddingVertical: theme.spacing.xs,
     },
     ruled: {
       borderTopWidth: StyleSheet.hairlineWidth,

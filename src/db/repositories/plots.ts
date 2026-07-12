@@ -295,12 +295,25 @@ export async function includePlotInProject(plotId: string, projectId: string): P
   });
 }
 
+/** Thrown when a plot is already claimed by another project (or sold). */
+export class PlotUnavailableError extends Error {
+  constructor(public readonly plotId: string) {
+    super('PLOT_UNAVAILABLE');
+    this.name = 'PlotUnavailableError';
+  }
+}
+
+/** True when an error from a save action is the plot-availability guard. */
+export function isPlotUnavailable(e: unknown): e is PlotUnavailableError {
+  return e instanceof Error && e.message === 'PLOT_UNAVAILABLE';
+}
+
 /** Validate that a plot exists and isn't already claimed by another project. */
 export async function assertPlotIncludable(plotId: string, projectId: string): Promise<void> {
   const plot = await getPlot(plotId);
   if (!plot) throw new Error(`includePlotInProject: plot ${plotId} not found`);
-  if (plot.project_id && plot.project_id !== projectId) {
-    throw new Error('includePlotInProject: plot already belongs to another project');
+  if (plot.status === 'SOLD' || (plot.project_id && plot.project_id !== projectId)) {
+    throw new PlotUnavailableError(plotId);
   }
 }
 

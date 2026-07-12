@@ -1,6 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useDataVersion } from '@/stores/useDataVersion';
 import { reportError } from '@/utils/log';
 
 export interface FocusReload {
@@ -36,6 +37,17 @@ export function useFocusReload(load: () => Promise<void>): FocusReload {
       void reload();
     }, [reload])
   );
+
+  // Real-time updates: any successful save anywhere bumps the data version,
+  // and every MOUNTED screen reloads immediately — including the tab scenes
+  // kept alive behind the current one, which never re-fire a focus event.
+  const version = useDataVersion((s) => s.version);
+  const seenVersion = useRef(version);
+  useEffect(() => {
+    if (version === seenVersion.current) return;
+    seenVersion.current = version;
+    void reload();
+  }, [version, reload]);
 
   return { loadFailed, reload };
 }

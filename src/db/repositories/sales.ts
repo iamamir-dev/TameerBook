@@ -8,6 +8,7 @@ import {
 import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { addDocument } from './documents';
+import { assertProjectActive } from './guards';
 import { addTransaction, insertTransaction, LimitExceededError } from './transactions';
 
 export interface NewSale {
@@ -65,6 +66,7 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
   const sale = await db.getFirstAsync<SaleRow>('SELECT * FROM sales WHERE id = ?', input.saleId);
   if (!sale) throw new Error(`addSaleReceipt: sale ${input.saleId} not found`);
   if (input.amount <= 0) throw new Error('addSaleReceipt: amount must be positive');
+  await assertProjectActive(sale.project_id);
 
   // VALIDATION: the buyer can never pay more than what is still outstanding.
   const received = await db.getFirstAsync<{ s: number }>(

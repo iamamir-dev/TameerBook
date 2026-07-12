@@ -6,26 +6,26 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
+import { AddPlotSheet } from '@/components/project/AddPlotSheet';
+import { PhaseCardsSection } from '@/components/project/PhaseCardsSection';
+import { ProjectCostCard } from '@/components/project/ProjectCostCard';
+import { ProjectGalleryCard } from '@/components/project/ProjectGalleryCard';
+import { ProjectSummaryCard, SettleAction, type SettleActionProps } from '@/components/project/ProjectSummaryCard';
 import {
-  AmountInput,
-  AppButton,
   AppCard,
   AppHeader,
   AppIcon,
   AppText,
-  PhaseCard,
-  SelectSheet,
-  type IconKey,
   type PhaseMetric,
-  type SelectOption,
 } from '@/components/ui';
 import {
+  addDocument,
   attachInvestorsToProject,
+  getCompletionWarnings,
   getConstructionSummary,
   getPlotSummary,
   getProjectCapitalSummary,
@@ -33,12 +33,16 @@ import {
   getProjectSettlementSummary,
   getProjectSummary,
   getSaleSummary,
-  listAccountsWithBalance,
-  listInvestors,
-  type AccountWithBalance,
+  includePlotInProject,
+  listDocuments,
+  listInvestorsWithCapacity,
+  listPlots,
+  markProjectCompleted,
   type ConstructionSummary,
-  type InvestorRow,
+  type DocumentRow,
+  type InvestorCapacity,
   type OwnershipShare,
+  type PlotRow,
   type PlotSummary,
   type ProjectCost,
   type ProjectSummary,
@@ -54,14 +58,16 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
+import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailRoute = RouteProp<RootStackParamList, 'ProjectDetail'>;
 
 /**
  * v2 Project Detail  the project is a PLOT + CONSTRUCTION + SALE. A total-cost
- * hero, three tappable phase cards into the phase detail screens, the
- * investors (Musharakah) section, and the live settlement summary.
+ * hero, three tappable phase cards into the phase detail screens, the milestone
+ * progress card, the investors (Musharakah) section, the live settlement
+ * summary with the settle affordance, and the manual "mark completed" action.
  */
 export function ProjectDetailScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -81,24 +87,30 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [saleSum, setSaleSum] = useState<SaleSummary | null>(null);
   const [shares, setShares] = useState<OwnershipShare[]>([]);
   const [settlement, setSettlement] = useState<SettlementSummary | null>(null);
+  const [photos, setPhotos] = useState<DocumentRow[]>([]);
+  const [freePlots, setFreePlots] = useState<PlotRow[]>([]);
+  // On a completed project only the summary shows; this reveals the rest.
+  const [showAllSections, setShowAllSections] = useState(false);
 
-  // Attach-investor sheet (form lives in the shared <InvestorSheet>).
-  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
+  // Sheets: attach-investor (shared <InvestorSheet>) + add-plot picker.
+  const [allInvestors, setAllInvestors] = useState<InvestorCapacity[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [plotSheetOpen, setPlotSheetOpen] = useState(false);
 
   const { saving, run: runSave } = useSaveAction();
 
   const loadAll = useCallback(async () => {
     const s = await getProjectSummary(projectId);
     setSummary(s);
-    const [c, cs, ss, cap, stl, plot] = await Promise.all([
+    const [c, cs, ss, cap, stl, plot, pics, owned] = await Promise.all([
       getProjectCost(projectId),
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
       getSaleSummary(projectId),
       getProjectCapitalSummary(projectId),
       getProjectSettlementSummary(projectId),
       s?.project.plot_id ? getPlotSummary(s.project.plot_id) : Promise.resolve(null),
+      listDocuments('site_photo', projectId),
+      s?.project.plot_id ? Promise.resolve<PlotRow[]>([]) : listPlots('OWNED'),
     ]);
     setCost(c);
     setConstr(cs);
@@ -106,20 +118,20 @@ export function ProjectDetailScreen(): React.JSX.Element {
     setShares(cap.shares);
     setSettlement(stl);
     setPlotSum(plot);
+    setPhotos(pics);
+    setFreePlots(owned);
   }, [projectId]);
 
   const load = useCallback(async () => {
-    await Promise.all([
-      loadAll(),
-      listInvestors().then(setAllInvestors),
-      listAccountsWithBalance().then(setAccounts),
-    ]);
+    await Promise.all([loadAll(), listInvestorsWithCapacity().then(setAllInvestors)]);
   }, [loadAll]);
 
   const { reload } = useFocusReload(load);
 
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
+  // A completed project shows only its summary until the user reveals the rest.
+  const detailsVisible = !completed || showAllSections;
 
   const catLabel = useCallback(
     (c: { nameEn: string; nameUr: string }) => (language === 'ur' ? c.nameUr : c.nameEn),
@@ -150,13 +162,24 @@ export function ProjectDetailScreen(): React.JSX.Element {
     saleSum.outstanding <= 0 &&
     saleSum.receiptsTotal > 0;
 
+  // Settle affordance (V-18): visible once a sale exists, hidden when
+  // completed, disabled with the concrete reason until fully received.
+  const settleAction: SettleActionProps | null =
+    !!saleSum?.sale && !completed
+      ? {
+        enabled: canSettle,
+        outstanding: saleSum.outstanding,
+        onPress: () => navigation.navigate('Settlement', { projectId }),
+      }
+      : null;
+
   // Investors not yet on this project (so the sheet doesn't offer duplicates).
   const attachedIds = useMemo(() => new Set(shares.map((s) => s.investorId)), [shares]);
   const availableInvestors: InvestorOption[] = useMemo(
     () =>
       allInvestors
         .filter((i) => !attachedIds.has(i.id))
-        .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount })),
+        .map((i) => ({ id: i.id, name: i.name, staked: i.staked, remaining: i.remaining })),
     [allInvestors, attachedIds]
   );
 
@@ -180,6 +203,64 @@ export function ProjectDetailScreen(): React.JSX.Element {
     if (!ok) return;
     setAttachOpen(false);
     await Promise.all([reload(), refreshProjects().catch(swallow('project:refresh'))]);
+  };
+
+  /** Capture a site photo into the project gallery, then refresh it. */
+  const onCapturePhoto = () => {
+    void runSave(async () => {
+      const uri = await captureReceipt();
+      if (!uri) return;
+      await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
+      setPhotos(await listDocuments('site_photo', projectId));
+    });
+  };
+
+  /** "Add plot later" (UC-2): open the OWNED-plot picker, or fall back to the Plots tab. */
+  const onAddPlot = () => {
+    if (freePlots.length > 0) setPlotSheetOpen(true);
+    else navigation.navigate('Tabs', { screen: 'Plots' });
+  };
+
+  const onSelectPlot = async (plotId: string) => {
+    setPlotSheetOpen(false);
+    const ok = await runSave(() => includePlotInProject(plotId, projectId));
+    // Reload even after a conflict — the free-plot list may have gone stale (1.4).
+    await reload();
+    if (ok) await refreshProjects().catch(swallow('project:refresh'));
+  };
+
+  /**
+   * Manual "Mark completed" (UC-10): confirm with the loose ends listed
+   * (unpaid labor, buyer outstanding) — completing with either is allowed.
+   */
+  const onMarkCompleted = () => {
+    void (async () => {
+      const warnings = (await getCompletionWarnings(projectId).catch(
+        swallow('project:completionWarnings')
+      )) ?? { laborOutstanding: 0, saleOutstanding: 0 };
+      const body =
+        t('markCompletedBody') +
+        (warnings.laborOutstanding > 0
+          ? `\n${t('warnLaborDues')}: ${formatRupees(warnings.laborOutstanding)}`
+          : '') +
+        (warnings.saleOutstanding > 0
+          ? `\n${t('warnBuyerOwes')}: ${formatRupees(warnings.saleOutstanding)}`
+          : '');
+      Alert.alert(t('markCompletedTitle'), body, [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('markCompleted'),
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const ok = await runSave(() => markProjectCompleted(projectId));
+              if (!ok) return;
+              await Promise.all([reload(), refreshProjects().catch(swallow('project:refresh'))]);
+            })();
+          },
+        },
+      ]);
+    })();
   };
 
   if (!project || !cost || !constr || !saleSum) {
@@ -216,213 +297,124 @@ export function ProjectDetailScreen(): React.JSX.Element {
           </View>
         ) : null}
 
-        {/* Total cost hero */}
-        <View style={styles.hero}>
-          <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
-            {t('projectTotalCost')}
-          </AppText>
-          <AppText size="display" weight="bold" color="primary" tabular numberOfLines={1} adjustsFontSizeToFit>
-            {formatRupees(cost.totalCost)}
-          </AppText>
-          <AppText size="xs" color="textSecondary" numberOfLines={2}>
-            {`${t('phasePlot')} ${formatRupees(cost.plotCost)} · ${t('phaseConstruction')} ${formatRupees(cost.constructionCost)} · ${t('phaseSale')} ${formatRupees(cost.saleCost)}`}
-          </AppText>
-        </View>
+        {/* Total cost hero with the color-coded phase columns */}
+        <ProjectCostCard cost={cost} />
 
-        {/* Phase: Plot */}
-        {project.plot_id ? (
-          <PhaseCard
-            title={t('phasePlot')}
-            icon="plot"
-            tone="primary"
-            headline={plotSum?.totalCost ?? 0}
-            headlineLabel={t('totalCostLabel')}
-            metrics={[
-              { label: t('dealPrice'), value: formatRupees(plotSum?.dealPrice ?? 0) },
-              { label: t('paidToSeller'), value: formatRupees(plotSum?.paidToSeller ?? 0), tone: 'success' },
-              { label: t('remaining'), value: formatRupees(plotSum?.remaining ?? 0) },
-              { label: t('plotExpensesLabel'), value: formatRupees(plotSum?.expenses ?? 0) },
-            ]}
-            onPress={() => navigation.navigate('PlotDetail', { plotId: project.plot_id! })}
-          />
-        ) : (
-          <AppCard onPress={() => navigation.navigate('Tabs', { screen: 'Plots' })} style={styles.noPlotCard}>
-            <View style={styles.noPlotRow}>
-              <AppIcon name="plot" size={22} color="textSecondary" />
-              <View style={styles.flex}>
-                <AppText size="md" weight="bold" color="textSecondary">
-                  {t('phasePlot')}
-                </AppText>
-                <AppText size="xs" color="textSecondary">
-                  {t('selectPlot')}
-                </AppText>
-              </View>
-              <AppText size="sm" weight="semibold" color="accent">
-                {t('plotsTitle')}
-              </AppText>
-            </View>
-          </AppCard>
-        )}
-
-        {/* Phase: Construction */}
-        <PhaseCard
-          title={t('phaseConstruction')}
-          icon="tools"
-          tone="accent"
-          headline={constr.total}
-          headlineLabel={t('constructionCost')}
-          metrics={constructionMetrics}
-          onPress={() => navigation.navigate('ConstructionDetail', { projectId })}
-        />
-
-        {/* Phase: Sale */}
-        <PhaseCard
-          title={t('phaseSale')}
-          icon="tag"
-          tone="gold"
-          headline={saleSum.sale?.agreed_price ?? 0}
-          headlineLabel={t('saleDeal')}
-          metrics={[
-            { label: t('buyerReceipts'), value: formatRupees(saleSum.receiptsTotal), tone: 'success' },
-            { label: t('outstanding'), value: formatRupees(saleSum.outstanding) },
-            { label: t('saleCosts'), value: formatRupees(saleSum.costs) },
-          ]}
-          onPress={() => navigation.navigate('SaleDetail', { projectId })}
-        />
-
-        {/* Investors */}
-        <View style={styles.sectionHeader}>
-          <AppText size="lg" weight="bold">
-            {`${t('tabInvestors')} (${shares.length})`}
-          </AppText>
-          {!completed ? (
-            <Pressable onPress={openAttach} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
-              <AppText size="sm" weight="semibold" color="accent">
-                {t('attachInvestor')}
-              </AppText>
-            </Pressable>
-          ) : null}
-        </View>
-        <AppCard compact>
-          {shares.length === 0 ? (
-            <AppText size="sm" color="textSecondary" center style={styles.emptyPad}>
-              {t('guideInvestors')}
-            </AppText>
-          ) : (
-            shares.map((s, i) => (
-              <Pressable
-                key={s.projectInvestorId}
-                onPress={() => navigation.navigate('InvestorProfile', { investorId: s.investorId })}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.invRow, i > 0 && styles.ruled, pressed && styles.pressed]}
-              >
-                <View style={styles.invIcon}>
-                  <AppIcon name="investor" size={18} color="gold" />
-                </View>
-                <View style={styles.flex}>
-                  <AppText size="sm" weight="bold" numberOfLines={1}>
-                    {s.name}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary" tabular>
-                    {formatRupees(s.capital)}
-                  </AppText>
-                </View>
-                <AppText size="sm" weight="bold" tabular color="textSecondary">
-                  {`${Math.round(s.ownershipPct)}%`}
-                </AppText>
-                <AppIcon name="forward" size={18} color="textSecondary" />
-              </Pressable>
-            ))
-          )}
-        </AppCard>
-
-        {/* Summary / settlement */}
-        {showSummary && settlement ? (
-          <>
-            <View style={styles.sectionHeader}>
-              <AppText size="lg" weight="bold">
-                {t('projectSummary')}
-              </AppText>
-            </View>
-            <AppCard>
-              <SummaryRow label={t('revenue')} value={formatRupees(settlement.revenue)} first />
-              <SummaryRow label={t('totalExpenses')} value={formatRupees(settlement.expenses)} />
-              <SummaryRow
-                label={t(settlement.isProfit ? 'netProfit' : 'netLoss')}
-                value={formatRupees(Math.abs(settlement.net))}
-                tone={settlement.isProfit ? 'success' : 'danger'}
-              />
-
-              {settlement.investors.map((inv) => (
-                <View key={inv.investorId} style={[styles.partyBlock, styles.ruled]}>
-                  <AppText size="sm" weight="bold" numberOfLines={1}>
-                    {inv.name}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary" tabular>
-                    {`${t('paidInCapital')}: ${formatRupees(inv.invested)} · ${inv.profitPct}%`}
-                  </AppText>
-                  <View style={styles.partyLine}>
-                    <AppText size="xs" color={inv.profitOrLoss >= 0 ? 'success' : 'danger'} tabular>
-                      {`${t(inv.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')} ${formatRupees(Math.abs(inv.profitOrLoss))}`}
-                    </AppText>
-                    {inv.donation > 0 ? (
-                      <AppText size="xs" color="textSecondary" tabular>
-                        {`${t('donationLabel')} ${formatRupees(inv.donation)}`}
-                      </AppText>
-                    ) : null}
-                    <AppText size="xs" weight="bold" tabular>
-                      {`${t('payoutLabel')} ${formatRupees(inv.finalPayout)}`}
-                    </AppText>
-                  </View>
-                </View>
-              ))}
-
-              <View style={[styles.partyBlock, styles.ruled]}>
-                <AppText size="sm" weight="bold">
-                  {t('owner')}
-                </AppText>
-                <AppText size="xs" color="textSecondary" tabular>
-                  {`${t('ownerInvested')}: ${formatRupees(settlement.owner.invested)}`}
-                </AppText>
-                <View style={styles.partyLine}>
-                  <AppText size="xs" color={settlement.owner.profitOrLoss >= 0 ? 'success' : 'danger'} tabular>
-                    {`${t(settlement.owner.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')} ${formatRupees(Math.abs(settlement.owner.profitOrLoss))}`}
-                  </AppText>
-                  {settlement.owner.donation > 0 ? (
-                    <AppText size="xs" color="textSecondary" tabular>
-                      {`${t('donationLabel')} ${formatRupees(settlement.owner.donation)}`}
-                    </AppText>
-                  ) : null}
-                </View>
-              </View>
-
-              {settlement.totalDonation > 0 ? (
-                <SummaryRow label={t('totalDonation')} value={formatRupees(settlement.totalDonation)} />
-              ) : null}
-
-              {canSettle ? (
-                <View style={styles.settleBtn}>
-                  <AppButton
-                    label={t('settleTitle')}
-                    icon="checkCircle"
-                    onPress={() => navigation.navigate('Settlement', { projectId })}
-                  />
-                </View>
-              ) : null}
-            </AppCard>
-          </>
+        {/* Completed projects lead with the settlement summary (the project's
+            final story); on active projects it appears after investors below. */}
+        {completed && settlement ? (
+          <ProjectSummaryCard settlement={settlement} settle={null} />
         ) : null}
 
-        {/* Tools */}
-        <AppCard compact onPress={() => navigation.navigate('PhotoDiary', { projectId })}>
-          <View style={styles.toolRow}>
-            <AppIcon name="camera" size={20} color="primary" />
-            <AppText size="sm" weight="bold" style={styles.flex}>
-              {t('photoDiary')}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </View>
-        </AppCard>
+        {/* Reveal / hide the rest of the project on a completed project (UC-10). */}
+        {completed ? (
+          <AppCard compact onPress={() => setShowAllSections((v) => !v)}>
+            <View style={styles.toolRow}>
+              <AppIcon name={showAllSections ? 'collapse' : 'expand'} size={20} color="primary" />
+              <AppText size="sm" weight="bold" style={styles.flex}>
+                {showAllSections ? t('hideSections') : t('showSections')}
+              </AppText>
+              <AppIcon name="forward" size={18} color="textSecondary" />
+            </View>
+          </AppCard>
+        ) : null}
+
+        {detailsVisible ? (
+          <>
+            {/* Phase cards: Plot / Construction / Sale */}
+            <PhaseCardsSection
+              project={project}
+              completed={completed}
+              plotSum={plotSum}
+              constr={constr}
+              saleSum={saleSum}
+              constructionMetrics={constructionMetrics}
+              hasFreePlots={freePlots.length > 0}
+              onAddPlot={onAddPlot}
+              onOpenPlot={(plotId) => navigation.navigate('PlotDetail', { plotId })}
+              onOpenConstruction={() => navigation.navigate('ConstructionDetail', { projectId })}
+              onOpenSale={() => navigation.navigate('SaleDetail', { projectId })}
+            />
+
+            {/* Investors */}
+            <View style={styles.sectionHeader}>
+              <AppText size="lg" weight="bold">
+                {`${t('tabInvestors')} (${shares.length})`}
+              </AppText>
+              {!completed ? (
+                <Pressable onPress={openAttach} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
+                  <AppText size="sm" weight="semibold" color="accent">
+                    {t('attachInvestor')}
+                  </AppText>
+                </Pressable>
+              ) : null}
+            </View>
+            <AppCard compact>
+              {shares.length === 0 ? (
+                <AppText size="sm" color="textSecondary" center style={styles.emptyPad}>
+                  {t('guideInvestors')}
+                </AppText>
+              ) : (
+                shares.map((s, i) => (
+                  <Pressable
+                    key={s.projectInvestorId}
+                    onPress={() => navigation.navigate('InvestorProfile', { investorId: s.investorId })}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.invRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                  >
+                    <View style={styles.invIcon}>
+                      <AppIcon name="investor" size={18} color="gold" />
+                    </View>
+                    <View style={styles.flex}>
+                      <AppText size="sm" weight="bold" numberOfLines={1}>
+                        {s.name}
+                      </AppText>
+                      <AppText size="xs" color="textSecondary" tabular>
+                        {formatRupees(s.capital)}
+                      </AppText>
+                    </View>
+                    <AppText size="sm" weight="bold" tabular color="textSecondary">
+                      {`${Math.round(s.ownershipPct)}%`}
+                    </AppText>
+                    <AppIcon name="forward" size={18} color="textSecondary" />
+                  </Pressable>
+                ))
+              )}
+            </AppCard>
+
+            {/* Active-project summary / settle affordance. Renders even before a
+                receipt exists (standalone card) so it is never a dead-end. */}
+            {!completed && showSummary && settlement ? (
+              <ProjectSummaryCard settlement={settlement} settle={settleAction} />
+            ) : !completed && settleAction ? (
+              <AppCard>
+                <SettleAction {...settleAction} />
+              </AppCard>
+            ) : null}
+
+            {/* Mark completed  manual close without a settlement (UC-10) */}
+            {project.status === 'ACTIVE' ? (
+              <AppCard compact onPress={onMarkCompleted}>
+                <View style={styles.toolRow}>
+                  <AppIcon name="checkCircle" size={20} color="success" />
+                  <AppText size="sm" weight="bold" style={styles.flex}>
+                    {t('markCompleted')}
+                  </AppText>
+                  <AppIcon name="forward" size={18} color="textSecondary" />
+                </View>
+              </AppCard>
+            ) : null}
+
+            {/* Site-photo gallery (styled, with lightbox + "see all" → diary) */}
+            <ProjectGalleryCard
+              photos={photos}
+              onCapture={onCapturePhoto}
+              busy={saving}
+              onSeeAll={() => navigation.navigate('PhotoDiary', { projectId })}
+              readOnly={completed}
+            />
+          </>
+        ) : null}
       </ScrollView>
 
       {/* Attach-investor sheet — the ONE shared investor drawer. */}
@@ -433,33 +425,14 @@ export function ProjectDetailScreen(): React.JSX.Element {
         saving={saving}
         onSubmit={onAttachInvestors}
       />
-    </View>
-  );
-}
 
-/* ------------------------------ helpers --------------------------------- */
-
-function SummaryRow({
-  label,
-  value,
-  tone,
-  first,
-}: {
-  label: string;
-  value: string;
-  tone?: 'success' | 'danger';
-  first?: boolean;
-}): React.JSX.Element {
-  const theme = useTheme();
-  const styles = makeStyles(theme);
-  return (
-    <View style={[styles.summaryRow, !first && styles.ruled]}>
-      <AppText size="sm" color="textSecondary">
-        {label}
-      </AppText>
-      <AppText size="sm" weight="bold" tabular color={tone ?? 'textPrimary'}>
-        {value}
-      </AppText>
+      {/* Add-plot picker (OWNED plots only). */}
+      <AddPlotSheet
+        visible={plotSheetOpen}
+        onClose={() => setPlotSheetOpen(false)}
+        plots={freePlots}
+        onSelect={(plotId) => void onSelectPlot(plotId)}
+      />
     </View>
   );
 }
@@ -478,15 +451,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
     },
-    hero: {
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.xs,
-      ...theme.shadows.card,
-    },
-    noPlotCard: { opacity: 0.85 },
-    noPlotRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -514,66 +478,5 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
     },
     pressed: { opacity: 0.7 },
-    summaryRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: theme.spacing.sm,
-    },
-    partyBlock: { paddingVertical: theme.spacing.sm, gap: 2 },
-    partyLine: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: theme.spacing.md,
-    },
-    settleBtn: { marginTop: theme.spacing.md },
     toolRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-    /* sheet */
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    chipRow: { gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-    chip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.primarySoft,
-      maxWidth: 200,
-    },
-    chipActive: { backgroundColor: theme.colors.primary },
-    pctRow: { flexDirection: 'row', alignItems: 'center' },
-    stepper: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-    stepBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.primarySoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    stepValue: { minWidth: 48, textAlign: 'center' },
-    accountChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.primarySoft,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: theme.spacing.lg,
-      minHeight: theme.touch.minTarget,
-    },
   });

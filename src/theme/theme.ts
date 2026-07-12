@@ -175,14 +175,58 @@ export const fontSizes = {
 } as const;
 
 /**
- * Inter families loaded via @expo-google-fonts/inter. RN doesn't reliably
- * apply numeric fontWeight to custom fonts on Android, so each weight maps to
- * a concrete family name instead.
+ * Selectable font families (Settings → Font). RN doesn't reliably apply
+ * numeric fontWeight to custom fonts on Android, so each weight token maps to
+ * a concrete family name. Every option keeps the app's one-cut-heavier rule:
+ * body = Medium 500, "semibold" = Bold 700, "bold" = ExtraBold 800.
+ *
+ * All are Latin-first: Urdu (Arabic-script) glyphs fall back to the OS font,
+ * which RN handles automatically per-glyph.
  */
+export const FONT_OPTIONS = {
+  rounded: {
+    label: 'M PLUS Rounded',
+    regular: 'MPLUSRounded1c_500Medium',
+    semibold: 'MPLUSRounded1c_700Bold',
+    bold: 'MPLUSRounded1c_800ExtraBold',
+  },
+  baloo: {
+    label: 'Baloo 2',
+    regular: 'Baloo2_500Medium',
+    semibold: 'Baloo2_700Bold',
+    bold: 'Baloo2_800ExtraBold',
+  },
+  serif: {
+    label: 'Fraunces',
+    regular: 'Fraunces_500Medium',
+    semibold: 'Fraunces_700Bold',
+    bold: 'Fraunces_800ExtraBold',
+  },
+  inter: {
+    label: 'Inter',
+    regular: 'Inter_500Medium',
+    semibold: 'Inter_700Bold',
+    bold: 'Inter_800ExtraBold',
+  },
+} as const;
+
+export type FontKey = keyof typeof FONT_OPTIONS;
+
+/** Text-size steps selectable in Settings (multiplies every size token). */
+export const FONT_SCALES = {
+  small: 0.9,
+  normal: 1,
+  large: 1.1,
+  xl: 1.22,
+} as const;
+
+export type FontScaleKey = keyof typeof FONT_SCALES;
+
+/** The default font (the app's shipped look). */
 export const fontFamilies = {
-  regular: 'Inter_400Regular',
-  semibold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
+  regular: FONT_OPTIONS.rounded.regular,
+  semibold: FONT_OPTIONS.rounded.semibold,
+  bold: FONT_OPTIONS.rounded.bold,
 } as const;
 
 export interface Typography {
@@ -201,28 +245,42 @@ export interface Typography {
   tabularNums: TextStyle['fontVariant'];
 }
 
-const typography: Typography = {
-  fontFamily: fontFamilies.regular,
-  sizes: fontSizes,
-  families: fontFamilies,
-  weights: {
-    regular: fontFamilies.regular,
-    semibold: fontFamilies.semibold,
-    bold: fontFamilies.bold,
-  },
-  lineHeights: {
-    overline: 14,
-    xs: 18,
-    sm: 20,
-    md: 22,
-    lg: 24,
-    xl: 28,
-    xxl: 34,
-    display: 40,
-  },
-  tracking: 1.2,
-  tabularNums: ['tabular-nums'],
+const BASE_LINE_HEIGHTS: Record<keyof typeof fontSizes, number> = {
+  overline: 14,
+  xs: 18,
+  sm: 20,
+  md: 22,
+  lg: 24,
+  xl: 28,
+  xxl: 34,
+  display: 40,
 };
+
+/**
+ * Compose the typography block for a font choice + text-size step (both from
+ * Settings). Sizes and line heights scale together so rhythm is preserved.
+ */
+export function buildTypography(fontKey: FontKey = 'rounded', scaleKey: FontScaleKey = 'normal'): Typography {
+  const font = FONT_OPTIONS[fontKey];
+  const scale = FONT_SCALES[scaleKey];
+  const scaled = <K extends string>(rec: Record<K, number>): Record<K, number> =>
+    Object.fromEntries(
+      (Object.entries(rec) as [K, number][]).map(([k, v]) => [k, Math.round(v * scale)])
+    ) as Record<K, number>;
+
+  const families = { regular: font.regular, semibold: font.semibold, bold: font.bold };
+  return {
+    fontFamily: families.regular,
+    sizes: scaled(fontSizes) as Typography['sizes'],
+    families: families as Typography['families'],
+    weights: families,
+    lineHeights: scaled(BASE_LINE_HEIGHTS),
+    tracking: 1.2,
+    tabularNums: ['tabular-nums'],
+  };
+}
+
+const typography: Typography = buildTypography();
 
 /* -------------------------------------------------------------------------- */
 /*  Spacing, radius, shadows, touch                                           */
@@ -357,9 +415,19 @@ export const darkTheme: Theme = {
   touch,
 };
 
-/** Pick the right theme object for a mode. Light is the default everywhere. */
-export const getTheme = (mode: ThemeMode): Theme =>
-  mode === 'dark' ? darkTheme : lightTheme;
+/**
+ * Pick the theme for a mode, optionally recomposed with the user's font and
+ * text-size choices (Settings). Defaults return the static shared objects.
+ */
+export const getTheme = (
+  mode: ThemeMode,
+  fontKey: FontKey = 'rounded',
+  scaleKey: FontScaleKey = 'normal'
+): Theme => {
+  const base = mode === 'dark' ? darkTheme : lightTheme;
+  if (fontKey === 'rounded' && scaleKey === 'normal') return base;
+  return { ...base, typography: buildTypography(fontKey, scaleKey) };
+};
 
 /** Helper type for components that build text styles from the theme. */
 export type ThemedTextStyle = TextStyle;

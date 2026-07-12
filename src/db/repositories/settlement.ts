@@ -2,6 +2,7 @@ import { getDatabase } from '../database';
 import { DEFAULT_USER } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { getProjectCapitalSummary } from './capital';
+import { assertProjectActive } from './guards';
 import { listProjectInvestors } from './investors';
 import { getProject } from './projects';
 import { getSaleSummary } from './sales';
@@ -239,6 +240,8 @@ export async function getProjectSettlementSummary(projectId: string): Promise<Se
  */
 export async function settleProject(projectId: string, createdBy: string = DEFAULT_USER): Promise<void> {
   const db = await getDatabase();
+  // Settling twice would double-pay every investor — the ACTIVE check blocks it.
+  await assertProjectActive(projectId);
   const settlement = await computeSettlement(projectId);
   const createdAt = nowISO();
   const date = nowISO().slice(0, 10);
@@ -295,5 +298,11 @@ export async function settleProject(projectId: string, createdBy: string = DEFAU
       );
     }
     await tx.runAsync("UPDATE projects SET status = 'COMPLETED' WHERE id = ?", projectId);
+    // The settled project's plot is sold with it — it must never be offered
+    // to a future project.
+    await tx.runAsync(
+      "UPDATE plots SET status = 'SOLD' WHERE project_id = ? AND status = 'IN_PROJECT'",
+      projectId
+    );
   });
 }

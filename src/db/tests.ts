@@ -17,7 +17,10 @@ import {
   addProjectInvestor,
   addSaleCost,
   attachInvestorsToProject,
+  getLaborerKhata,
   getProjectCapitalSummary,
+  listInvestorsWithCapacity,
+  markProjectCompleted,
   addSaleReceipt,
   addTransaction,
   attachLaborerToProject,
@@ -366,8 +369,15 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     // Opening balance = the owner's own money (the residual financier).
     const acc = await addAccount({ name: 'DBTEST Set-Acc', type: 'BANK', openingBalance: 1000 });
     c.accounts.push(acc.id);
+    // A linked plot (no payments, so the PnL is untouched) — settlement must
+    // flip it to SOLD so it can never be offered to a future project.
+    const plot = await createPlot({ name: 'DBTEST Set-Plot', dealPrice: 0 });
+    c.plots.push(plot.id);
     // donation 10% via per-project override (doesn't touch user settings)
-    const project = await createProject({ name: 'DBTEST Set', donationPct: 10 }, { withDefaultMilestones: false });
+    const project = await createProject(
+      { name: 'DBTEST Set', donationPct: 10, plotId: plot.id },
+      { withDefaultMilestones: false }
+    );
     c.projects.push(project.id);
 
     const amir = await addInvestor({ name: 'DBTEST Amir' });
@@ -411,6 +421,8 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     checks.push(['DONATION entries written (25)', (donationRows?.c ?? 0) === 2 && near(donationRows?.s ?? 0, 25)]);
     const proj = await db.getFirstAsync<{ status: string }>('SELECT status FROM projects WHERE id = ?', project.id);
     checks.push(['project COMPLETED', proj?.status === 'COMPLETED']);
+    const plotRow = await db.getFirstAsync<{ status: string }>('SELECT status FROM plots WHERE id = ?', plot.id);
+    checks.push(['plot SOLD on settlement', plotRow?.status === 'SOLD']);
 
     return report('T-SET profit + donation', checks);
   } finally {
@@ -545,8 +557,9 @@ async function testAttachInvestors(): Promise<TestResult> {
   try {
     const project = await createProject({ name: 'DBTEST AT-Proj' }, { withDefaultMilestones: false });
     c.projects.push(project.id);
-    const a = await addInvestor({ name: 'DBTEST AT-A' });
-    const b = await addInvestor({ name: 'DBTEST AT-B' });
+    // Pledges are required now: a stake must fit committed − staked (T-CAP).
+    const a = await addInvestor({ name: 'DBTEST AT-A', committedAmount: 3000 });
+    const b = await addInvestor({ name: 'DBTEST AT-B', committedAmount: 1000 });
     c.investors.push(a.id, b.id);
 
     // One atomic call: participation + INITIAL capital per investor.
@@ -569,6 +582,134 @@ async function testAttachInvestors(): Promise<TestResult> {
       ['B capital 1000 → 25%', near(shareB?.capital ?? 0, 1000) && near(shareB?.ownershipPct ?? 0, 25)],
     ];
     return report('T-ATTACH investors attach atomically', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+async function testInvestorCapacity(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const pA = await createProject({ name: 'DBTEST Cap-A' }, { withDefaultMilestones: false });
+    const pB = await createProject({ name: 'DBTEST Cap-B' }, { withDefaultMilestones: false });
+    c.projects.push(pA.id, pB.id);
+    const inv = await addInvestor({ name: 'DBTEST Cap-Inv', committedAmount: 5000 });
+    c.investors.push(inv.id);
+
+    const checks: Check[] = [];
+    const capOf = async () =>
+      (await listInvestorsWithCapacity()).find((i) => i.id === inv.id);
+
+    // Pledge 5000, stake 3000 in A → 2000 left for everything else.
+    await attachInvestorsToProject(pA.id, [{ investorId: inv.id, amount: 3000 }], { date: D });
+    let cap = await capOf();
+    checks.push(['staked 3000 / remaining 2000', near(cap?.staked ?? 0, 3000) && near(cap?.remaining ?? 0, 2000)]);
+
+    // More than remaining is blocked; exactly remaining is fine.
+    checks.push([
+      'stake beyond remaining blocked',
+      await expectThrow(
+        () => attachInvestorsToProject(pB.id, [{ investorId: inv.id, amount: 2500 }], { date: D }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+    await attachInvestorsToProject(pB.id, [{ investorId: inv.id, amount: 2000 }], { date: D });
+    cap = await capOf();
+    checks.push(['fully staked → remaining 0', near(cap?.remaining ?? 0, 0)]);
+
+    // Stale re-attach: silently skipped, never a duplicate row or an error.
+    await attachInvestorsToProject(pA.id, [{ investorId: inv.id, amount: 1000 }], { date: D });
+    const db = await getDatabase();
+    const rows = await db.getFirstAsync<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM project_investors WHERE project_id = ? AND investor_id = ? AND status = 'ACTIVE'",
+      pA.id,
+      inv.id
+    );
+    checks.push(['re-attach skipped (1 participation)', (rows?.n ?? 0) === 1]);
+    cap = await capOf();
+    checks.push(['re-attach added no capital', near(cap?.staked ?? 0, 5000)]);
+
+    return report('T-CAP investor capacity across projects', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+async function testLaborDayConflictAndOverpay(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST Lab2-Acc', type: 'CASH', openingBalance: 5000 });
+    c.accounts.push(acc.id);
+    const pA = await createProject({ name: 'DBTEST Lab2-A' }, { withDefaultMilestones: false });
+    const pB = await createProject({ name: 'DBTEST Lab2-B' }, { withDefaultMilestones: false });
+    c.projects.push(pA.id, pB.id);
+    const worker = await addLaborer({ name: 'DBTEST Lab2-W' });
+    c.laborers.push(worker.id);
+
+    const plA = await attachLaborerToProject({ projectId: pA.id, laborerId: worker.id, dailyWage: 1000 });
+    const plB = await attachLaborerToProject({ projectId: pB.id, laborerId: worker.id, dailyWage: 800 });
+
+    const checks: Check[] = [];
+    // One dihari per day: FULL on A blocks earning on B the same date…
+    await markAttendance({ projectLaborerId: plA.id, date: D, status: 'FULL' });
+    checks.push([
+      'second project same day blocked',
+      await expectThrow(
+        () => markAttendance({ projectLaborerId: plB.id, date: D, status: 'FULL' }),
+        'ATTENDANCE_CONFLICT'
+      ),
+    ]);
+    // …but ABSENT is a note, not an earning, and a different day is fine.
+    await markAttendance({ projectLaborerId: plB.id, date: D, status: 'ABSENT' });
+    await markAttendance({ projectLaborerId: plB.id, date: '2026-06-07', status: 'FULL' });
+    const khata = await getLaborerKhata(worker.id);
+    checks.push(['earned 1000 + 800 across projects', near(khata.totals.earned, 1800)]);
+
+    // Pay only what is owed on that participation.
+    checks.push([
+      'overpay blocked',
+      await expectThrow(
+        () => payLaborer({ projectLaborerId: plA.id, amount: 1500, date: D, accountId: acc.id }),
+        'LIMIT_EXCEEDED'
+      ),
+    ]);
+    await payLaborer({ projectLaborerId: plA.id, amount: 600, date: D, accountId: acc.id });
+    const bal = await getLaborBalance(plA.id);
+    checks.push(['paid 600 → owed 400', near(bal.balance, 400)]);
+
+    return report('T-LAB2 one dihari/day + overpay guard', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+async function testProjectCompletionGuards(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const p = await createProject({ name: 'DBTEST Done' }, { withDefaultMilestones: false });
+    c.projects.push(p.id);
+    const inv = await addInvestor({ name: 'DBTEST Done-Inv', committedAmount: 1000 });
+    c.investors.push(inv.id);
+
+    await markProjectCompleted(p.id);
+    const db = await getDatabase();
+    const row = await db.getFirstAsync<{ status: string }>('SELECT status FROM projects WHERE id = ?', p.id);
+
+    const checks: Check[] = [
+      ['manual completion sets COMPLETED', row?.status === 'COMPLETED'],
+      [
+        'attach investor on closed project blocked',
+        await expectThrow(
+          () => attachInvestorsToProject(p.id, [{ investorId: inv.id, amount: 500 }], { date: D }),
+          'PROJECT_CLOSED'
+        ),
+      ],
+      [
+        'settling a closed project blocked',
+        await expectThrow(() => settleProject(p.id), 'PROJECT_CLOSED'),
+      ],
+    ];
+    return report('T-DONE completed project is read-only', checks);
   } finally {
     await c.run();
   }
@@ -828,6 +969,9 @@ export async function runDbTests(): Promise<TestResult[]> {
     testUdhaarFlow,
     testInvestorPayments,
     testAttachInvestors,
+    testInvestorCapacity,
+    testLaborDayConflictAndOverpay,
+    testProjectCompletionGuards,
     testInvestorCommitmentVsCash,
     testValidationGuards,
     testCompanyIsolation,

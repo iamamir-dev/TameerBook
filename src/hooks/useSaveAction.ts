@@ -1,8 +1,16 @@
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { isDuplicateAccount, isInsufficientFunds, isLimitExceeded } from '@/db';
+import {
+  isAttendanceConflict,
+  isDuplicateAccount,
+  isInsufficientFunds,
+  isLimitExceeded,
+  isPlotUnavailable,
+  isProjectClosed,
+} from '@/db';
 import { useTranslation } from '@/i18n';
+import { useDataVersion } from '@/stores/useDataVersion';
 import { reportError } from '@/utils/log';
 
 export interface SaveAction {
@@ -30,11 +38,18 @@ export function useSaveAction(): SaveAction {
       setSaving(true);
       try {
         await fn();
+        // Every successful write announces itself so every mounted screen
+        // (useFocusReload subscribers) refreshes in real time.
+        useDataVersion.getState().bump();
         return true;
       } catch (e) {
         if (isInsufficientFunds(e)) Alert.alert(t('insufficientFunds'));
         else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
         else if (isDuplicateAccount(e)) Alert.alert(t('duplicateAccount'));
+        else if (isAttendanceConflict(e))
+          Alert.alert(t('attendanceConflict'), e.conflictingProjectName);
+        else if (isProjectClosed(e)) Alert.alert(t('projectClosedNote'));
+        else if (isPlotUnavailable(e)) Alert.alert(t('plotTaken'));
         else {
           reportError('screen:save', e);
           Alert.alert(t('errorTitle'), t('errorBody'));

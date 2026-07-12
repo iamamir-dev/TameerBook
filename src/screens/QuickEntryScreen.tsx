@@ -20,7 +20,7 @@ interface Tile {
   tone: ToneKey;
 }
 
-/** The six quick-entry actions, in user-facing Roman Urdu terms. */
+/** The quick-entry actions, in user-facing Roman Urdu terms. */
 const TILES: Tile[] = [
   { labelKey: 'kharcha', icon: 'kharcha', tone: 'danger' },
   { labelKey: 'aamdani', icon: 'aamdani', tone: 'success' },
@@ -28,10 +28,11 @@ const TILES: Tile[] = [
   { labelKey: 'transferTitleV2', icon: 'netFlow', tone: 'accent' },
   { labelKey: 'udhaar', icon: 'investor', tone: 'gold' },
   { labelKey: 'investor', icon: 'investor', tone: 'accent' },
+  { labelKey: 'dehari', icon: 'dehari', tone: 'primary' },
 ];
 
 /**
- * Full-screen Quick Entry launcher. Six big, color-coded tiles  each well
+ * Full-screen Quick Entry launcher. Big, color-coded tiles  each well
  * above the 56px minimum  let a user start the right kind of entry with one
  * tap.
  */
@@ -48,6 +49,7 @@ export function QuickEntryScreen(): React.JSX.Element {
     else if (tile.labelKey === 'transferTitleV2') navigation.replace('Transfer');
     else if (tile.labelKey === 'udhaar') navigation.replace('Udhaar');
     else if (tile.labelKey === 'investor') navigation.replace('Investment');
+    else if (tile.labelKey === 'dehari') navigation.replace('Labor');
     else navigation.replace('ComingSoon', { titleKey: tile.labelKey });
   };
 

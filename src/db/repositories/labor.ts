@@ -9,7 +9,29 @@ import {
 import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
-import { addTransaction } from './transactions';
+import { assertProjectActive } from './guards';
+import { addTransaction, LimitExceededError } from './transactions';
+
+/**
+ * Thrown when a worker already earned a dihari on ANOTHER project that day —
+ * one worker, one paid day, no double-earning across projects.
+ */
+export class AttendanceConflictError extends Error {
+  constructor(
+    public readonly laborerId: string,
+    public readonly date: string,
+    /** Name of the project that already holds the day. */
+    public readonly conflictingProjectName: string
+  ) {
+    super('ATTENDANCE_CONFLICT');
+    this.name = 'AttendanceConflictError';
+  }
+}
+
+/** True when an error from a save action is the one-project-per-day guard. */
+export function isAttendanceConflict(e: unknown): e is AttendanceConflictError {
+  return e instanceof Error && e.message === 'ATTENDANCE_CONFLICT';
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Laborers (reusable workers)                                               */
@@ -69,12 +91,30 @@ export interface AttachLaborerInput {
 /** Attach a worker to a project with the agreed dihari. */
 export async function attachLaborerToProject(input: AttachLaborerInput): Promise<ProjectLaborerRow> {
   const db = await getDatabase();
+  await assertProjectActive(input.projectId);
   const existing = await db.getFirstAsync<ProjectLaborerRow>(
     "SELECT * FROM project_laborers WHERE project_id = ? AND laborer_id = ? AND status = 'ACTIVE'",
     input.projectId,
     input.laborerId
   );
   if (existing) return existing;
+
+  // A previously-removed worker returns on their old row (with the new wage)
+  // so one worker never holds two participation rows on the same project.
+  const inactive = await db.getFirstAsync<ProjectLaborerRow>(
+    "SELECT * FROM project_laborers WHERE project_id = ? AND laborer_id = ? AND status = 'INACTIVE' ORDER BY created_at DESC LIMIT 1",
+    input.projectId,
+    input.laborerId
+  );
+  if (inactive) {
+    await db.runAsync(
+      "UPDATE project_laborers SET status = 'ACTIVE', daily_wage = ?, joined_at = ? WHERE id = ?",
+      input.dailyWage,
+      nowISO().slice(0, 10),
+      inactive.id
+    );
+    return (await getProjectLaborer(inactive.id))!;
+  }
 
   const id = uuid();
   await db.runAsync(
@@ -146,6 +186,28 @@ export async function markAttendance(input: MarkAttendanceInput): Promise<LaborA
   const db = await getDatabase();
   const pl = await getProjectLaborer(input.projectLaborerId);
   if (!pl) throw new Error(`markAttendance: project laborer ${input.projectLaborerId} not found`);
+  await assertProjectActive(pl.project_id);
+
+  // One dihari per day: an earning mark (FULL/HALF) is blocked when the same
+  // worker already earned on a DIFFERENT project that date. ABSENT is always
+  // allowed — recording an absence earns nothing.
+  if (input.status !== 'ABSENT') {
+    const conflict = await db.getFirstAsync<{ projectName: string }>(
+      `SELECT COALESCE(pr.name, '') AS projectName
+       FROM labor_attendance la
+       JOIN project_laborers opl ON opl.id = la.project_laborer_id
+       JOIN projects pr ON pr.id = opl.project_id
+       WHERE opl.laborer_id = ? AND la.date = ? AND la.status != 'ABSENT'
+         AND la.project_laborer_id != ?
+       LIMIT 1`,
+      pl.laborer_id,
+      input.date,
+      input.projectLaborerId
+    );
+    if (conflict) {
+      throw new AttendanceConflictError(pl.laborer_id, input.date, conflict.projectName);
+    }
+  }
 
   const accrued = wageForStatus(pl.daily_wage, input.status);
   const existing = await db.getFirstAsync<LaborAttendanceRow>(
@@ -229,6 +291,14 @@ export interface PayLaborerInput {
 export async function payLaborer(input: PayLaborerInput): Promise<void> {
   const pl = await getProjectLaborer(input.projectLaborerId);
   if (!pl) throw new Error(`payLaborer: project laborer ${input.projectLaborerId} not found`);
+  if (input.amount <= 0) throw new Error('payLaborer: amount must be positive');
+
+  // VALIDATION: a worker can only be paid what they're owed on this project.
+  const { balance } = await getLaborBalance(input.projectLaborerId);
+  if (input.amount > balance + 0.001) {
+    throw new LimitExceededError(balance, input.amount);
+  }
+
   const laborer = await getLaborer(pl.laborer_id);
   const categoryId = await categoryIdByName('Labor Payment', 'EXPENSE', 'مزدور کی ادائیگی');
 
@@ -324,6 +394,137 @@ export interface ProjectLaborTotals {
   paid: number;
   outstanding: number;
   workers: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Worker khata  the worker-centric view across ALL projects                 */
+/* -------------------------------------------------------------------------- */
+
+export interface LaborerTotals extends LaborerRow {
+  /** Σ wage_accrued across every project participation. */
+  earned: number;
+  /** Σ labor payments across every project participation. */
+  taken: number;
+  /** earned − taken: what the worker is owed overall. */
+  balance: number;
+  /** Number of projects they are (or were) attached to. */
+  projects: number;
+}
+
+/** Every active worker with their cross-project earned/taken/balance (Labor home). */
+export async function listLaborersWithTotals(): Promise<LaborerTotals[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<LaborerTotals>(
+    `SELECT l.*,
+       COALESCE((SELECT SUM(la.wage_accrued) FROM labor_attendance la
+         JOIN project_laborers pl ON pl.id = la.project_laborer_id
+         WHERE pl.laborer_id = l.id), 0) AS earned,
+       COALESCE((SELECT SUM(t.amount) FROM transactions t
+         JOIN project_laborers pl ON pl.id = t.labor_id
+         WHERE pl.laborer_id = l.id AND t.direction = 'OUT' AND t.is_void = 0), 0) AS taken,
+       COALESCE((SELECT SUM(la.wage_accrued) FROM labor_attendance la
+         JOIN project_laborers pl ON pl.id = la.project_laborer_id
+         WHERE pl.laborer_id = l.id), 0)
+       - COALESCE((SELECT SUM(t.amount) FROM transactions t
+         JOIN project_laborers pl ON pl.id = t.labor_id
+         WHERE pl.laborer_id = l.id AND t.direction = 'OUT' AND t.is_void = 0), 0) AS balance,
+       (SELECT COUNT(*) FROM project_laborers pl WHERE pl.laborer_id = l.id) AS projects
+     FROM laborers l
+     WHERE l.status = 'ACTIVE' AND l.company_id = ?
+     ORDER BY l.name ASC`,
+    requireCompanyId()
+  );
+}
+
+export interface LaborerProjectParticipation {
+  projectLaborer: ProjectLaborerRow;
+  projectName: string;
+  projectStatus: string;
+  balance: LaborBalance;
+  /** Today's attendance on this project (null = not marked yet). */
+  todayStatus: AttendanceStatus | null;
+}
+
+/** One history line in a worker's khata: an attendance accrual or a payment. */
+export interface LaborerKhataEntry {
+  date: string;
+  projectName: string;
+  kind: 'ATTENDANCE' | 'PAYMENT';
+  /** FULL/HALF/ABSENT for attendance rows. */
+  attendanceStatus: AttendanceStatus | null;
+  /** Positive accrual for attendance, positive payment amount for payments. */
+  amount: number;
+}
+
+export interface LaborerKhata {
+  laborer: LaborerRow;
+  totals: { earned: number; taken: number; balance: number };
+  /** Their participations (active first), each with its own per-project balance. */
+  participations: LaborerProjectParticipation[];
+  /** Unified attendance + payment history across projects, newest first. */
+  history: LaborerKhataEntry[];
+}
+
+/** The worker's full khata across all projects (the Labor detail screen). */
+export async function getLaborerKhata(laborerId: string): Promise<LaborerKhata> {
+  const db = await getDatabase();
+  const laborer = await getLaborer(laborerId);
+  if (!laborer) throw new Error(`getLaborerKhata: laborer ${laborerId} not found`);
+
+  const pls = await db.getAllAsync<ProjectLaborerRow & { projectName: string; projectStatus: string }>(
+    `SELECT pl.*, COALESCE(pr.name, '') AS projectName, pr.status AS projectStatus
+     FROM project_laborers pl
+     JOIN projects pr ON pr.id = pl.project_id
+     WHERE pl.laborer_id = ?
+     ORDER BY pl.status ASC, pl.created_at DESC`,
+    laborerId
+  );
+
+  const today = nowISO().slice(0, 10);
+  const participations: LaborerProjectParticipation[] = [];
+  for (const pl of pls) {
+    const { projectName, projectStatus, ...row } = pl;
+    const todayRow = await db.getFirstAsync<{ status: AttendanceStatus }>(
+      'SELECT status FROM labor_attendance WHERE project_laborer_id = ? AND date = ?',
+      pl.id,
+      today
+    );
+    participations.push({
+      projectLaborer: row,
+      projectName,
+      projectStatus,
+      balance: await getLaborBalance(pl.id),
+      todayStatus: todayRow?.status ?? null,
+    });
+  }
+
+  const history = await db.getAllAsync<LaborerKhataEntry>(
+    `SELECT la.date, COALESCE(pr.name, '') AS projectName, 'ATTENDANCE' AS kind,
+            la.status AS attendanceStatus, la.wage_accrued AS amount
+     FROM labor_attendance la
+     JOIN project_laborers pl ON pl.id = la.project_laborer_id
+     JOIN projects pr ON pr.id = pl.project_id
+     WHERE pl.laborer_id = ?
+     UNION ALL
+     SELECT t.date, COALESCE(pr.name, '') AS projectName, 'PAYMENT' AS kind,
+            NULL AS attendanceStatus, t.amount AS amount
+     FROM transactions t
+     JOIN project_laborers pl ON pl.id = t.labor_id
+     JOIN projects pr ON pr.id = pl.project_id
+     WHERE pl.laborer_id = ? AND t.direction = 'OUT' AND t.is_void = 0
+     ORDER BY date DESC`,
+    laborerId,
+    laborerId
+  );
+
+  const earned = participations.reduce((s, p) => s + p.balance.accrued, 0);
+  const taken = participations.reduce((s, p) => s + p.balance.paid, 0);
+  return {
+    laborer,
+    totals: { earned, taken, balance: earned - taken },
+    participations,
+    history,
+  };
 }
 
 /** Project-wide labor totals for the construction summary. */

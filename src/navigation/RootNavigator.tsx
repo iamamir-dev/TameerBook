@@ -6,6 +6,7 @@ import { useTheme } from '@/theme';
 
 import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
 import { AccountsScreen } from '@/screens/AccountsScreen';
+import { AllocationScreen } from '@/screens/AllocationScreen';
 import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
 import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
@@ -16,6 +17,8 @@ import { HomeScreen } from '@/screens/HomeScreen';
 import { InvestmentEntryScreen } from '@/screens/InvestmentEntryScreen';
 import { InvestorProfileScreen } from '@/screens/InvestorProfileScreen';
 import { InvestorsScreen } from '@/screens/InvestorsScreen';
+import { LaborerDetailScreen } from '@/screens/LaborerDetailScreen';
+import { LaborScreen } from '@/screens/LaborScreen';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
 import { NewPlotScreen } from '@/screens/NewPlotScreen';
@@ -95,6 +98,7 @@ export function RootNavigator(): React.JSX.Element {
 
       {/* Reports hub (reached from Settings) */}
       <Stack.Screen name="Reports" component={ReportsScreen} />
+      <Stack.Screen name="Allocation" component={AllocationScreen} />
 
       {/* Plots (the list itself is a tab) */}
       <Stack.Screen name="NewPlot" component={NewPlotScreen} />
@@ -117,6 +121,10 @@ export function RootNavigator(): React.JSX.Element {
       {/* Udhaar */}
       <Stack.Screen name="Udhaar" component={UdhaarScreen} />
       <Stack.Screen name="UdhaarDetail" component={UdhaarDetailScreen} />
+
+      {/* Labor (worker khatas across projects) */}
+      <Stack.Screen name="Labor" component={LaborScreen} />
+      <Stack.Screen name="LaborerDetail" component={LaborerDetailScreen} />
 
       {/* Investors / reports / misc */}
       <Stack.Screen name="InvestorProfile" component={InvestorProfileScreen} />

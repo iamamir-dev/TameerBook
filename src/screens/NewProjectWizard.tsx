@@ -28,10 +28,10 @@ import {
   attachInvestorsToProject,
   createProject,
   listAccountsWithBalance,
-  listInvestors,
+  listInvestorsWithCapacity,
   listPlots,
   type AccountWithBalance,
-  type InvestorRow,
+  type InvestorCapacity,
   type PlotRow,
 } from '@/db';
 import { useSaveAction } from '@/hooks';
@@ -83,7 +83,7 @@ export function NewProjectWizard(): React.JSX.Element {
 
   // Investors entered during creation + the add-investor sheet's draft state.
   const [investors, setInvestors] = useState<DraftInvestor[]>([]);
-  const [allInvestors, setAllInvestors] = useState<InvestorRow[]>([]);
+  const [allInvestors, setAllInvestors] = useState<InvestorCapacity[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -91,7 +91,7 @@ export function NewProjectWizard(): React.JSX.Element {
   useFocusEffect(
     useCallback(() => {
       listPlots('OWNED').then(setPlots).catch(swallow('newProject:plots'));
-      listInvestors().then(setAllInvestors).catch(swallow('newProject:investors'));
+      listInvestorsWithCapacity().then(setAllInvestors).catch(swallow('newProject:investors'));
       listAccountsWithBalance().then(setAccounts).catch(swallow('newProject:accounts'));
     }, [])
   );
@@ -107,7 +107,7 @@ export function NewProjectWizard(): React.JSX.Element {
   const stagedIds = new Set(investors.map((i) => i.investorId));
   const availableInvestors: InvestorOption[] = allInvestors
     .filter((i) => !stagedIds.has(i.id))
-    .map((i) => ({ id: i.id, name: i.name, committed: i.committed_amount }));
+    .map((i) => ({ id: i.id, name: i.name, staked: i.staked, remaining: i.remaining }));
 
   const openAddInvestor = () => setAddOpen(true);
 
@@ -275,18 +275,31 @@ export function NewProjectWizard(): React.JSX.Element {
           {step === 2 ? (
             <View style={styles.reviewCard}>
               <ReviewRow label={t('projectName')} value={name.trim()} first />
-              <ReviewRow
-                label={t('phasePlot')}
-                value={
-                  selectedPlot
-                    ? `${selectedPlot.name} · ${formatRupees(selectedPlot.deal_price)}`
-                    : ''
-                }
-              />
+              {/* Skipping the plot / investors is a visible choice, not an accident. */}
+              {selectedPlot ? (
+                <ReviewRow
+                  label={t('phasePlot')}
+                  value={`${selectedPlot.name} · ${formatRupees(selectedPlot.deal_price)}`}
+                />
+              ) : (
+                <View style={[styles.reviewRow, styles.ruled]}>
+                  <AppText size="sm" color="textSecondary">
+                    {t('noPlotChoice')}
+                  </AppText>
+                </View>
+              )}
               {investors.map((inv, i) => (
                 <ReviewRow key={`${inv.name}-${i}`} label={inv.name} value={formatRupees(inv.amount)} />
               ))}
-              <ReviewRow label={t('tabInvestors')} value={String(investors.length)} />
+              {investors.length === 0 ? (
+                <View style={[styles.reviewRow, styles.ruled]}>
+                  <AppText size="sm" color="textSecondary">
+                    {t('ownerFunded')}
+                  </AppText>
+                </View>
+              ) : (
+                <ReviewRow label={t('tabInvestors')} value={String(investors.length)} />
+              )}
             </View>
           ) : null}
         </ScrollView>

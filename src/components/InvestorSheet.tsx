@@ -9,11 +9,14 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { formatRupees } from '@/utils/money';
 
-/** An investor available to include, with their pledged (committed) amount. */
+/** An investor available to include, with their remaining capacity. */
 export interface InvestorOption {
   id: string;
   name: string;
-  committed: number;
+  /** Net capital already staked across ALL their projects. */
+  staked: number;
+  /** Pledge − staked (floored at 0): the most they can put into THIS project. */
+  remaining: number;
 }
 
 /** One investor's participation in the project: their stake in THIS project. */
@@ -34,8 +37,9 @@ interface InvestorSheetProps {
 /**
  * The ONE "add investors to a project" drawer (New Project wizard + Project
  * Detail). Tick the investors who are in this project and enter how much each
- * one invests HERE — a live ownership % is worked out from those amounts. Their
- * pledge (committed) is shown as a reference and pre-fills the amount. "+ New
+ * one invests HERE — a live ownership % is worked out from those amounts. Only
+ * investors with remaining capacity (pledge − staked everywhere) are listed
+ * (V-5); the remaining figure pre-fills and caps the amount (V-4). "+ New
  * investor" opens the shared person modal.
  */
 export function InvestorSheet({
@@ -50,7 +54,10 @@ export function InvestorSheet({
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const [people, setPeople] = useState<InvestorOption[]>(existingInvestors);
+  // Investors with nothing left to stake are hidden entirely (V-5).
+  const [people, setPeople] = useState<InvestorOption[]>(() =>
+    existingInvestors.filter((p) => p.remaining > 0)
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [personOpen, setPersonOpen] = useState(false);
@@ -58,14 +65,14 @@ export function InvestorSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setPeople(existingInvestors);
+    setPeople(existingInvestors.filter((p) => p.remaining > 0));
     setSelected(new Set());
     setAmounts({});
     setExpanded(false);
   }, [visible, existingInvestors]);
 
-  // Ticking an investor pre-fills their project stake with their pledge; the
-  // user can override it. Un-ticking clears the amount.
+  // Ticking an investor pre-fills their project stake with their remaining
+  // capacity; the user can override it. Un-ticking clears the amount.
   const toggle = (inv: InvestorOption) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -77,20 +84,20 @@ export function InvestorSheet({
         });
       } else {
         next.add(inv.id);
-        setAmounts((m) => ({ ...m, [inv.id]: m[inv.id] ?? inv.committed }));
+        setAmounts((m) => ({ ...m, [inv.id]: m[inv.id] ?? inv.remaining }));
       }
       return next;
     });
 
   const chosen = people.filter((p) => selected.has(p.id));
   const totalAmount = chosen.reduce((s, p) => s + (amounts[p.id] ?? 0), 0);
-  // Every selected investor needs a real stake within their pledge: an amount
-  // greater than 0 and no more than their committed total.
+  // Every selected investor needs a real stake within their capacity: an
+  // amount greater than 0 and no more than what they have left to invest (V-4).
   const allValid =
     chosen.length > 0 &&
     chosen.every((p) => {
       const a = amounts[p.id] ?? 0;
-      return a > 0 && a <= p.committed;
+      return a > 0 && a <= p.remaining;
     });
   const canSubmit = allValid;
 
@@ -133,6 +140,12 @@ export function InvestorSheet({
               {t('enterInvestorAmounts')}
             </AppText>
 
+            {people.length === 0 ? (
+              <AppText size="sm" color="textSecondary">
+                {t('noEligibleInvestors')}
+              </AppText>
+            ) : null}
+
             {people.map((inv) => {
               const isSel = selected.has(inv.id);
               const amt = amounts[inv.id] ?? 0;
@@ -152,7 +165,7 @@ export function InvestorSheet({
                         {inv.name}
                       </AppText>
                       <AppText size="xs" color="textSecondary" tabular>
-                        {`${t('committedAmount')}: ${formatRupees(inv.committed)}`}
+                        {`${formatRupees(inv.staked)} ${t('investedLabel')} · ${formatRupees(inv.remaining)} ${t('remainingToInvest')}`}
                       </AppText>
                     </View>
                     {isSel ? (
@@ -162,24 +175,17 @@ export function InvestorSheet({
                     ) : null}
                   </Pressable>
                   {isSel ? (
-                    <>
-                      <AmountInput
-                        label={t('investmentInProject')}
-                        value={amt}
-                        // Their project stake can NEVER exceed their pledged
-                        // total (committed) — clamp in real time, incl. 0.
-                        onChange={(v) =>
-                          setAmounts((m) => ({ ...m, [inv.id]: Math.min(v, inv.committed) }))
-                        }
-                        floating
-                        surface={theme.colors.background}
-                      />
-                      {inv.committed <= 0 ? (
-                        <AppText size="xs" weight="semibold" color="danger">
-                          {t('noCommittedSet')}
-                        </AppText>
-                      ) : null}
-                    </>
+                    <AmountInput
+                      label={t('investmentInProject')}
+                      value={amt}
+                      // Their project stake can NEVER exceed their remaining
+                      // capacity — clamp in real time (V-4).
+                      onChange={(v) =>
+                        setAmounts((m) => ({ ...m, [inv.id]: Math.min(v, inv.remaining) }))
+                      }
+                      floating
+                      surface={theme.colors.background}
+                    />
                   ) : null}
                 </View>
               );
@@ -224,7 +230,11 @@ export function InvestorSheet({
         visible={personOpen}
         onClose={() => setPersonOpen(false)}
         onSaved={(inv) => {
-          const opt = { id: inv.id, name: inv.name, committed: inv.committed_amount };
+          // A brand-new investor has staked nothing yet, so their whole pledge
+          // is their capacity; one saved without a pledge has none and stays
+          // hidden (V-5).
+          if (inv.committed_amount <= 0) return;
+          const opt = { id: inv.id, name: inv.name, staked: 0, remaining: inv.committed_amount };
           setPeople((list) => (list.some((p) => p.id === inv.id) ? list : [...list, opt]));
           setSelected((prev) => new Set(prev).add(inv.id));
           setAmounts((m) => ({ ...m, [inv.id]: m[inv.id] ?? inv.committed_amount }));

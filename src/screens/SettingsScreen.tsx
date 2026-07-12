@@ -18,9 +18,13 @@ import type { Language } from '@/i18n/types';
 import type { RootStackParamList } from '@/navigation/types';
 import { rescheduleReminders } from '@/notifications/reminders';
 import { useCompanyStore } from '@/stores/useCompanyStore';
-import { type ReminderKey, useSettingsStore } from '@/stores/useSettingsStore';
+import {
+  useSettingsStore,
+  type HomeSectionKey,
+  type ReminderKey,
+} from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
+import { FONT_OPTIONS, FONT_SCALES, type FontKey, type FontScaleKey, type Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -64,8 +68,54 @@ export function SettingsScreen(): React.JSX.Element {
     { key: 'buyer', labelKey: 'remBuyer' },
   ];
 
+  const fontFamily = useSettingsStore((s) => s.fontFamily);
+  const setFontFamily = useSettingsStore((s) => s.setFontFamily);
+  const fontScale = useSettingsStore((s) => s.fontScale);
+  const setFontScale = useSettingsStore((s) => s.setFontScale);
+  const homeSections = useSettingsStore((s) => s.homeSections);
+  const setHomeSection = useSettingsStore((s) => s.setHomeSection);
+
+  /** Optional Home sections (the essentials always show) — labels reuse the
+   *  app's own terms. */
+  const HOME_ROWS: { key: HomeSectionKey; labelKey: TranslationKey }[] = [
+    { key: 'activity', labelKey: 'recentActivity' },
+    { key: 'plots', labelKey: 'plotsTitle' },
+    { key: 'labor', labelKey: 'laborTitle' },
+    { key: 'udhaar', labelKey: 'udhaar' },
+  ];
+
+  const FONT_SIZE_LABEL: Record<FontScaleKey, TranslationKey> = {
+    small: 'fsSmall',
+    normal: 'fsNormal',
+    large: 'fsLarge',
+    xl: 'fsXL',
+  };
+
   const [langSheetOpen, setLangSheetOpen] = useState(false);
   const [companySheetOpen, setCompanySheetOpen] = useState(false);
+  const [fontSheetOpen, setFontSheetOpen] = useState(false);
+  const [sizeSheetOpen, setSizeSheetOpen] = useState(false);
+
+  const fontOptions = useMemo<SelectOption[]>(
+    () =>
+      (Object.keys(FONT_OPTIONS) as FontKey[]).map((key) => ({
+        id: key,
+        label: FONT_OPTIONS[key].label,
+        icon: 'language' as IconKey,
+      })),
+    []
+  );
+
+  const sizeOptions = useMemo<SelectOption[]>(
+    () =>
+      (Object.keys(FONT_SCALES) as FontScaleKey[]).map((key) => ({
+        id: key,
+        label: t(FONT_SIZE_LABEL[key]),
+        icon: 'language' as IconKey,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t]
+  );
 
   const companies = useCompanyStore((st) => st.companies);
   const activeCompanyId = useCompanyStore((st) => st.activeCompanyId);
@@ -118,16 +168,8 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
-          {/* Udhaar  person lending */}
-          <SettingRow
-            icon="investor"
-            label={t('udhaar')}
-            onPress={() => navigation.navigate('Udhaar')}
-          />
-
-          <Divider />
-
-          {/* Accounts  cash / bank / wallet balances */}
+          {/* Accounts  cash / bank / wallet balances. The single entry point
+              for account management (Udhaar lives in the Cash hub, not here). */}
           <SettingRow
             icon="balance"
             label={t('accountsTitle')}
@@ -166,6 +208,26 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
+          {/* Font family  re-themes every screen instantly */}
+          <SettingRow
+            icon="language"
+            label={t('fontFamilyLabel')}
+            value={FONT_OPTIONS[fontFamily].label}
+            onPress={() => setFontSheetOpen(true)}
+          />
+
+          <Divider />
+
+          {/* Text size  scales every size token app-wide */}
+          <SettingRow
+            icon="language"
+            label={t('fontSizeLabel')}
+            value={t(FONT_SIZE_LABEL[fontScale])}
+            onPress={() => setSizeSheetOpen(true)}
+          />
+
+          <Divider />
+
           {/* Version  read-only */}
           <SettingRow
             icon="settings"
@@ -173,6 +235,29 @@ export function SettingsScreen(): React.JSX.Element {
             value={appVersion}
             onLongPress={() => navigation.navigate('DevTools')}
           />
+        </AppCard>
+
+        {/* Home screen  choose which sections Home shows */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('homeSettingsTitle')}
+        </AppText>
+        <AppCard compact>
+          {HOME_ROWS.map((r, i) => (
+            <View key={r.key}>
+              {i > 0 ? <Divider /> : null}
+              <SettingRow
+                icon="home"
+                label={t(r.labelKey)}
+                trailing={
+                  <AppToggle
+                    value={homeSections[r.key]}
+                    onValueChange={(v) => setHomeSection(r.key, v)}
+                    accessibilityLabel={t(r.labelKey)}
+                  />
+                }
+              />
+            </View>
+          ))}
         </AppCard>
 
         {/* Reminders */}
@@ -306,6 +391,26 @@ export function SettingsScreen(): React.JSX.Element {
         title={t('language')}
         searchable={false}
         onSelect={(option) => setLanguage(option.id as Language)}
+      />
+
+      <SelectSheet
+        visible={fontSheetOpen}
+        onClose={() => setFontSheetOpen(false)}
+        options={fontOptions}
+        selectedId={fontFamily}
+        title={t('fontFamilyLabel')}
+        searchable={false}
+        onSelect={(option) => setFontFamily(option.id as FontKey)}
+      />
+
+      <SelectSheet
+        visible={sizeSheetOpen}
+        onClose={() => setSizeSheetOpen(false)}
+        options={sizeOptions}
+        selectedId={fontScale}
+        title={t('fontSizeLabel')}
+        searchable={false}
+        onSelect={(option) => setFontScale(option.id as FontScaleKey)}
       />
     </View>
   );

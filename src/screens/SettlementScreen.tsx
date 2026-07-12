@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppCard, AppHeader, AppText } from '@/components/ui';
@@ -73,15 +73,27 @@ export function SettlementScreen(): React.JSX.Element {
     }
   };
 
-  const onConfirm = async () => {
+  /**
+   * Commit the settlement, THEN offer the PDF (decoupled — a share failure
+   * must never look like a failed settlement, 9.5), then leave the screen.
+   */
+  const doSettle = async () => {
     if (!data) return;
     const ok = await runSave(async () => {
       await settleProject(projectId);
       await refreshProjects();
-      await sharePdf(data);
     });
     if (!ok) return;
+    await sharePdf(data).catch(swallow('settlement:sharePdf'));
     navigation.goBack();
+  };
+
+  /** Settlement is irreversible (V-19) — explicit confirmation before committing. */
+  const onConfirm = () => {
+    Alert.alert(t('confirmSettleTitle'), t('confirmSettleBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('confirm'), style: 'destructive', onPress: () => void doSettle() },
+    ]);
   };
 
   return (

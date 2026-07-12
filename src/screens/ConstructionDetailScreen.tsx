@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddExpenseSheet } from '@/components/construction/AddExpenseSheet';
 import { AddWorkerSheet } from '@/components/construction/AddWorkerSheet';
 import { CategoryBars } from '@/components/construction/CategoryBars';
-import { MilestoneChecklist } from '@/components/construction/MilestoneChecklist';
 import { WorkerSheet } from '@/components/construction/WorkerSheet';
 import {
   AppButton,
@@ -23,15 +22,12 @@ import {
   listAccountsWithBalance,
   listCategories,
   listLaborers,
-  listMilestones,
   listProjectLaborers,
   listProjectPhaseTransactions,
-  setMilestoneStatus,
   type AccountWithBalance,
   type CategoryRow,
   type ConstructionSummary,
   type LaborerRow,
-  type MilestoneRow,
   type ProjectLaborerSummary,
   type TransactionRow,
 } from '@/db';
@@ -40,7 +36,6 @@ import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -66,8 +61,8 @@ const CONSTRUCTION_CATEGORY_NAMES = new Set([
 /**
  * Construction-phase home for a project: the true build cost (cash spend +
  * accrued labor), category breakdown, quick expense entry, the labor khata
- * (attendance + wage balances + payments), milestone progress, and the
- * phase ledger.
+ * (attendance + wage balances + payments), and the phase ledger. Milestone
+ * progress lives on Project Detail (UC-11).
  */
 export function ConstructionDetailScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -77,14 +72,11 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const today = todayISO().slice(0, 10);
-
   const [summary, setSummary] = useState<ConstructionSummary | null>(null);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [workers, setWorkers] = useState<ProjectLaborerSummary[]>([]);
   const [allLaborers, setAllLaborers] = useState<LaborerRow[]>([]);
-  const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
   const [txns, setTxns] = useState<TransactionRow[]>([]);
 
   // Sheets
@@ -93,12 +85,11 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [sum, cats, accs, wkrs, ms, tx, labs] = await Promise.all([
+    const [sum, cats, accs, wkrs, tx, labs] = await Promise.all([
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
       listCategories(),
       listAccountsWithBalance(),
       listProjectLaborers(projectId),
-      listMilestones(projectId),
       listProjectPhaseTransactions(projectId, 'CONSTRUCTION'),
       listLaborers(),
     ]);
@@ -106,7 +97,6 @@ export function ConstructionDetailScreen(): React.JSX.Element {
     setCategories(cats);
     setAccounts(accs);
     setWorkers(wkrs);
-    setMilestones(ms);
     setTxns(tx);
     setAllLaborers(labs);
   }, [projectId]);
@@ -131,17 +121,6 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const availableLaborers = useMemo(
     () => allLaborers.filter((l) => !workers.some((w) => w.laborer.id === l.id)),
     [allLaborers, workers]
-  );
-
-  /* ------------------------------ milestones ------------------------------ */
-
-  const toggleMilestone = useCallback(
-    async (m: MilestoneRow) => {
-      const done = m.status === 'DONE';
-      await setMilestoneStatus(m.id, done ? 'PENDING' : 'DONE', done ? null : today);
-      setMilestones(await listMilestones(projectId));
-    },
-    [projectId, today]
   );
 
   /* -------------------------------- ledger -------------------------------- */
@@ -185,7 +164,8 @@ export function ConstructionDetailScreen(): React.JSX.Element {
 
         <AppButton label={t('addExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
 
-        {/* Labor section */}
+        {/* Labor on THIS project only. The worker's full khata (all projects
+            + company history) lives in the company-level Labor section. */}
         <View style={styles.sectionHeader}>
           <AppText size="lg" weight="bold">
             {t('laborTitle')}
@@ -232,9 +212,6 @@ export function ConstructionDetailScreen(): React.JSX.Element {
           ))
         )}
 
-        {/* Milestones  collapsible progress checklist */}
-        <MilestoneChecklist milestones={milestones} onToggle={toggleMilestone} />
-
         {/* Phase ledger */}
         <View style={styles.sectionHeader}>
           <AppText size="lg" weight="bold">
@@ -242,7 +219,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
           </AppText>
         </View>
         <AppCard compact>
-          <LedgerTable rows={ledgerRows} />
+          <LedgerTable rows={ledgerRows} emptyText={t('emptyLedger')} />
         </AppCard>
       </ScrollView>
 

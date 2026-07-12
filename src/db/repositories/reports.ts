@@ -33,14 +33,18 @@ export async function getConstructionSummary(
 ): Promise<ConstructionSummary> {
   const db = await getDatabase();
 
+  // LEFT JOIN so legacy uncategorized rows land in an "Other" bucket instead
+  // of silently disappearing — the bars must always sum to the hero total.
   const byCategory = await db.getAllAsync<CategorySpend>(
-    `SELECT t.category_id AS categoryId, c.name_en AS nameEn, c.name_ur AS nameUr,
+    `SELECT COALESCE(t.category_id, '__other__') AS categoryId,
+            COALESCE(c.name_en, 'Other') AS nameEn,
+            COALESCE(c.name_ur, 'Deegar') AS nameUr,
             COALESCE(SUM(t.amount), 0) AS total
      FROM transactions t
-     JOIN categories c ON c.id = t.category_id
+     LEFT JOIN categories c ON c.id = t.category_id
      WHERE t.project_id = ? AND t.phase = 'CONSTRUCTION' AND t.direction = 'OUT'
        AND t.is_void = 0 AND t.labor_id IS NULL
-     GROUP BY t.category_id
+     GROUP BY COALESCE(t.category_id, '__other__')
      ORDER BY total DESC`,
     projectId
   );

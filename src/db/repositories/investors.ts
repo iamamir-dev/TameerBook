@@ -10,6 +10,7 @@ import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { addDocument } from './documents';
+import { assertProjectActive } from './guards';
 import { addTransaction, LimitExceededError } from './transactions';
 
 export interface NewInvestor {
@@ -238,11 +239,52 @@ export interface InvestorAttachment {
   profitPct?: number | null;
 }
 
+/** The SQL for an investor's net capital staked across ALL projects. */
+const STAKED_SQL = `COALESCE((SELECT SUM(CASE cl.entry_type
+    WHEN 'INITIAL'         THEN cl.amount
+    WHEN 'ADDITIONAL'      THEN cl.amount
+    WHEN 'TRANSFER_IN'     THEN cl.amount
+    WHEN 'WITHDRAWAL'      THEN -cl.amount
+    WHEN 'TRANSFER_OUT'    THEN -cl.amount
+    WHEN 'EXIT_SETTLEMENT' THEN -cl.amount
+    ELSE 0 END)
+  FROM capital_ledger cl
+  JOIN project_investors pi ON pi.id = cl.project_investor_id
+  WHERE pi.investor_id = inv.id), 0)`;
+
+export interface InvestorCapacity extends InvestorRow {
+  /** Net capital currently staked across all projects (settled/exited = freed). */
+  staked: number;
+  /** committed_amount − staked, floored at 0: what they can still put in. */
+  remaining: number;
+}
+
+/**
+ * Every investor with how much of their global pledge is still available to
+ * stake. Settlement and exits append EXIT_SETTLEMENT/WITHDRAWAL entries that
+ * return capital, so a closed project automatically frees capacity here.
+ */
+export async function listInvestorsWithCapacity(): Promise<InvestorCapacity[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<InvestorCapacity>(
+    `SELECT inv.*, ${STAKED_SQL} AS staked,
+       MAX(0, inv.committed_amount - ${STAKED_SQL}) AS remaining
+     FROM investors inv
+     WHERE inv.company_id = ?
+     ORDER BY inv.name`,
+    requireCompanyId()
+  );
+}
+
 /**
  * Attach several investors to a project in ONE transaction: each gets a
  * participation row plus (for a non-zero stake) an INITIAL capital-ledger
  * entry, so ownership % derives from the entered amounts. Shared by the
  * new-project wizard and the project screen's "include investors" drawer.
+ *
+ * VALIDATIONS: the project must be ACTIVE; an investor already holding an
+ * ACTIVE participation here is skipped (stale-UI race); each stake must fit
+ * the investor's remaining capacity (pledge − staked across all projects).
  */
 export async function attachInvestorsToProject(
   projectId: string,
@@ -251,12 +293,35 @@ export async function attachInvestorsToProject(
 ): Promise<void> {
   if (attachments.length === 0) return;
   const db = await getDatabase();
+  await assertProjectActive(projectId);
+
+  // Investors already holding an ACTIVE participation here are dropped first —
+  // a stale include-sheet must never create a duplicate row, and a dropped
+  // duplicate must not trip the capacity check below.
+  const existing = await db.getAllAsync<{ investor_id: string }>(
+    "SELECT investor_id FROM project_investors WHERE project_id = ? AND status = 'ACTIVE'",
+    projectId
+  );
+  const attached = new Set(existing.map((r) => r.investor_id));
+  const fresh = attachments.filter((a) => !attached.has(a.investorId));
+  if (fresh.length === 0) return;
+
+  const capacities = await listInvestorsWithCapacity();
+  for (const a of fresh) {
+    const cap = capacities.find((c) => c.id === a.investorId);
+    if (!cap) throw new Error(`attachInvestorsToProject: investor ${a.investorId} not found`);
+    if (a.amount < 0) throw new Error('attachInvestorsToProject: amount cannot be negative');
+    if (a.amount > cap.remaining + 0.001) {
+      throw new LimitExceededError(cap.remaining, a.amount);
+    }
+  }
+
   const createdAt = nowISO();
   const date = opts.date ?? createdAt.slice(0, 10);
   const createdBy = opts.createdBy ?? DEFAULT_USER;
 
   await db.withExclusiveTransactionAsync(async (tx) => {
-    for (const a of attachments) {
+    for (const a of fresh) {
       const piId = uuid();
       await tx.runAsync(
         `INSERT INTO project_investors

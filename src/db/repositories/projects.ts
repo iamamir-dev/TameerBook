@@ -7,7 +7,6 @@ import {
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { requireCompanyId } from './companies';
-import { getProjectProgress } from './milestones';
 import { assertPlotIncludable, linkPlotToProject } from './plots';
 import { getSaleSummary } from './sales';
 import { getProjectTotals } from './transactions';
@@ -31,7 +30,9 @@ export async function createProject(
   input: NewProject,
   opts: { withDefaultMilestones?: boolean } = {}
 ): Promise<ProjectRow> {
-  const { withDefaultMilestones = true } = opts;
+  // Construction "steps"/milestones are retired: projects no longer seed them
+  // and nothing in the UI shows them. Callers may still opt in for legacy tests.
+  const { withDefaultMilestones = false } = opts;
   const db = await getDatabase();
   const id = uuid();
   const createdAt = nowISO();
@@ -94,6 +95,53 @@ export async function setProjectStatus(id: string, status: ProjectStatus): Promi
   await db.runAsync('UPDATE projects SET status = ? WHERE id = ?', status, id);
 }
 
+export interface CompletionWarnings {
+  /** Wages still owed to workers on this project. */
+  laborOutstanding: number;
+  /** What the buyer still owes on the sale (0 when no sale). */
+  saleOutstanding: number;
+}
+
+/**
+ * Loose ends worth confirming before a manual completion. Completing with
+ * either is ALLOWED (real projects end messy) — the UI lists them in the
+ * confirm dialog so the choice is deliberate.
+ */
+export async function getCompletionWarnings(projectId: string): Promise<CompletionWarnings> {
+  const db = await getDatabase();
+  const labor = await db.getFirstAsync<{ accrued: number; paid: number }>(
+    `SELECT
+       COALESCE((SELECT SUM(la.wage_accrued) FROM labor_attendance la
+         JOIN project_laborers pl ON pl.id = la.project_laborer_id
+         WHERE pl.project_id = ?), 0) AS accrued,
+       COALESCE((SELECT SUM(t.amount) FROM transactions t
+         WHERE t.project_id = ? AND t.labor_id IS NOT NULL
+           AND t.direction = 'OUT' AND t.is_void = 0), 0) AS paid`,
+    projectId,
+    projectId
+  );
+  const sale = await getSaleSummary(projectId);
+  return {
+    laborOutstanding: Math.max(0, (labor?.accrued ?? 0) - (labor?.paid ?? 0)),
+    saleOutstanding: Math.max(0, sale.outstanding),
+  };
+}
+
+/**
+ * Manually close a project WITHOUT a settlement (kept the building, sold
+ * outside the app, abandoned). No capital moves — the summary freezes as-is.
+ * Settlement remains the full path for profit/loss distribution.
+ */
+export async function markProjectCompleted(id: string): Promise<void> {
+  const db = await getDatabase();
+  const project = await getProject(id);
+  if (!project) throw new Error(`markProjectCompleted: project ${id} not found`);
+  if (project.status !== 'ACTIVE') {
+    throw new Error(`markProjectCompleted: project is ${project.status}, not ACTIVE`);
+  }
+  await db.runAsync("UPDATE projects SET status = 'COMPLETED' WHERE id = ?", id);
+}
+
 /** Per-project donation % override (null = use the Settings default). */
 export async function setProjectDonationPct(id: string, pct: number | null): Promise<void> {
   const db = await getDatabase();
@@ -113,23 +161,46 @@ export interface ProjectSummary {
   saleReceived: number;
 }
 
+/**
+ * Lifecycle progress 0100 from the project's REAL phases (not construction
+ * steps): plot secured → building → listed for sale → sold. Completed = 100.
+ * This replaces the retired milestone checklist as the card progress bar.
+ */
+function lifecyclePercent(
+  project: ProjectRow,
+  cost: ProjectCost,
+  sale: { agreed: number; received: number; outstanding: number }
+): number {
+  if (project.status === 'COMPLETED') return 100;
+  let pct = 0;
+  if (project.plot_id || cost.plotCost > 0) pct = 25; // plot secured
+  if (cost.constructionCost > 0) pct = 50; // building underway
+  if (sale.agreed > 0) pct = 75; // listed for sale
+  if (sale.received > 0 && sale.outstanding <= 0.001) pct = 90; // sold, awaiting settlement
+  return pct;
+}
+
 /** Project + its live progress, money totals, and cost breakdown (for cards). */
 export async function getProjectSummary(id: string): Promise<ProjectSummary | null> {
   const project = await getProject(id);
   if (!project) return null;
-  const [progress, totals, cost, sale] = await Promise.all([
-    getProjectProgress(id),
+  const [totals, cost, sale] = await Promise.all([
     getProjectTotals(id),
     getProjectCost(id),
     getSaleSummary(id),
   ]);
+  const agreed = sale.sale?.agreed_price ?? 0;
   return {
     project,
-    progressPercent: progress.percent,
+    progressPercent: lifecyclePercent(project, cost, {
+      agreed,
+      received: sale.receiptsTotal,
+      outstanding: sale.outstanding,
+    }),
     totalIn: totals.totalIn,
     totalOut: totals.totalOut,
     cost,
-    saleDeal: sale.sale?.agreed_price ?? 0,
+    saleDeal: agreed,
     saleReceived: sale.receiptsTotal,
   };
 }

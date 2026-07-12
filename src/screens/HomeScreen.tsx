@@ -22,12 +22,16 @@ import {
   listAccountsWithBalance,
   type CompanyAssets,
   listCategories,
+  listLaborersWithTotals,
+  listPlots,
   listRecentTransactions,
   listTransferDeadlines,
   type AccountWithBalance,
   type CategoryRow,
+  type PlotRow,
   type ProjectSummary,
   type TransactionRow,
+  type UdhaarTotals,
 } from '@/db';
 import { useCategoryLabel, useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -35,6 +39,7 @@ import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
@@ -61,16 +66,21 @@ export function HomeScreen(): React.JSX.Element {
   const companyName =
     useCompanyStore((s) => s.companies.find((c) => c.id === activeCompanyId)?.name) ?? t('appName');
 
+  // Which sections this Home shows (Settings → Home screen).
+  const sections = useSettingsStore((s) => s.homeSections);
+
   const [total, setTotal] = useState(0);
   const [assets, setAssets] = useState<CompanyAssets | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [receivable, setReceivable] = useState(0);
+  const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
   const [recent, setRecent] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
+  const [ownedPlots, setOwnedPlots] = useState<PlotRow[]>([]);
+  const [laborOwed, setLaborOwed] = useState(0);
 
   const loadData = useCallback(async () => {
-    const [tot, accs, udhaar, txns, cats, deadlines, companyAssets] = await Promise.all([
+    const [tot, accs, ud, txns, cats, deadlines, companyAssets, plots, workers] = await Promise.all([
       getTotalBalance(),
       listAccountsWithBalance(),
       getUdhaarTotals(),
@@ -78,15 +88,26 @@ export function HomeScreen(): React.JSX.Element {
       listCategories(),
       listTransferDeadlines(),
       getCompanyAssets(),
+      // Optional sections only pay their query cost when switched on.
+      sections.plots ? listPlots() : Promise.resolve<PlotRow[]>([]),
+      sections.labor ? listLaborersWithTotals() : Promise.resolve([]),
     ]);
     setTotal(tot);
     setAssets(companyAssets);
     setAccounts(accs);
-    setReceivable(udhaar.receivable);
+    setUdhaar(ud);
     setRecent(txns);
     setCategories(cats);
     setDeadlineWarn(nearestTransferDeadline(deadlines));
-  }, []);
+    // Show every plot still held (OWNED first, then IN_PROJECT); sold ones
+    // are history and stay off the dashboard.
+    setOwnedPlots(
+      plots
+        .filter((p) => p.status !== 'SOLD')
+        .sort((a, b) => (a.status === b.status ? 0 : a.status === 'OWNED' ? -1 : 1))
+    );
+    setLaborOwed(workers.reduce((sum, w) => sum + w.balance, 0));
+  }, [sections.plots, sections.labor]);
 
   const load = useCallback(async () => {
     await Promise.all([refreshProjects(), loadData()]);
@@ -176,10 +197,10 @@ export function HomeScreen(): React.JSX.Element {
           </Pressable>
         ) : null}
 
-        {/* Company hero → the Cash hub. TOTAL ASSETS is the company's main
-            number (everything it owns); the liquid balance sits beneath it. */}
+        {/* Company hero → the FULL asset picture (cash + plots + construction
+            + receivable). The Cash tile below opens the cash-only view. */}
         <Pressable
-          onPress={() => navigation.navigate('Cash')}
+          onPress={() => navigation.navigate('Cash', { scope: 'assets' })}
           accessibilityRole="button"
           style={styles.hero}
         >
@@ -189,14 +210,14 @@ export function HomeScreen(): React.JSX.Element {
           <AppText size="display" weight="bold" color="primary" tabular numberOfLines={1} adjustsFontSizeToFit>
             {formatRupees(assets?.total ?? total)}
           </AppText>
-          {assets && (assets.plotsValue > 0 || assets.constructionValue > 0 || receivable > 0) ? (
+          {assets && (assets.plotsValue > 0 || assets.constructionValue > 0 || udhaar.receivable > 0) ? (
             <AppText size="xs" color="textSecondary" numberOfLines={1}>
               {[
                 assets.plotsValue > 0 ? `${t('assetPlots')} ${formatRupees(assets.plotsValue)}` : null,
                 assets.constructionValue > 0
                   ? `${t('assetConstruction')} ${formatRupees(assets.constructionValue)}`
                   : null,
-                receivable > 0 ? `${t('receivable')} ${formatRupees(receivable)}` : null,
+                udhaar.receivable > 0 ? `${t('receivable')} ${formatRupees(udhaar.receivable)}` : null,
               ]
                 .filter(Boolean)
                 .join(' · ')}
@@ -246,12 +267,105 @@ export function HomeScreen(): React.JSX.Element {
           </Pressable>
         </ScrollView>
 
-        {/* Quick links  Cash / Udhaar / Transfer */}
-        <View style={styles.quickRow}>
-          <QuickLink icon="balance" tone="primary" label={t('tabCash')} onPress={() => navigation.navigate('Cash')} />
-          <QuickLink icon="investor" tone="gold" label={t('udhaar')} onPress={() => navigation.navigate('Udhaar')} />
-          <QuickLink icon="netFlow" tone="accent" label={t('transferTitleV2')} onPress={() => navigation.navigate('Transfer')} />
+        {/* Shortcuts  Cash / Labor / Reports as one card, cells separated by
+            light hairlines (Jazz-grid style). Udhaar + Transfer live inside
+            the Cash hub; Accounts lives in Settings; Settings is the header
+            gear. Only these three company-level sections are surfaced here. */}
+        <View style={styles.sectionsCard}>
+          <SectionTile icon="balance" tone="primary" label={t('tabCash')} onPress={() => navigation.navigate('Cash')} />
+          <View style={styles.sectionDivider} />
+          <SectionTile icon="dehari" tone="accent" label={t('laborTitle')} onPress={() => navigation.navigate('Labor')} />
+          <View style={styles.sectionDivider} />
+          <SectionTile icon="reports" tone="gold" label={t('reports')} onPress={() => navigation.navigate('Reports')} />
         </View>
+
+        {/* Udhaar position (optional, off by default) */}
+        {sections.udhaar ? (
+          <>
+            <SectionHeader title={t('udhaar')} action={t('seeAll')} onAction={() => navigation.navigate('Udhaar')} />
+            <AppCard compact onPress={() => navigation.navigate('Udhaar')}>
+              <View style={styles.splitRow}>
+                <View style={styles.splitCol}>
+                  <AppText size="xs" weight="semibold" color="textSecondary">
+                    {t('receivable')}
+                  </AppText>
+                  <AppText size="md" weight="bold" color="success" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(udhaar.receivable)}
+                  </AppText>
+                </View>
+                <View style={styles.splitDivider} />
+                <View style={styles.splitCol}>
+                  <AppText size="xs" weight="semibold" color="textSecondary">
+                    {t('payable')}
+                  </AppText>
+                  <AppText size="md" weight="bold" color={udhaar.payable > 0 ? 'danger' : 'textPrimary'} tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(udhaar.payable)}
+                  </AppText>
+                </View>
+              </View>
+            </AppCard>
+          </>
+        ) : null}
+
+        {/* Labor position (optional, off by default) */}
+        {sections.labor ? (
+          <>
+            <SectionHeader title={t('laborTitle')} action={t('seeAll')} onAction={() => navigation.navigate('Labor')} />
+            <AppCard compact onPress={() => navigation.navigate('Labor')}>
+              <View style={styles.splitRow}>
+                <View style={styles.splitCol}>
+                  <AppText size="xs" weight="semibold" color="textSecondary">
+                    {t('outstanding')}
+                  </AppText>
+                  <AppText size="md" weight="bold" color={laborOwed > 0 ? 'danger' : 'textPrimary'} tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(laborOwed)}
+                  </AppText>
+                </View>
+              </View>
+            </AppCard>
+          </>
+        ) : null}
+
+        {/* Owned plots (optional, off by default) */}
+        {sections.plots ? (
+          <>
+            <SectionHeader
+              title={t('plotsTitle')}
+              action={t('seeAll')}
+              onAction={() => navigation.navigate('Tabs', { screen: 'Plots' })}
+            />
+            <AppCard compact>
+              {ownedPlots.length === 0 ? (
+                <AppText size="sm" color="textSecondary" center style={styles.emptyPad}>
+                  {t('noFreePlots')}
+                </AppText>
+              ) : (
+                ownedPlots.map((p, i) => (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => navigation.navigate('PlotDetail', { plotId: p.id })}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.plotRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                  >
+                    <AppIcon name="plot" size={18} color="gold" />
+                    <View style={styles.flex}>
+                      <AppText size="sm" weight="semibold" numberOfLines={1}>
+                        {p.name}
+                      </AppText>
+                      <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                        {[p.society, formatRupees(p.deal_price)].filter(Boolean).join(' · ')}
+                      </AppText>
+                    </View>
+                    <StageBadge
+                      tone={p.status === 'OWNED' ? 'success' : 'primary'}
+                      label={t(p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
+                    />
+                  </Pressable>
+                ))
+              )}
+            </AppCard>
+          </>
+        ) : null}
 
         {/* My Projects */}
         <SectionHeader
@@ -281,10 +395,14 @@ export function HomeScreen(): React.JSX.Element {
         )}
 
         {/* Recent activity  notebook-style ledger */}
-        <SectionHeader title={t('recentActivity')} />
-        <AppCard compact>
-          <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
-        </AppCard>
+        {sections.activity ? (
+          <>
+            <SectionHeader title={t('recentActivity')} />
+            <AppCard compact>
+              <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
+            </AppCard>
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -319,8 +437,12 @@ function SectionHeader({
   );
 }
 
-/** A soft-tinted quick-link tile (Plots / Udhaar / Transfer). */
-function QuickLink({
+/**
+ * One cell of the Home sections card (Cash / Labor / Reports): a soft-tinted
+ * icon circle with the section name beneath. Cells sit side by side in one
+ * white card, separated by light hairline dividers.
+ */
+function SectionTile({
   icon,
   tone,
   label,
@@ -338,10 +460,10 @@ function QuickLink({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.quickTile, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.sectionTile, pressed && styles.pressed]}
     >
-      <View style={[styles.quickIcon, { backgroundColor: softToneColor(theme, tone) }]}>
-        <AppIcon name={icon} size={20} color={tone} />
+      <View style={[styles.sectionIcon, { backgroundColor: softToneColor(theme, tone) }]}>
+        <AppIcon name={icon} size={22} color={tone} />
       </View>
       <AppText size="xs" weight="semibold" center numberOfLines={1}>
         {label}
@@ -490,20 +612,53 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
       gap: theme.spacing.xs,
     },
-    quickRow: { flexDirection: 'row', gap: theme.spacing.md },
-    quickTile: {
-      flex: 1,
+    /* optional sections: udhaar/labor split card + plot rows */
+    flex: { flex: 1 },
+    emptyPad: { paddingVertical: theme.spacing.lg },
+    splitRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      paddingVertical: theme.spacing.xs,
+    },
+    splitCol: { flex: 1, alignItems: 'center', gap: 2 },
+    splitDivider: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
+    },
+    plotRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      gap: theme.spacing.sm,
+      gap: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
+      minHeight: 40,
+    },
+    ruled: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+    },
+    sectionsCard: {
+      flexDirection: 'row',
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.card,
       paddingVertical: theme.spacing.lg,
       ...theme.shadows.card,
     },
-    quickIcon: {
-      width: 42,
-      height: 42,
-      borderRadius: theme.radius.chip,
+    sectionDivider: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
+    },
+    sectionTile: {
+      flex: 1,
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      paddingVertical: theme.spacing.xs,
+    },
+    sectionIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },

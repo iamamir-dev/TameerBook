@@ -33,10 +33,10 @@ interface AddExpenseSheetProps {
 }
 
 /**
- * Bottom sheet that posts a construction-phase expense: category + amount +
- * paying account + optional note. Owns its own form state; the amount, note
- * and category reset on every open while the chosen account sticks (like the
- * quick-entry screens).
+ * Bottom sheet that posts a construction-phase expense: category (required,
+ * V-11) + amount + paying account + optional note. Owns its own form state;
+ * the amount, note and category reset on every open while the chosen account
+ * sticks (like the quick-entry screens).
  */
 export function AddExpenseSheet({
   visible,
@@ -87,7 +87,7 @@ export function AddExpenseSheet({
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   const onSave = (): void => {
-    if (amount <= 0 || !accountId) return;
+    if (amount <= 0 || !accountId || !categoryId) return;
     void run(async () => {
       await addTransaction({
         direction: 'OUT',
@@ -132,6 +132,11 @@ export function AddExpenseSheet({
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
+          {!categoryId ? (
+            <AppText size="xs" color="textSecondary" style={styles.hint}>
+              {t('categoryRequired')}
+            </AppText>
+          ) : null}
 
           <AmountInput value={amount} onChange={setAmount} floating surface={theme.colors.card} />
 
@@ -162,6 +167,7 @@ export function AddExpenseSheet({
             disabled={
               amount <= 0 ||
               !accountId ||
+              !categoryId ||
               (!!selectedAccount && amount > selectedAccount.balance)
             }
           />
@@ -193,6 +199,7 @@ export function AddExpenseSheet({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
+    hint: { paddingHorizontal: theme.spacing.sm, marginTop: -theme.spacing.xs },
     rowChip: {
       flexDirection: 'row',
       alignItems: 'center',

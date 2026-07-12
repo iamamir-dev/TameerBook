@@ -2,7 +2,9 @@ import { getDatabase } from '../database';
 import { DEFAULT_USER } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
+import { requireCompanyId } from './companies';
 import { addDocument } from './documents';
+import { assertProjectActive } from './guards';
 
 export interface InvestmentInput {
   investorId: string;
@@ -30,6 +32,7 @@ export interface InvestmentInput {
 export async function addInvestment(input: InvestmentInput): Promise<void> {
   const db = await getDatabase();
   if (input.amount <= 0) throw new Error('addInvestment: amount must be positive');
+  await assertProjectActive(input.projectId);
   const by = input.createdBy ?? DEFAULT_USER;
   const catId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری');
   const existingPi = await db.getFirstAsync<{ id: string }>(
@@ -79,21 +82,26 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
       input.amount,
       input.date
     );
+    // company_id and investor_id were previously omitted here, making these
+    // rows invisible to company-scoped views and to the investor's "received"
+    // total. Both now post like every other transaction.
     await tx.runAsync(
       `INSERT INTO transactions
-         (id, created_at, created_by, direction, amount, date, account_id, project_id, plot_id,
+         (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
           phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-          labor_id, description, doc_id, is_void, void_of_id)
-       VALUES (?, ?, ?, 'IN', ?, ?, ?, ?, NULL, 'GENERAL', ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL)`,
+          labor_id, investor_id, description, doc_id, is_void, void_of_id)
+       VALUES (?, ?, ?, ?, 'IN', ?, ?, ?, ?, NULL, 'GENERAL', ?, NULL, ?, NULL, NULL, NULL, NULL, ?, NULL, NULL, 0, NULL)`,
       txnId,
       createdAt,
       by,
+      requireCompanyId(),
       input.amount,
       input.date,
       input.accountId,
       input.projectId,
       catId,
-      investor?.name ?? null
+      investor?.name ?? null,
+      input.investorId
     );
 
     // Auto-raise the commitment when the paid-in total overtakes it.

@@ -15,7 +15,7 @@ interface StageBadgeProps {
   label: string;
 }
 
-/** Soft-tint stage pill (same palette family as StageTracker). */
+/** Soft-tint status pill (project cards, plot statuses). */
 export function StageBadge({ tone, label }: StageBadgeProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);

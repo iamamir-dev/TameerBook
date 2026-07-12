@@ -55,6 +55,20 @@ export function ReportsScreen(): React.JSX.Element {
               </AppText>
             </Pressable>
           ))}
+
+          {/* Investment Allocation — where the money sits, per project & investor. */}
+          <Pressable
+            onPress={() => navigation.navigate('Allocation')}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+          >
+            <View style={[styles.icon, { backgroundColor: softToneColor(theme, 'gold') }]}>
+              <AppIcon name="investors" size={28} color="gold" />
+            </View>
+            <AppText size="sm" weight="bold" center>
+              {t('allocationTitle')}
+            </AppText>
+          </Pressable>
         </View>
       </ScrollView>
     </View>
