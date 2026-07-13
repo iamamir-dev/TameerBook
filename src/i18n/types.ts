@@ -18,6 +18,9 @@ export interface TranslationKeys {
   reports: string;
   settings: string;
   quickEntry: string;
+  reorderTiles: string;
+  reorderHint: string;
+  restartForRtl: string;
   notifications: string;
 
   // Quick entry tiles (kept in Roman Urdu  no accounting jargon)

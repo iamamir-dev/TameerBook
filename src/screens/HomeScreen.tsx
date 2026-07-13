@@ -207,35 +207,35 @@ export function HomeScreen(): React.JSX.Element {
           style={styles.hero}
         >
           <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
-            {t('totalAssets')}
+            {t('totalBalance')}
           </AppText>
           <AppText size="display" weight="bold" color="primary" tabular numberOfLines={1} adjustsFontSizeToFit>
-            {formatRupees(assets?.total ?? total)}
+            {formatRupees(total)}
           </AppText>
-          {assets && (assets.plotsValue > 0 || assets.constructionValue > 0 || udhaar.receivable > 0) ? (
-            <AppText size="xs" color="textSecondary" numberOfLines={1}>
-              {[
-                assets.plotsValue > 0 ? `${t('assetPlots')} ${formatRupees(assets.plotsValue)}` : null,
-                assets.constructionValue > 0
-                  ? `${t('assetConstruction')} ${formatRupees(assets.constructionValue)}`
-                  : null,
-                udhaar.receivable > 0 ? `${t('receivable')} ${formatRupees(udhaar.receivable)}` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </AppText>
-          ) : null}
 
           <View style={styles.assetsBlock}>
             <View style={styles.assetsHead}>
               <AppIcon name="balance" size={16} color="accent" />
               <AppText size="sm" weight="bold" color="textSecondary">
-                {t('totalBalance')}
+                {t('totalAssets')}
               </AppText>
               <AppText size="lg" weight="bold" color="accent" tabular style={styles.assetsTotal}>
-                {formatRupees(total)}
+                {formatRupees(assets?.total ?? total)}
               </AppText>
             </View>
+            {assets && (assets.plotsValue > 0 || assets.constructionValue > 0 || udhaar.receivable > 0) ? (
+              <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.assetsBreakdown}>
+                {[
+                  assets.plotsValue > 0 ? `${t('assetPlots')} ${formatRupees(assets.plotsValue)}` : null,
+                  assets.constructionValue > 0
+                    ? `${t('assetConstruction')} ${formatRupees(assets.constructionValue)}`
+                    : null,
+                  udhaar.receivable > 0 ? `${t('receivable')} ${formatRupees(udhaar.receivable)}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </AppText>
+            ) : null}
           </View>
         </Pressable>
 
@@ -257,16 +257,6 @@ export function HomeScreen(): React.JSX.Element {
               onPress={() => navigation.navigate('AccountDetail', { accountId: a.id })}
             />
           ))}
-          <Pressable
-            onPress={() => navigation.navigate('Cash')}
-            accessibilityRole="button"
-            style={styles.addAccountCard}
-          >
-            <AppIcon name="add" size={22} color="accent" />
-            <AppText size="sm" weight="semibold" color="accent">
-              {t('addAccount')}
-            </AppText>
-          </Pressable>
         </ScrollView>
 
         {/* Shortcuts  Cash / Labor / Material bookings as one card, cells
@@ -595,6 +585,7 @@ const makeStyles = (theme: Theme) =>
     },
     assetsHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
     assetsTotal: { marginLeft: 'auto' },
+    assetsBreakdown: { marginTop: theme.spacing.xs },
     /* rails + quick links */
     /* Full-bleed rail: negative margin escapes the screen padding so cards
        are never clipped at the padded edge; inner padding restores alignment

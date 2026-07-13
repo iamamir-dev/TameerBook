@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowDownLeft,
+  ArrowDownUp,
   ArrowLeftRight,
   ArrowUpRight,
   Bell,
@@ -135,6 +136,7 @@ export const ICONS = {
   empty: Inbox,
   camera: Camera,
   lock: Lock,
+  reorder: ArrowDownUp,
 } satisfies Record<string, LucideIcon>;
 
 /** Type-safe semantic icon keys. */

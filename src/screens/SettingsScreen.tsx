@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
   AppCard,
@@ -26,6 +26,7 @@ import {
 import { useTheme } from '@/theme';
 import { FONT_OPTIONS, FONT_SCALES, type FontKey, type FontScaleKey, type Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
+import { reloadApp, syncLayoutDirection } from '@/utils/rtl';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const APP_VERSION: string = (require('../../app.json') as { expo: { version: string } }).expo
@@ -59,6 +60,22 @@ export function SettingsScreen(): React.JSX.Element {
   const onToggleReminder = (key: ReminderKey, value: boolean) => {
     setReminder(key, value);
     rescheduleReminders({ ...reminders, [key]: value }).catch(swallow('settings:rescheduleReminders'));
+  };
+
+  /**
+   * Switch language and, when the layout direction changes (Urdu = RTL,
+   * English = LTR), reload so the whole app mirrors. The choice is already
+   * persisted, so it survives the reload.
+   */
+  const onChangeLanguage = (lang: Language) => {
+    setLanguage(lang);
+    setLangSheetOpen(false);
+    if (syncLayoutDirection(lang)) {
+      Alert.alert(t('language'), t('restartForRtl'), [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('done'), onPress: () => void reloadApp() },
+      ]);
+    }
   };
 
   const REMINDER_ROWS: { key: ReminderKey; labelKey: TranslationKey }[] = [
@@ -390,7 +407,7 @@ export function SettingsScreen(): React.JSX.Element {
         selectedId={language}
         title={t('language')}
         searchable={false}
-        onSelect={(option) => setLanguage(option.id as Language)}
+        onSelect={(option) => onChangeLanguage(option.id as Language)}
       />
 
       <SelectSheet

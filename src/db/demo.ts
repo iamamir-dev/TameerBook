@@ -43,6 +43,8 @@ export const TABLE_NAMES = [
   'documents',
   'sales',
   'sale_receipts',
+  'material_bookings',
+  'material_deliveries',
 ] as const;
 
 /** Row count per table (for the DevTools dashboard). */
@@ -58,14 +60,23 @@ export async function getTableCounts(): Promise<Record<string, number>> {
 
 /**
  * Wipe EVERY row from every table (demo data and real data alike), then
- * re-seed the defaults (categories + Cash account) so the app keeps working.
- * Append-only ledgers included  this is a full reset, intended for DevTools
- * only. Deletes children before parents so it is safe with foreign keys ON.
+ * re-seed the defaults (categories) so the app keeps working. Append-only
+ * ledgers included — this is a full reset, intended for DevTools only.
+ *
+ * Foreign-key enforcement is turned OFF for the duration: the schema has a
+ * projects ↔ plots cycle, so no single delete order satisfies every FK. When
+ * we're deleting everything anyway, enforcement only gets in the way (with it
+ * ON the wipe threw partway and left data behind). It's restored afterward.
  */
 export async function clearAllData(): Promise<void> {
   const db = await getDatabase();
-  for (const t of [...TABLE_NAMES].reverse()) {
-    await db.runAsync(`DELETE FROM ${t}`);
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  try {
+    for (const t of TABLE_NAMES) {
+      await db.runAsync(`DELETE FROM ${t}`);
+    }
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
   }
   await seedDefaults(db);
 }

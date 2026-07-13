@@ -180,8 +180,9 @@ export const fontSizes = {
  * a concrete family name. Every option keeps the app's one-cut-heavier rule:
  * body = Medium 500, "semibold" = Bold 700, "bold" = ExtraBold 800.
  *
- * All are Latin-first: Urdu (Arabic-script) glyphs fall back to the OS font,
- * which RN handles automatically per-glyph.
+ * The first four are Latin-first (Urdu glyphs fall back to the OS font). The
+ * `urdu*` families render Urdu/Arabic script properly — pick one when using
+ * the app in Urdu. `isUrdu` flags them for grouping in the picker.
  */
 export const FONT_OPTIONS = {
   rounded: {
@@ -207,6 +208,35 @@ export const FONT_OPTIONS = {
     regular: 'Inter_500Medium',
     semibold: 'Inter_700Bold',
     bold: 'Inter_800ExtraBold',
+  },
+  // Urdu / Arabic-script families.
+  urduNaskh: {
+    label: 'اردو — Naskh',
+    isUrdu: true,
+    regular: 'NotoNaskhArabic_400Regular',
+    semibold: 'NotoNaskhArabic_500Medium',
+    bold: 'NotoNaskhArabic_700Bold',
+  },
+  urduSans: {
+    label: 'اردو — Sans',
+    isUrdu: true,
+    regular: 'NotoSansArabic_500Medium',
+    semibold: 'NotoSansArabic_700Bold',
+    bold: 'NotoSansArabic_800ExtraBold',
+  },
+  urduNastaliq: {
+    label: 'اردو — Nastaliq',
+    isUrdu: true,
+    regular: 'NotoNastaliqUrdu_400Regular',
+    semibold: 'NotoNastaliqUrdu_500Medium',
+    bold: 'NotoNastaliqUrdu_700Bold',
+  },
+  urduGulzar: {
+    label: 'اردو — Gulzar',
+    isUrdu: true,
+    regular: 'Gulzar_400Regular',
+    semibold: 'Gulzar_400Regular',
+    bold: 'Gulzar_400Regular',
   },
 } as const;
 

@@ -52,6 +52,22 @@ export const DEFAULT_HOME_SECTIONS: HomeSectionPrefs = {
   udhaar: false,
 };
 
+/**
+ * The order of the Quick Entry tiles, as an array of their labelKeys. The
+ * user can reorder them; a saved order is merged with the current tile set so
+ * newly-added tiles still appear (appended) and removed ones are dropped.
+ */
+export const DEFAULT_QUICK_ORDER = [
+  'kharcha',
+  'aamdani',
+  'material',
+  'transferTitleV2',
+  'udhaar',
+  'investor',
+  'dehari',
+  'gharKharcha',
+] as const;
+
 interface SettingsState {
   language: Language;
   darkMode: boolean;
@@ -61,6 +77,8 @@ interface SettingsState {
   fontScale: FontScaleKey;
   /** Which Home sections are visible. */
   homeSections: HomeSectionPrefs;
+  /** User's Quick Entry tile order (labelKeys). */
+  quickOrder: string[];
   reminders: ReminderPrefs;
   /** Default % of profit given to investors (loss is always by capital ratio). */
   investorProfitPct: number;
@@ -74,6 +92,7 @@ interface SettingsState {
   setFontFamily: (fontFamily: FontKey) => void;
   setFontScale: (fontScale: FontScaleKey) => void;
   setHomeSection: (key: HomeSectionKey, value: boolean) => void;
+  setQuickOrder: (order: string[]) => void;
   setReminder: (key: ReminderKey, value: boolean) => void;
   setInvestorProfitPct: (pct: number) => void;
   setDonationPct: (pct: number) => void;
@@ -92,6 +111,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fontFamily: 'rounded',
   fontScale: 'normal',
   homeSections: DEFAULT_HOME_SECTIONS,
+  quickOrder: [...DEFAULT_QUICK_ORDER],
   reminders: { daily: true, deadline: true, udhaar: true, buyer: true },
   investorProfitPct: DEFAULT_INVESTOR_PROFIT_PCT,
   donationPct: DEFAULT_DONATION_PCT,
@@ -116,6 +136,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (s.homeSections) {
         try {
           patch.homeSections = { ...DEFAULT_HOME_SECTIONS, ...JSON.parse(s.homeSections) };
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      if (s.quickOrder) {
+        try {
+          const saved = JSON.parse(s.quickOrder) as string[];
+          // Keep only still-valid tiles, then append any new tiles not saved.
+          const valid = saved.filter((k) => (DEFAULT_QUICK_ORDER as readonly string[]).includes(k));
+          const merged = [...valid, ...DEFAULT_QUICK_ORDER.filter((k) => !valid.includes(k))];
+          patch.quickOrder = merged;
         } catch {
           /* ignore malformed */
         }
@@ -156,6 +187,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const homeSections = { ...get().homeSections, [key]: value };
     set({ homeSections });
     persist('homeSections', JSON.stringify(homeSections));
+  },
+  setQuickOrder: (order) => {
+    set({ quickOrder: order });
+    persist('quickOrder', JSON.stringify(order));
   },
   setReminder: (key, value) => {
     const reminders = { ...get().reminders, [key]: value };

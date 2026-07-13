@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/gulzar": "^0.4.2",
+    "@expo-google-fonts/noto-naskh-arabic": "^0.4.5",
+    "@expo-google-fonts/noto-nastaliq-urdu": "^0.4.2",
+    "@expo-google-fonts/noto-sans-arabic": "^0.4.3",
     "@expo/vector-icons": "^15.0.2",
     "@react-navigation/bottom-tabs": "^7.16.2",
     "@react-navigation/material-top-tabs": "^7.5.2",
@@ -24,6 +28,7 @@
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.18",
     "lucide-react-native": "^1.17.0",
     "react": "19.1.0",
     "react-native": "0.81.5",

@@ -29,6 +29,7 @@ import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ThemeProvider, useTheme } from '@/theme';
 import { reportError, swallow } from '@/utils/log';
+import { reloadApp, syncLayoutDirection } from '@/utils/rtl';
 
 /** Minimum time (ms) the branded splash stays up so it never just flickers. */
 const SPLASH_MIN_MS = 1300;
@@ -111,6 +112,15 @@ function ThemedApp(): React.JSX.Element {
     // then (re)schedule local reminders from the restored preferences.
     initDatabase()
       .then(() => useSettingsStore.getState().hydrate())
+      .then(() => {
+        // Align layout direction (RTL for Urdu) with the restored language.
+        // If the native flag was out of sync, reload so it applies — this
+        // self-heals and runs at most once (after reload it already matches).
+        if (syncLayoutDirection(useSettingsStore.getState().language)) {
+          void reloadApp();
+          return new Promise<never>(() => {}); // hold here; the reload takes over
+        }
+      })
       .then(() => useCompanyStore.getState().hydrate())
       .then(() => rescheduleReminders(useSettingsStore.getState().reminders))
       // A boot failure used to be swallowed, leaving the splash up forever.
@@ -200,6 +210,17 @@ export default function App(): React.JSX.Element {
     Inter_500Medium: require('./assets/fonts/Inter_500Medium.ttf'),
     Inter_700Bold: require('./assets/fonts/Inter_700Bold.ttf'),
     Inter_800ExtraBold: require('./assets/fonts/Inter_800ExtraBold.ttf'),
+    // Urdu / Arabic-script families (subset to the Arabic ranges).
+    NotoNaskhArabic_400Regular: require('./assets/fonts/NotoNaskhArabic_400Regular.ttf'),
+    NotoNaskhArabic_500Medium: require('./assets/fonts/NotoNaskhArabic_500Medium.ttf'),
+    NotoNaskhArabic_700Bold: require('./assets/fonts/NotoNaskhArabic_700Bold.ttf'),
+    NotoSansArabic_500Medium: require('./assets/fonts/NotoSansArabic_500Medium.ttf'),
+    NotoSansArabic_700Bold: require('./assets/fonts/NotoSansArabic_700Bold.ttf'),
+    NotoSansArabic_800ExtraBold: require('./assets/fonts/NotoSansArabic_800ExtraBold.ttf'),
+    NotoNastaliqUrdu_400Regular: require('./assets/fonts/NotoNastaliqUrdu_400Regular.ttf'),
+    NotoNastaliqUrdu_500Medium: require('./assets/fonts/NotoNastaliqUrdu_500Medium.ttf'),
+    NotoNastaliqUrdu_700Bold: require('./assets/fonts/NotoNastaliqUrdu_700Bold.ttf'),
+    Gulzar_400Regular: require('./assets/fonts/Gulzar_400Regular.ttf'),
   });
 
   if (!fontsLoaded) {
