@@ -8,6 +8,7 @@ import {
   AppButton,
   AppIcon,
   AppText,
+  DateField,
   ICONS,
   SelectSheet,
   type IconKey,
@@ -58,6 +59,7 @@ export function AddExpenseSheet({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [catSheet, setCatSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
 
@@ -69,6 +71,7 @@ export function AddExpenseSheet({
     setAmount(0);
     setCategoryId(null);
     setNote('');
+    setDate(todayISO().slice(0, 10));
     setAccountId((prev) => prev ?? accountsRef.current[0]?.id ?? null);
   }, [visible]);
 
@@ -92,7 +95,7 @@ export function AddExpenseSheet({
       await addTransaction({
         direction: 'OUT',
         amount,
-        date: todayISO().slice(0, 10),
+        date,
         accountId,
         projectId,
         phase: 'CONSTRUCTION',
@@ -120,7 +123,7 @@ export function AddExpenseSheet({
 
           {/* Category */}
           <Pressable onPress={() => setCatSheet(true)} style={styles.rowChip} accessibilityRole="button">
-            <AppIcon name="material" size={18} color="primary" />
+            <AppIcon name="kharcha" size={18} color="primary" />
             <AppText
               size="sm"
               weight="semibold"
@@ -128,7 +131,7 @@ export function AddExpenseSheet({
               style={styles.flex}
               color={selectedCategory ? 'textPrimary' : 'textSecondary'}
             >
-              {selectedCategory ? catLabel(selectedCategory) : t('material')}
+              {selectedCategory ? catLabel(selectedCategory) : t('category')}
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
@@ -159,6 +162,9 @@ export function AddExpenseSheet({
 
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
+          {/* Date */}
+          <DateField value={date} onChange={setDate} />
+
           <AppButton
             label={t('save')}
             icon="check"
@@ -180,7 +186,7 @@ export function AddExpenseSheet({
         onClose={() => setCatSheet(false)}
         options={categoryOptions}
         selectedId={categoryId ?? undefined}
-        title={t('material')}
+        title={t('category')}
         onSelect={(o) => setCategoryId(o.id)}
       />
       <SelectSheet

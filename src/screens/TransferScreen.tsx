@@ -19,6 +19,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
   type IconKey,
   type SelectOption,
@@ -60,10 +61,9 @@ export function TransferScreen(): React.JSX.Element {
   const [toId, setToId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [fromSheet, setFromSheet] = useState(false);
   const [toSheet, setToSheet] = useState(false);
-
-  const date = todayISO().slice(0, 10);
 
   const load = useCallback(async () => {
     setAccounts(await listAccountsWithBalance());
@@ -154,6 +154,9 @@ export function TransferScreen(): React.JSX.Element {
 
           {/* Note (optional) */}
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
+
+          {/* Date */}
+          <DateField value={date} onChange={setDate} />
 
         </ScrollView>
 

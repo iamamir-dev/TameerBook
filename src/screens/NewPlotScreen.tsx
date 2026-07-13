@@ -1,4 +1,4 @@
-import { useNavigation } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
 import {
@@ -22,13 +22,15 @@ import {
   SelectSheet,
   type SelectOption,
 } from '@/components/ui';
-import { createPlot, SIZE_UNITS, type SizeUnit } from '@/db';
+import { createPlot, includePlotInProject, SIZE_UNITS, type SizeUnit } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type NewPlotRoute = RouteProp<RootStackParamList, 'NewPlot'>;
 
 const UNIT_LABEL: Record<SizeUnit, TranslationKey> = {
   MARLA: 'unitMarla',
@@ -41,6 +43,7 @@ export function NewPlotScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const forProjectId = useRoute<NewPlotRoute>().params?.forProjectId;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
@@ -55,7 +58,7 @@ export function NewPlotScreen(): React.JSX.Element {
   const [sellerPhone, setSellerPhone] = useState('');
 
   const [unitSheet, setUnitSheet] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { saving, run: runSave } = useSaveAction();
 
   const unitOptions: SelectOption[] = useMemo(
     () => SIZE_UNITS.map((u) => ({ id: u, label: t(UNIT_LABEL[u]) })),
@@ -66,8 +69,8 @@ export function NewPlotScreen(): React.JSX.Element {
 
   const onCreate = async () => {
     if (!canCreate || saving) return;
-    setSaving(true);
-    try {
+    let plotId: string | null = null;
+    const ok = await runSave(async () => {
       const sizeValue = Number(size);
       const plot = await createPlot({
         name: name.trim(),
@@ -80,10 +83,16 @@ export function NewPlotScreen(): React.JSX.Element {
         sellerName: sellerName.trim() || null,
         sellerPhone: sellerPhone.trim() || null,
       });
-      navigation.replace('PlotDetail', { plotId: plot.id });
-    } finally {
-      setSaving(false);
-    }
+      plotId = plot.id;
+      // Created from inside a project's "Add plot" flow → include it now so
+      // the user lands back on the project with the plot already attached.
+      if (forProjectId) await includePlotInProject(plot.id, forProjectId);
+    });
+    if (!ok || !plotId) return;
+    // Back to the project (it refetches on focus) when we came from one;
+    // otherwise open the new plot's detail as before.
+    if (forProjectId) navigation.goBack();
+    else navigation.replace('PlotDetail', { plotId });
   };
 
   return (

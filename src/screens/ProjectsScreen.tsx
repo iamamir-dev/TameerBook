@@ -44,9 +44,9 @@ export function ProjectsScreen(): React.JSX.Element {
       <AppHeader
         title={t('projects')}
         rightAction={{
-          icon: 'plot',
-          onPress: () => navigation.navigate('Tabs', { screen: 'Plots' }),
-          accessibilityLabel: t('plotsTitle'),
+          icon: 'add',
+          onPress: () => navigation.navigate('NewProject'),
+          accessibilityLabel: t('newProject'),
         }}
       />
 
@@ -64,7 +64,7 @@ export function ProjectsScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE + 72 },
+            { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE },
           ]}
         >
           {active.length > 0 ? (
@@ -97,23 +97,6 @@ export function ProjectsScreen(): React.JSX.Element {
           ))}
         </ScrollView>
       )}
-
-      {/* Floating "Naya Project" button */}
-      <Pressable
-        onPress={() => navigation.navigate('NewProject')}
-        accessibilityRole="button"
-        accessibilityLabel={t('newProject')}
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: insets.bottom + FLOATING_BAR_CLEARANCE + theme.spacing.sm },
-          pressed && styles.fabPressed,
-        ]}
-      >
-        <AppIcon name="add" size={22} color="onAccent" strokeWidth={2.4} />
-        <AppText size="sm" weight="bold" color="onAccent">
-          {t('newProject')}
-        </AppText>
-      </Pressable>
     </View>
   );
 }
@@ -163,9 +146,6 @@ function ProjectCard({
       <View style={styles.mathBlock}>
         <MathRow label={t('phasePlot')} value={formatRupees(cost.plotCost)} />
         <MathRow label={t('phaseConstruction')} value={formatRupees(cost.constructionCost)} />
-        {saleReceived > 0 ? (
-          <MathRow label={t('phaseSale')} value={formatRupees(saleReceived)} valueColor="success" />
-        ) : null}
         <View style={styles.divider} />
         <View style={styles.mathRow}>
           <AppText size="sm" weight="bold">
@@ -175,6 +155,17 @@ function ProjectCard({
             {formatRupees(cost.totalCost)}
           </AppText>
         </View>
+        {/* Money IN sits apart from the cost math — it is not a cost row. */}
+        {saleReceived > 0 ? (
+          <View style={[styles.mathRow, styles.saleRow]}>
+            <AppText size="sm" color="textSecondary">
+              {t('phaseSale')}
+            </AppText>
+            <AppText size="sm" weight="semibold" color="success" tabular>
+              {formatRupees(saleReceived)}
+            </AppText>
+          </View>
+        ) : null}
       </View>
     </AppCard>
   );
@@ -241,17 +232,10 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
       marginVertical: theme.spacing.xs,
     },
-    fab: {
-      position: 'absolute',
-      right: theme.spacing.lg,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      height: theme.touch.minTarget,
-      paddingHorizontal: theme.spacing.xl,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accent,
-      ...theme.shadows.fab,
+    saleRow: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      paddingTop: theme.spacing.xs,
+      marginTop: theme.spacing.xs,
     },
-    fabPressed: { opacity: 0.9 },
   });

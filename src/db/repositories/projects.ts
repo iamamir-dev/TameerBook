@@ -1,20 +1,22 @@
 import { getDatabase } from '../database';
 import {
-  DEFAULT_MILESTONES,
   DEFAULT_USER,
   type ProjectRow,
   type ProjectStatus,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { requireCompanyId } from './companies';
+import { listInvestorsWithCapacity, type InvestorAttachment } from './investors';
 import { assertPlotIncludable, linkPlotToProject } from './plots';
 import { getSaleSummary } from './sales';
-import { getProjectTotals } from './transactions';
+import { getProjectTotals, LimitExceededError } from './transactions';
 
 export interface NewProject {
   name: string;
   /** The plot this project builds on (linked + backfilled on create). */
   plotId?: string | null;
+  /** Initial investors: participation + INITIAL capital, same transaction. */
+  investors?: InvestorAttachment[];
   startDate?: string | null;
   status?: ProjectStatus;
   donationPct?: number | null;
@@ -22,23 +24,33 @@ export interface NewProject {
 }
 
 /**
- * Create a project  optionally including a plot (links both ways and pulls
- * the plot's transaction history into the project)  and seed its 9 standard
- * construction milestones so progress tracking works out of the box.
+ * Create a project — optionally including a plot (links both ways and pulls
+ * the plot's transaction history into the project) AND the initial investors.
+ * Project + plot link + participations + INITIAL capital all commit in ONE
+ * transaction (V-22/1.5): a failed investor attach can never leave an orphan
+ * project behind. Capacity is validated up front (V-4).
  */
-export async function createProject(
-  input: NewProject,
-  opts: { withDefaultMilestones?: boolean } = {}
-): Promise<ProjectRow> {
-  // Construction "steps"/milestones are retired: projects no longer seed them
-  // and nothing in the UI shows them. Callers may still opt in for legacy tests.
-  const { withDefaultMilestones = false } = opts;
+export async function createProject(input: NewProject): Promise<ProjectRow> {
   const db = await getDatabase();
   const id = uuid();
   const createdAt = nowISO();
   const createdBy = input.createdBy ?? DEFAULT_USER;
+  const investors = input.investors ?? [];
 
   if (input.plotId) await assertPlotIncludable(input.plotId, id);
+
+  // Validate every stake against remaining capacity BEFORE anything commits.
+  if (investors.length > 0) {
+    const capacities = await listInvestorsWithCapacity();
+    for (const a of investors) {
+      const cap = capacities.find((c) => c.id === a.investorId);
+      if (!cap) throw new Error(`createProject: investor ${a.investorId} not found`);
+      if (a.amount < 0) throw new Error('createProject: stake cannot be negative');
+      if (a.amount > cap.remaining + 0.001) {
+        throw new LimitExceededError(cap.remaining, a.amount);
+      }
+    }
+  }
 
   await db.withExclusiveTransactionAsync(async (tx) => {
     await tx.runAsync(
@@ -54,24 +66,41 @@ export async function createProject(
       input.donationPct ?? null
     );
 
-    if (withDefaultMilestones) {
-      for (const ms of DEFAULT_MILESTONES) {
+    // Same transaction: a project is never committed without its plot link.
+    if (input.plotId) await linkPlotToProject(tx, input.plotId, id);
+
+    // Same transaction: initial investors (participation + INITIAL capital).
+    const date = createdAt.slice(0, 10);
+    for (const a of investors) {
+      const piId = uuid();
+      await tx.runAsync(
+        `INSERT INTO project_investors
+           (id, created_at, created_by, project_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, NULL)`,
+        piId,
+        createdAt,
+        createdBy,
+        id,
+        a.investorId,
+        a.amount,
+        a.profitPct ?? null,
+        createdAt
+      );
+      if (a.amount > 0) {
         await tx.runAsync(
-          `INSERT INTO milestones (id, created_at, created_by, project_id, name, sequence, pct_weight, status, completed_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', NULL)`,
+          `INSERT INTO capital_ledger
+             (id, created_at, created_by, project_investor_id, entry_type, amount, counterparty_pi_id,
+              valuation_amount, date, note, doc_id)
+           VALUES (?, ?, ?, ?, 'INITIAL', ?, NULL, NULL, ?, NULL, NULL)`,
           uuid(),
           createdAt,
           createdBy,
-          id,
-          ms.name,
-          ms.sequence,
-          ms.pct_weight
+          piId,
+          a.amount,
+          date
         );
       }
     }
-
-    // Same transaction: a project is never committed without its plot link.
-    if (input.plotId) await linkPlotToProject(tx, input.plotId, id);
   });
 
   return getProject(id) as Promise<ProjectRow>;

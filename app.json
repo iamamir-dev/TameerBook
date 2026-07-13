@@ -32,6 +32,15 @@
           "photosPermission": "TameerBook receipts ke liye photos tak rasai chahta hai.",
           "cameraPermission": "TameerBook receipt ki tasveer lene ke liye camera istemal karta hai."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
       ]
     ]
   }

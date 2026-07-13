@@ -23,11 +23,13 @@ import {
 import {
   addSaleCost,
   addSaleReceipt,
+  getProject,
   getSaleSummary,
   listAccountsWithBalance,
   listProjectPhaseTransactions,
   upsertSale,
   type AccountWithBalance,
+  type ProjectRow,
   type SaleSummary,
   type TransactionRow,
 } from '@/db';
@@ -57,6 +59,7 @@ export function SaleDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<SaleSummary | null>(null);
+  const [project, setProject] = useState<ProjectRow | null>(null);
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
 
@@ -86,17 +89,22 @@ export function SaleDetailScreen(): React.JSX.Element {
   const { saving, run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
-    const [sum, rows, accs] = await Promise.all([
+    const [sum, proj, rows, accs] = await Promise.all([
       getSaleSummary(projectId),
+      getProject(projectId),
       listProjectPhaseTransactions(projectId, 'SALE'),
       listAccountsWithBalance(),
     ]);
     setSummary(sum);
+    setProject(proj);
     setTxns(rows);
     setAccounts(accs);
   }, [projectId]);
 
   const { reload } = useFocusReload(load);
+
+  // A completed project's sale phase is read-only history.
+  const completed = project?.status === 'COMPLETED';
 
   useEffect(() => {
     if (!accountId && accounts.length > 0) setAccountId(accounts[0].id);
@@ -206,7 +214,7 @@ export function SaleDetailScreen(): React.JSX.Element {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
-        {!sale ? (
+        {!sale && completed ? null : !sale ? (
           /* No deal yet  record the agreed price + buyer */
           <AppCard>
             <View style={styles.newDeal}>
@@ -226,8 +234,13 @@ export function SaleDetailScreen(): React.JSX.Element {
           </AppCard>
         ) : (
           <>
-            {/* Deal hero  tap to edit */}
-            <Pressable onPress={openEdit} accessibilityRole="button" style={styles.hero}>
+            {/* Deal hero  tap to edit (locked once the project completes) */}
+            <Pressable
+              onPress={completed ? undefined : openEdit}
+              disabled={completed}
+              accessibilityRole="button"
+              style={styles.hero}
+            >
               <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
                 {t('saleDeal')}
               </AppText>
@@ -246,20 +259,22 @@ export function SaleDetailScreen(): React.JSX.Element {
               </View>
             </Pressable>
 
-            {/* Actions */}
-            <View style={styles.actionRow}>
-              <View style={styles.flex}>
-                <AppButton label={t('addReceipt')} icon="moneyIn" onPress={() => setReceiptOpen(true)} />
+            {/* Actions (hidden once the project completes) */}
+            {!completed ? (
+              <View style={styles.actionRow}>
+                <View style={styles.flex}>
+                  <AppButton label={t('addReceipt')} icon="moneyIn" onPress={() => setReceiptOpen(true)} />
+                </View>
+                <View style={styles.flex}>
+                  <AppButton
+                    label={t('addExpense')}
+                    icon="moneyOut"
+                    variant="secondary"
+                    onPress={() => setExpenseOpen(true)}
+                  />
+                </View>
               </View>
-              <View style={styles.flex}>
-                <AppButton
-                  label={t('addExpense')}
-                  icon="moneyOut"
-                  variant="secondary"
-                  onPress={() => setExpenseOpen(true)}
-                />
-              </View>
-            </View>
+            ) : null}
           </>
         )}
 
@@ -478,7 +493,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: theme.spacing.sm,
       borderRadius: theme.radius.pill,
       backgroundColor: theme.colors.primarySoft,
-      minHeight: theme.touch.minTarget - 12,
+      minHeight: theme.touch.minTarget,
       justifyContent: 'center',
     },
     chipActive: { backgroundColor: theme.colors.primary },

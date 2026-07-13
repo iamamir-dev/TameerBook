@@ -3,13 +3,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppCard, AppHeader, AppText } from '@/components/ui';
+import { AppButton, AppCard, AppHeader, AppText, LoadErrorState } from '@/components/ui';
 import { computeSettlement, getProject, type Settlement, settleProject } from '@/db';
-import { useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -40,9 +40,7 @@ export function SettlementScreen(): React.JSX.Element {
     setProjectName(p?.name ?? '');
   }, [projectId]);
 
-  useEffect(() => {
-    load().catch(swallow('settlement:load'));
-  }, [load]);
+  const { loadFailed, reload } = useFocusReload(load);
 
   const sharePdf = async (s: Settlement) => {
     const showDonation = s.totalDonation > 0;
@@ -81,10 +79,14 @@ export function SettlementScreen(): React.JSX.Element {
     if (!data) return;
     const ok = await runSave(async () => {
       await settleProject(projectId);
-      await refreshProjects();
     });
     if (!ok) return;
-    await sharePdf(data).catch(swallow('settlement:sharePdf'));
+    // Best-effort follow-ups: neither a stale projects list nor a share
+    // failure may ever look like a failed settlement.
+    await Promise.all([
+      refreshProjects().catch(swallow('settlement:refresh')),
+      sharePdf(data).catch(swallow('settlement:sharePdf')),
+    ]);
     navigation.goBack();
   };
 
@@ -186,6 +188,8 @@ export function SettlementScreen(): React.JSX.Element {
 
           <AppButton label={t('confirm')} icon="check" onPress={onConfirm} loading={saving} />
         </ScrollView>
+      ) : loadFailed ? (
+        <LoadErrorState onRetry={() => void reload()} />
       ) : null}
     </View>
   );

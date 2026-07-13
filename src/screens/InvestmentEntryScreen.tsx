@@ -1,6 +1,5 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +11,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
   type IconKey,
   type SelectOption,
@@ -61,7 +61,6 @@ export function InvestmentEntryScreen(): React.JSX.Element {
   const [investorSheet, setInvestorSheet] = useState(false);
   const [projectSheet, setProjectSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [dateSheet, setDateSheet] = useState(false);
 
   useEffect(() => {
     listInvestors().then(setInvestors).catch(swallow('investment:load'));
@@ -95,15 +94,6 @@ export function InvestmentEntryScreen(): React.JSX.Element {
       })),
     [accounts]
   );
-  const dateLabel = date === todayISO().slice(0, 10) ? t('today') : dayjs(date).format('DD MMM YYYY');
-  const dateOptions: SelectOption[] = useMemo(
-    () =>
-      Array.from({ length: 14 }, (_, i) => {
-        const d = dayjs().subtract(i, 'day');
-        return { id: d.format('YYYY-MM-DD'), label: i === 0 ? t('today') : d.format('DD MMM YYYY') };
-      }),
-    [t]
-  );
 
   const onSave = async () => {
     if (!investorId || !projectId || amount <= 0) return;
@@ -121,18 +111,24 @@ export function InvestmentEntryScreen(): React.JSX.Element {
     navigation.goBack();
   };
 
-  if (projects.length === 0 || investors.length === 0) {
+  if (projects.length === 0 || investors.length === 0 || accounts.length === 0) {
     return (
       <View style={styles.screen}>
         <AppHeader title={t('addInvestment')} onBack={() => navigation.goBack()} />
         <View style={styles.empty}>
           <AppText size="md" color="textSecondary" center>
-            {investors.length === 0 ? t('noInvestorsDetail') : t('noProjectsDetail')}
+            {investors.length === 0
+              ? t('noInvestorsDetail')
+              : projects.length === 0
+                ? t('noProjectsDetail')
+                : t('obCashBody')}
           </AppText>
           {investors.length === 0 ? (
             <AppButton label={t('addInvestor')} icon="add" fullWidth={false} onPress={() => navigation.navigate('Tabs', { screen: 'Investors' })} />
-          ) : (
+          ) : projects.length === 0 ? (
             <AppButton label={t('newProject')} icon="add" fullWidth={false} onPress={() => navigation.navigate('NewProject')} />
+          ) : (
+            <AppButton label={t('addAccount')} icon="balance" fullWidth={false} onPress={() => navigation.navigate('Accounts')} />
           )}
         </View>
       </View>
@@ -175,13 +171,7 @@ export function InvestmentEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          <Pressable onPress={() => setDateSheet(true)} style={styles.chip} accessibilityRole="button">
-            <AppIcon name="today" size={18} color="primary" />
-            <AppText size="sm" weight="semibold" style={styles.flex}>
-              {dateLabel}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </Pressable>
+          <DateField value={date} onChange={setDate} />
 
         </ScrollView>
 
@@ -199,7 +189,6 @@ export function InvestmentEntryScreen(): React.JSX.Element {
       <SelectSheet visible={investorSheet} onClose={() => setInvestorSheet(false)} options={investors.map((i) => ({ id: i.id, label: i.name, icon: 'investor' as IconKey }))} selectedId={investorId ?? undefined} title={t('selectInvestor')} onSelect={(o) => setInvestorId(o.id)} />
       <SelectSheet visible={projectSheet} onClose={() => setProjectSheet(false)} options={projects.map((p) => ({ id: p.project.id, label: p.project.name, icon: 'project' as IconKey }))} selectedId={projectId ?? undefined} title={t('selectProject')} onSelect={(o) => setProjectId(o.id)} />
       <SelectSheet visible={accountSheet} onClose={() => setAccountSheet(false)} options={accountOptions} selectedId={accountId ?? undefined} title={t('selectAccount')} searchable={false} onSelect={(o) => setAccountId(o.id)} />
-      <SelectSheet visible={dateSheet} onClose={() => setDateSheet(false)} options={dateOptions} selectedId={date} title={t('date')} searchable={false} onSelect={(o) => setDate(o.id)} />
     </View>
   );
 }

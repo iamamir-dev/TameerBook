@@ -19,6 +19,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   LedgerTable,
   SelectSheet,
   type IconKey,
@@ -68,6 +69,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
   const [move, setMove] = useState<MoveKind | null>(null);
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [accountSheet, setAccountSheet] = useState(false);
 
   const load = useCallback(async () => {
@@ -113,13 +115,14 @@ export function UdhaarDetailScreen(): React.JSX.Element {
 
   const openMove = (kind: MoveKind) => {
     setAmount(kind === 'return' && udhaar ? Math.max(0, udhaar.balance) : 0);
+    setDate(todayISO().slice(0, 10));
     setMove(kind);
   };
 
   const onSave = async () => {
     if (!move || amount <= 0 || !accountId) return;
     const ok = await runSave(async () => {
-      const input = { udhaarId, amount, date: todayISO().slice(0, 10), accountId };
+      const input = { udhaarId, amount, date, accountId };
       if (move === 'give') await giveUdhaar(input);
       else await returnUdhaar(input);
     });
@@ -214,6 +217,8 @@ export function UdhaarDetailScreen(): React.JSX.Element {
               </AppText>
               <AppIcon name="forward" size={18} color="textSecondary" />
             </Pressable>
+
+            <DateField value={date} onChange={setDate} />
 
             <AppButton
               label={t('save')}

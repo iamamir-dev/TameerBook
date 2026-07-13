@@ -5,6 +5,8 @@ import { useDataVersion } from '@/stores/useDataVersion';
 import { reportError } from '@/utils/log';
 
 export interface FocusReload {
+  /** True once the FIRST load has completed (gate empty states on this). */
+  loaded: boolean;
   /** True when the last load failed (screens can show a retry state). */
   loadFailed: boolean;
   /** Re-run the load on demand (after a save, or from a retry button). */
@@ -21,6 +23,7 @@ export interface FocusReload {
  */
 export function useFocusReload(load: () => Promise<void>): FocusReload {
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -29,6 +32,8 @@ export function useFocusReload(load: () => Promise<void>): FocusReload {
     } catch (e) {
       reportError('screen:load', e);
       setLoadFailed(true);
+    } finally {
+      setLoaded(true);
     }
   }, [load]);
 
@@ -49,5 +54,5 @@ export function useFocusReload(load: () => Promise<void>): FocusReload {
     void reload();
   }, [version, reload]);
 
-  return { loadFailed, reload };
+  return { loaded, loadFailed, reload };
 }

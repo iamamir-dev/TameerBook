@@ -148,6 +148,13 @@ export function PayWorkerSheet({
               floating
               surface={theme.colors.card}
             />
+            {/* Say WHY the save button is disabled instead of silently
+                greying it out when the amount exceeds what is owed. */}
+            {amount > owed ? (
+              <AppText size="xs" color="danger">
+                {t('exceedsRemaining')}
+              </AppText>
+            ) : null}
 
             <Pressable
               onPress={() => setAccountSheet(true)}

@@ -10,6 +10,7 @@ import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { addDocument } from './documents';
+import { assertProjectActive } from './guards';
 import { addTransaction, LimitExceededError } from './transactions';
 
 export interface NewPlot {
@@ -155,6 +156,8 @@ export async function addPlotPayment(input: PlotPaymentInput): Promise<void> {
   const plot = await getPlot(input.plotId);
   if (!plot) throw new Error(`addPlotPayment: plot ${input.plotId} not found`);
   if (input.amount <= 0) throw new Error('addPlotPayment: amount must be positive');
+  // A plot inside a COMPLETED project is read-only (V-7).
+  if (plot.project_id) await assertProjectActive(plot.project_id);
 
   const summary = await getPlotSummary(input.plotId);
   if (input.amount > summary.remaining + 0.001) {
@@ -206,6 +209,8 @@ export interface PlotExpenseInput {
 export async function addPlotExpense(input: PlotExpenseInput): Promise<void> {
   const plot = await getPlot(input.plotId);
   if (!plot) throw new Error(`addPlotExpense: plot ${input.plotId} not found`);
+  // A plot inside a COMPLETED project is read-only (V-7).
+  if (plot.project_id) await assertProjectActive(plot.project_id);
 
   const txn = await addTransaction({
     direction: 'OUT',
@@ -241,6 +246,14 @@ export interface PlotSummary {
   expenses: number;
   /** Everything spent on the plot so far: paidToSeller + expenses. */
   totalCost: number;
+  /** Standalone sale: agreed price with the buyer (0 = not for sale). */
+  salePrice: number;
+  /** Σ live buyer receipts on the standalone sale. */
+  saleReceived: number;
+  /** salePrice − saleReceived. */
+  saleOutstanding: number;
+  /** saleReceived − totalCost once a sale exists (the flip's profit story). */
+  saleProfit: number;
 }
 
 /**
@@ -263,17 +276,97 @@ export async function getPlotSummary(plotId: string): Promise<PlotSummary> {
      WHERE t.plot_id = ? AND t.direction = 'OUT' AND t.is_void = 0`,
     plotId
   );
+  const sold = await db.getFirstAsync<{ s: number }>(
+    `SELECT COALESCE(SUM(t.amount), 0) AS s
+     FROM transactions t JOIN categories c ON c.id = t.category_id
+     WHERE t.plot_id = ? AND t.direction = 'IN' AND t.is_void = 0 AND c.name_en = 'Plot Sale'`,
+    plotId
+  );
 
   const paidToSeller = row?.paid ?? 0;
   const expenses = row?.expenses ?? 0;
+  const totalCost = paidToSeller + expenses;
+  const salePrice = plot.sale_price ?? 0;
+  const saleReceived = sold?.s ?? 0;
   return {
     plot,
     dealPrice: plot.deal_price,
     paidToSeller,
     remaining: Math.max(0, plot.deal_price - paidToSeller),
     expenses,
-    totalCost: paidToSeller + expenses,
+    totalCost,
+    salePrice,
+    saleReceived,
+    saleOutstanding: Math.max(0, salePrice - saleReceived),
+    saleProfit: salePrice > 0 ? saleReceived - totalCost : 0,
   };
+}
+
+/**
+ * STANDALONE PLOT SALE — a plot can be flipped WITHOUT ever joining a
+ * project: agree a price with a buyer, then receive instalments (below).
+ * Blocked for plots inside projects (their sale goes through the project).
+ */
+export async function setPlotSale(input: {
+  plotId: string;
+  salePrice: number;
+  buyerName?: string | null;
+}): Promise<void> {
+  const plot = await getPlot(input.plotId);
+  if (!plot) throw new Error(`setPlotSale: plot ${input.plotId} not found`);
+  if (plot.project_id) throw new Error('setPlotSale: plot belongs to a project — sell via the project');
+  if (input.salePrice <= 0) throw new Error('setPlotSale: sale price must be positive');
+  const db = await getDatabase();
+  await db.runAsync(
+    'UPDATE plots SET sale_price = ?, buyer_name = ? WHERE id = ?',
+    input.salePrice,
+    input.buyerName ?? plot.buyer_name,
+    input.plotId
+  );
+}
+
+/**
+ * Buyer money for a standalone plot sale: an IN transaction on the chosen
+ * account (category "Plot Sale"), tagged to the plot. When the full price has
+ * arrived the plot flips to SOLD — it can never be offered to a project again.
+ * VALIDATION: the buyer can never pay more than what is still outstanding.
+ */
+export async function addPlotSaleReceipt(input: {
+  plotId: string;
+  amount: number;
+  date: string;
+  accountId: string;
+  payType?: PayType | null;
+  createdBy?: string;
+}): Promise<void> {
+  if (input.amount <= 0) throw new Error('addPlotSaleReceipt: amount must be positive');
+  const summary = await getPlotSummary(input.plotId);
+  const { plot } = summary;
+  if (plot.project_id) throw new Error('addPlotSaleReceipt: plot belongs to a project');
+  if (!plot.sale_price) throw new Error('addPlotSaleReceipt: set the sale price first');
+  if (input.amount > summary.saleOutstanding + 0.001) {
+    throw new LimitExceededError(summary.saleOutstanding, input.amount);
+  }
+
+  const categoryId = await categoryIdByName('Plot Sale', 'INCOME', 'Plot ki farokht');
+  await addTransaction({
+    direction: 'IN',
+    amount: input.amount,
+    date: input.date,
+    accountId: input.accountId,
+    plotId: input.plotId,
+    phase: 'SALE',
+    categoryId,
+    payType: input.payType ?? null,
+    counterpartyName: plot.buyer_name,
+    createdBy: input.createdBy,
+  });
+
+  // Fully received → the plot is SOLD.
+  if (summary.saleReceived + input.amount >= plot.sale_price - 0.001) {
+    const db = await getDatabase();
+    await db.runAsync("UPDATE plots SET status = 'SOLD' WHERE id = ?", input.plotId);
+  }
 }
 
 /** All plots with their summaries, newest first (the Plots list). */

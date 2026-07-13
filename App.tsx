@@ -1,12 +1,4 @@
-import { Baloo2_500Medium, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
-import { Fraunces_500Medium, Fraunces_700Bold, Fraunces_800ExtraBold } from '@expo-google-fonts/fraunces';
-import { Inter_500Medium, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
-import {
-  MPLUSRounded1c_500Medium,
-  MPLUSRounded1c_700Bold,
-  MPLUSRounded1c_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/m-plus-rounded-1c';
+import { useFonts } from 'expo-font';
 import {
   DefaultTheme,
   NavigationContainer,
@@ -191,20 +183,23 @@ function ThemedApp(): React.JSX.Element {
  */
 export default function App(): React.JSX.Element {
   // Every selectable family (Settings → Font) loads up front, so switching
-  // fonts re-themes instantly with no flash of fallback text.
+  // fonts re-themes instantly with no flash of fallback text. These are
+  // LOCAL Latin-subset files (assets/fonts) — the Google-font packages ship
+  // full CJK/Cyrillic glyph sets (M PLUS alone was ~10 MB); the subsets are
+  // ~70 KB each. Urdu script falls back to the OS font per-glyph as before.
   const [fontsLoaded] = useFonts({
-    MPLUSRounded1c_500Medium,
-    MPLUSRounded1c_700Bold,
-    MPLUSRounded1c_800ExtraBold,
-    Baloo2_500Medium,
-    Baloo2_700Bold,
-    Baloo2_800ExtraBold,
-    Fraunces_500Medium,
-    Fraunces_700Bold,
-    Fraunces_800ExtraBold,
-    Inter_500Medium,
-    Inter_700Bold,
-    Inter_800ExtraBold,
+    MPLUSRounded1c_500Medium: require('./assets/fonts/MPLUSRounded1c_500Medium.ttf'),
+    MPLUSRounded1c_700Bold: require('./assets/fonts/MPLUSRounded1c_700Bold.ttf'),
+    MPLUSRounded1c_800ExtraBold: require('./assets/fonts/MPLUSRounded1c_800ExtraBold.ttf'),
+    Baloo2_500Medium: require('./assets/fonts/Baloo2_500Medium.ttf'),
+    Baloo2_700Bold: require('./assets/fonts/Baloo2_700Bold.ttf'),
+    Baloo2_800ExtraBold: require('./assets/fonts/Baloo2_800ExtraBold.ttf'),
+    Fraunces_500Medium: require('./assets/fonts/Fraunces_500Medium.ttf'),
+    Fraunces_700Bold: require('./assets/fonts/Fraunces_700Bold.ttf'),
+    Fraunces_800ExtraBold: require('./assets/fonts/Fraunces_800ExtraBold.ttf'),
+    Inter_500Medium: require('./assets/fonts/Inter_500Medium.ttf'),
+    Inter_700Bold: require('./assets/fonts/Inter_700Bold.ttf'),
+    Inter_800ExtraBold: require('./assets/fonts/Inter_800ExtraBold.ttf'),
   });
 
   if (!fontsLoaded) {

@@ -1,9 +1,10 @@
 import { getDatabase } from '../database';
 import { DEFAULT_USER } from '../schema';
 import { nowISO, uuid } from '../uuid';
-import { getProjectCapitalSummary } from './capital';
+import { getProjectCapitalSummary, GROSS_CONTRIBUTED_SQL } from './capital';
 import { assertProjectActive } from './guards';
 import { listProjectInvestors } from './investors';
+import { getProjectLaborTotals } from './labor';
 import { getProject } from './projects';
 import { getSaleSummary } from './sales';
 import { loadSettings } from './settings';
@@ -39,7 +40,12 @@ interface ProjectPnl {
   isProfit: boolean;
 }
 
-/** Revenue = sale receipts + Other Income; expenses = all live OUT rows. */
+/**
+ * Revenue = sale receipts + Other Income; expenses = all live OUT rows PLUS
+ * wages accrued but not yet paid. Without the unpaid-wage accrual the P&L
+ * overstates profit and `settleProject` would pay investors money that is
+ * still owed to workers (the cash OUT only lands when the worker is paid).
+ */
 async function getProjectPnl(projectId: string): Promise<ProjectPnl> {
   const db = await getDatabase();
   const sale = await getSaleSummary(projectId);
@@ -54,9 +60,10 @@ async function getProjectPnl(projectId: string): Promise<ProjectPnl> {
      FROM transactions WHERE project_id = ? AND direction = 'OUT' AND is_void = 0`,
     projectId
   );
+  const labor = await getProjectLaborTotals(projectId);
 
   const revenue = sale.receiptsTotal + (otherIncome?.s ?? 0);
-  const expenses = expenseRow?.s ?? 0;
+  const expenses = (expenseRow?.s ?? 0) + Math.max(0, labor.outstanding);
   const net = revenue - expenses;
   return { revenue, expenses, net, isProfit: net >= 0 };
 }
@@ -182,11 +189,7 @@ export async function getProjectSettlementSummary(projectId: string): Promise<Se
 
   const invRows = await db.getAllAsync<{ investor_id: string; name: string; profit_pct: number | null; invested: number }>(
     `SELECT pi.investor_id, COALESCE(inv.name, '') AS name, pi.profit_pct,
-        COALESCE(SUM(CASE cl.entry_type
-          WHEN 'INITIAL' THEN cl.amount
-          WHEN 'ADDITIONAL' THEN cl.amount
-          WHEN 'TRANSFER_IN' THEN cl.amount
-          ELSE 0 END), 0) AS invested
+        COALESCE(${GROSS_CONTRIBUTED_SQL}, 0) AS invested
      FROM project_investors pi
      LEFT JOIN investors inv ON inv.id = pi.investor_id
      LEFT JOIN capital_ledger cl ON cl.project_investor_id = pi.id

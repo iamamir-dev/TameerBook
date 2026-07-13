@@ -6,7 +6,7 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -29,10 +29,9 @@ import {
   type TransactionRow,
   voidTransaction,
 } from '@/db';
-import { useFocusReload } from '@/hooks';
+import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
-import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
@@ -57,7 +56,7 @@ export function TransactionsScreen(): React.JSX.Element {
   const { projectId } = useRoute<TxnRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
-  const refreshProjects = useProjectsStore((s) => s.refresh);
+  const { saving, run: runSave } = useSaveAction();
 
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -127,23 +126,36 @@ export function TransactionsScreen(): React.JSX.Element {
     [categories, language]
   );
 
-  const onFix = async () => {
+  const onFix = () => {
     if (!selected) return;
     const original = selected;
-    await voidTransaction(original.id);
-    await refreshProjects();
-    setSelected(null);
-    navigation.navigate('Entry', {
-      direction: original.direction,
-      prefill: {
-        amount: original.amount,
-        categoryId: original.category_id,
-        note: original.description ?? undefined,
-        accountId: original.account_id ?? undefined,
-        projectId: original.project_id ?? undefined,
-        partyId: original.party_id,
+    Alert.alert(t('fixMistakeConfirmTitle'), t('fixMistakeExplain'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('fixMistake'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const ok = await runSave(async () => {
+              await voidTransaction(original.id);
+            });
+            if (!ok) return;
+            setSelected(null);
+            navigation.navigate('Entry', {
+              direction: original.direction,
+              prefill: {
+                amount: original.amount,
+                categoryId: original.category_id,
+                note: original.description ?? undefined,
+                accountId: original.account_id ?? undefined,
+                projectId: original.project_id ?? undefined,
+                partyId: original.party_id,
+              },
+            });
+          })();
+        },
       },
-    });
+    ]);
   };
 
   return (
@@ -165,6 +177,7 @@ export function TransactionsScreen(): React.JSX.Element {
             <Pressable
               key={f.key}
               onPress={() => (f.key === 'category' ? setCatSheet(true) : setFilter(f.key))}
+              hitSlop={theme.touch.hitSlop}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               style={[styles.chip, active && styles.chipActive]}
@@ -193,7 +206,7 @@ export function TransactionsScreen(): React.JSX.Element {
                   title={cat || (txn.direction === 'IN' ? t('aamdani') : t('kharcha'))}
                   subtitle={`${txn.description ? `${txn.description} · ` : ''}${dayjs(txn.date).format('DD MMM')}`}
                   icon={txn.direction === 'IN' ? 'aamdani' : 'kharcha'}
-                  amount={formatPakistaniGrouping(txn.amount)}
+                  amount={`Rs ${formatPakistaniGrouping(txn.amount)}`}
                   direction={dir}
                   thumbnail={receipts[txn.id] ? { uri: receipts[txn.id] } : undefined}
                   onPress={() => setSelected(txn)}
@@ -203,7 +216,7 @@ export function TransactionsScreen(): React.JSX.Element {
           })}
           {filtered.length === 0 ? (
             <AppText size="sm" color="textSecondary" center style={styles.emptyText}>
-              {t('comingSoon')}
+              {t('emptyLedger')}
             </AppText>
           ) : null}
         </AppCard>
@@ -235,7 +248,7 @@ export function TransactionsScreen(): React.JSX.Element {
             <View style={styles.grabber} />
             <AppText size="xxl" weight="bold" tabular color={selected.direction === 'IN' ? 'success' : 'danger'}>
               {selected.direction === 'IN' ? '+ ' : '− '}
-              {formatPakistaniGrouping(selected.amount)}
+              {`Rs ${formatPakistaniGrouping(selected.amount)}`}
             </AppText>
             <AppText size="md" weight="semibold">
               {catName(selected.category_id) || (selected.direction === 'IN' ? t('aamdani') : t('kharcha'))}
@@ -260,7 +273,7 @@ export function TransactionsScreen(): React.JSX.Element {
                 <AppButton label={t('cancel')} variant="secondary" onPress={() => setSelected(null)} />
               </View>
               <View style={styles.sheetBtn}>
-                <AppButton label={t('fixMistake')} icon="tools" variant="danger" onPress={onFix} />
+                <AppButton label={t('fixMistake')} icon="tools" variant="danger" loading={saving} onPress={onFix} />
               </View>
             </View>
           </View>

@@ -20,6 +20,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   EmptyState,
   SelectSheet,
   type IconKey,
@@ -70,6 +71,7 @@ export function UdhaarScreen(): React.JSX.Element {
   const [direction, setDirection] = useState<UdhaarDirection>('GIVEN');
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [accountSheet, setAccountSheet] = useState(false);
 
   const load = useCallback(async () => {
@@ -109,6 +111,7 @@ export function UdhaarScreen(): React.JSX.Element {
     setPersonName('');
     setDirection('GIVEN');
     setAmount(0);
+    setDate(todayISO().slice(0, 10));
     setNewOpen(true);
   };
 
@@ -129,7 +132,7 @@ export function UdhaarScreen(): React.JSX.Element {
         await giveUdhaar({
           udhaarId: u.id,
           amount,
-          date: todayISO().slice(0, 10),
+          date,
           accountId,
         });
       } catch (e) {
@@ -265,6 +268,8 @@ export function UdhaarScreen(): React.JSX.Element {
               </AppText>
               <AppIcon name="forward" size={18} color="textSecondary" />
             </Pressable>
+
+            <DateField value={date} onChange={setDate} />
 
             <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />
           </View>

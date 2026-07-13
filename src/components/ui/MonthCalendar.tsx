@@ -33,11 +33,13 @@ export interface MonthCalendarProps {
   onMonthChange?: (monthPrefix: string) => void;
 }
 
+const MONTHS = Array.from({ length: 12 }, (_, i) => dayjs().month(i).format('MMM'));
+
 /**
- * The app's reusable month grid ("date picker"): a month switcher, a
- * Sunday-first weekday header, and one rounded cell per day. Callers color
- * days via `dayVisual` (attendance, activity, deadlines …) and receive taps
- * via `onSelectDate`. Pure theme tokens — drop it in any card or sheet.
+ * The app's reusable month grid ("date picker"): a header you can TAP to jump
+ * to any month or year (◀ year ▶ + a month grid), a Sunday-first weekday row,
+ * and one rounded cell per day. Callers color days via `dayVisual` and receive
+ * taps via `onSelectDate`. Pure theme tokens — drop it in any card or sheet.
  */
 export function MonthCalendar({
   selected,
@@ -53,13 +55,28 @@ export function MonthCalendar({
   const [month, setMonth] = useState<Dayjs>(() =>
     (initialMonth ? dayjs(initialMonth) : dayjs()).startOf('month')
   );
+  // 'days' = the day grid; 'pick' = the month + year chooser.
+  const [mode, setMode] = useState<'days' | 'pick'>('days');
+  // Year being browsed in 'pick' mode (independent of `month` until confirmed).
+  const [pickYear, setPickYear] = useState(month.year());
 
   const limit = maxDate ?? dayjs().format('YYYY-MM-DD');
-  const canGoNext = month.add(1, 'month').startOf('month').format('YYYY-MM-DD') <= limit;
+  const limitMonth = dayjs(limit).startOf('month');
+  const canGoNext = !month.add(1, 'month').startOf('month').isAfter(limitMonth, 'month');
 
   const changeMonth = (next: Dayjs) => {
     setMonth(next);
     onMonthChange?.(next.format('YYYY-MM'));
+  };
+
+  const openPicker = () => {
+    setPickYear(month.year());
+    setMode('pick');
+  };
+
+  const chooseMonth = (m: number) => {
+    changeMonth(month.year(pickYear).month(m).startOf('month'));
+    setMode('days');
   };
 
   /* Leading blanks (Sunday-first) + one cell per day of the month. */
@@ -70,7 +87,7 @@ export function MonthCalendar({
 
   return (
     <View style={styles.wrap}>
-      {/* Month switcher */}
+      {/* Header: prev / tappable Month YYYY / next */}
       <View style={styles.monthRow}>
         <Pressable
           onPress={() => changeMonth(month.subtract(1, 'month'))}
@@ -80,9 +97,17 @@ export function MonthCalendar({
         >
           <AppIcon name="back" size={18} color="textPrimary" />
         </Pressable>
-        <AppText size="md" weight="bold" center style={styles.monthLabel}>
-          {month.format('MMM YYYY')}
-        </AppText>
+        <Pressable
+          onPress={mode === 'pick' ? () => setMode('days') : openPicker}
+          hitSlop={theme.touch.hitSlop}
+          accessibilityRole="button"
+          style={styles.monthLabelBtn}
+        >
+          <AppText size="md" weight="bold" center>
+            {month.format('MMMM YYYY')}
+          </AppText>
+          <AppIcon name={mode === 'pick' ? 'collapse' : 'expand'} size={16} color="textSecondary" />
+        </Pressable>
         <Pressable
           onPress={() => canGoNext && changeMonth(month.add(1, 'month'))}
           hitSlop={theme.touch.hitSlop}
@@ -94,53 +119,117 @@ export function MonthCalendar({
         </Pressable>
       </View>
 
-      {/* Weekday header (Sunday-first) */}
-      <View style={styles.week}>
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-          <AppText key={`${d}-${i}`} size="xs" weight="semibold" color="textSecondary" center style={styles.weekDay}>
-            {d}
-          </AppText>
-        ))}
-      </View>
-
-      {/* Day grid */}
-      <View style={styles.grid}>
-        {cells.map((date, i) => {
-          if (!date) return <View key={`blank-${i}`} style={styles.cell} />;
-          const disabled = date > limit;
-          const isSelected = date === selected;
-          const visual = (!disabled && dayVisual?.(date)) || {};
-          return (
+      {mode === 'pick' ? (
+        <View style={styles.picker}>
+          {/* Year stepper */}
+          <View style={styles.yearRow}>
             <Pressable
-              key={date}
-              onPress={() => !disabled && onSelectDate(date)}
-              disabled={disabled}
+              onPress={() => setPickYear((y) => y - 1)}
+              hitSlop={theme.touch.hitSlop}
               accessibilityRole="button"
-              accessibilityLabel={date}
-              accessibilityState={{ selected: isSelected, disabled }}
-              style={styles.cell}
+              style={styles.monthBtn}
             >
-              <View
-                style={[
-                  styles.day,
-                  { backgroundColor: visual.bg ?? 'transparent' },
-                  isSelected && styles.daySelected,
-                  disabled && styles.dayDisabled,
-                ]}
-              >
-                <AppText
-                  size="sm"
-                  weight={visual.tone || isSelected ? 'bold' : 'regular'}
-                  color={disabled ? 'textSecondary' : visual.tone ?? 'textPrimary'}
-                  tabular
-                >
-                  {String(dayjs(date).date())}
-                </AppText>
-              </View>
+              <AppIcon name="back" size={18} color="textPrimary" />
             </Pressable>
-          );
-        })}
-      </View>
+            <AppText size="lg" weight="bold" center style={styles.yearLabel} tabular>
+              {String(pickYear)}
+            </AppText>
+            <Pressable
+              onPress={() => pickYear < limitMonth.year() && setPickYear((y) => y + 1)}
+              hitSlop={theme.touch.hitSlop}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: pickYear >= limitMonth.year() }}
+              style={[styles.monthBtn, pickYear >= limitMonth.year() && styles.monthBtnDisabled]}
+            >
+              <AppIcon
+                name="forward"
+                size={18}
+                color={pickYear >= limitMonth.year() ? 'textSecondary' : 'textPrimary'}
+              />
+            </Pressable>
+          </View>
+
+          {/* Month grid (3 per row) */}
+          <View style={styles.monthGrid}>
+            {MONTHS.map((label, m) => {
+              const isFuture = dayjs().year(pickYear).month(m).startOf('month').isAfter(limitMonth, 'month');
+              const isCurrent = month.year() === pickYear && month.month() === m;
+              return (
+                <Pressable
+                  key={label}
+                  onPress={() => !isFuture && chooseMonth(m)}
+                  disabled={isFuture}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isCurrent, disabled: isFuture }}
+                  style={[
+                    styles.monthCell,
+                    isCurrent && styles.monthCellActive,
+                    isFuture && styles.dayDisabled,
+                  ]}
+                >
+                  <AppText
+                    size="sm"
+                    weight={isCurrent ? 'bold' : 'semibold'}
+                    color={isCurrent ? 'onPrimary' : isFuture ? 'textSecondary' : 'textPrimary'}
+                  >
+                    {label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <>
+          {/* Weekday header (Sunday-first) */}
+          <View style={styles.week}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+              <AppText key={`${d}-${i}`} size="xs" weight="semibold" color="textSecondary" center style={styles.weekDay}>
+                {d}
+              </AppText>
+            ))}
+          </View>
+
+          {/* Day grid */}
+          <View style={styles.grid}>
+            {cells.map((date, i) => {
+              if (!date) return <View key={`blank-${i}`} style={styles.cell} />;
+              const disabled = date > limit;
+              const isSelected = date === selected;
+              const visual = (!disabled && dayVisual?.(date)) || {};
+              return (
+                <Pressable
+                  key={date}
+                  onPress={() => !disabled && onSelectDate(date)}
+                  disabled={disabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={date}
+                  accessibilityState={{ selected: isSelected, disabled }}
+                  style={styles.cell}
+                >
+                  <View
+                    style={[
+                      styles.day,
+                      { backgroundColor: visual.bg ?? 'transparent' },
+                      isSelected && styles.daySelected,
+                      disabled && styles.dayDisabled,
+                    ]}
+                  >
+                    <AppText
+                      size="sm"
+                      weight={visual.tone || isSelected ? 'bold' : 'regular'}
+                      color={disabled ? 'textSecondary' : visual.tone ?? 'textPrimary'}
+                      tabular
+                    >
+                      {String(dayjs(date).date())}
+                    </AppText>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -151,7 +240,7 @@ const makeStyles = (theme: Theme) =>
     monthRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: theme.spacing.md,
+      gap: theme.spacing.sm,
     },
     monthBtn: {
       width: 36,
@@ -162,7 +251,14 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     monthBtnDisabled: { opacity: 0.4 },
-    monthLabel: { flex: 1 },
+    monthLabelBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.xs,
+      minHeight: 36,
+    },
     week: { flexDirection: 'row' },
     weekDay: { flex: 1 },
     grid: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -185,4 +281,23 @@ const makeStyles = (theme: Theme) =>
       borderColor: theme.colors.primary,
     },
     dayDisabled: { opacity: 0.35 },
+    /* month + year picker */
+    picker: { gap: theme.spacing.md, paddingVertical: theme.spacing.xs },
+    yearRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+    },
+    yearLabel: { flex: 1 },
+    monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+    monthCell: {
+      width: '31%',
+      flexGrow: 1,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.primarySoft,
+    },
+    monthCellActive: { backgroundColor: theme.colors.primary },
   });

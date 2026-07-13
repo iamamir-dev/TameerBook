@@ -8,6 +8,7 @@ import {
   AppButton,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
   type IconKey,
   type SelectOption,
@@ -65,6 +66,7 @@ export function InvestorPersonSheet({
   const [given, setGiven] = useState(0);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [accountSheet, setAccountSheet] = useState(false);
   const { saving, run: runSave } = useSaveAction();
 
@@ -77,6 +79,7 @@ export function InvestorPersonSheet({
     setCommitted(editing?.committed_amount ?? 0);
     // On edit, don't offer to re-post cash — "given" is fixed to what's recorded.
     setGiven(0);
+    setDate(todayISO().slice(0, 10));
     listAccountsWithBalance()
       .then((a) => {
         setAccounts(a);
@@ -132,7 +135,7 @@ export function InvestorPersonSheet({
           await addInvestorPayment({
             investorId: investor.id,
             amount: given,
-            date: todayISO().slice(0, 10),
+            date,
             accountId,
           });
         }
@@ -178,13 +181,16 @@ export function InvestorPersonSheet({
               <>
                 <AmountInput label={t('receivedNow')} value={given} onChange={setGiven} floating surface={theme.colors.card} />
                 {given > 0 ? (
-                  <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
-                    <AppIcon name={account?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
-                    <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
-                      {account ? `${account.name} · ${formatRupees(account.balance)}` : t('selectAccount')}
-                    </AppText>
-                    <AppIcon name="forward" size={18} color="textSecondary" />
-                  </Pressable>
+                  <>
+                    <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
+                      <AppIcon name={account?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
+                      <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                        {account ? `${account.name} · ${formatRupees(account.balance)}` : t('selectAccount')}
+                      </AppText>
+                      <AppIcon name="forward" size={18} color="textSecondary" />
+                    </Pressable>
+                    <DateField value={date} onChange={setDate} />
+                  </>
                 ) : null}
               </>
             ) : null}

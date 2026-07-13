@@ -160,16 +160,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setReminder: (key, value) => {
     const reminders = { ...get().reminders, [key]: value };
     set({ reminders });
-    void saveSetting('reminders', JSON.stringify(reminders));
+    persist('reminders', JSON.stringify(reminders));
   },
   setInvestorProfitPct: (pct) => {
     const investorProfitPct = clampPct(pct);
     set({ investorProfitPct });
-    void saveSetting('investorProfitPct', String(investorProfitPct));
+    persist('investorProfitPct', String(investorProfitPct));
   },
   setDonationPct: (pct) => {
     const donationPct = clampPct(pct);
     set({ donationPct });
-    void saveSetting('donationPct', String(donationPct));
+    persist('donationPct', String(donationPct));
   },
 }));

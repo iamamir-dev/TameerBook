@@ -70,7 +70,7 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
 
   // VALIDATION: the buyer can never pay more than what is still outstanding.
   const received = await db.getFirstAsync<{ s: number }>(
-    'SELECT COALESCE(SUM(amount), 0) AS s FROM sale_receipts WHERE sale_id = ?',
+    'SELECT COALESCE(SUM(amount), 0) AS s FROM sale_receipts WHERE sale_id = ? AND is_void = 0',
     input.saleId
   );
   const outstanding = sale.agreed_price - (received?.s ?? 0);
@@ -82,22 +82,10 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
   const categoryId = await categoryIdByName('Buyer Receipt', 'INCOME', 'خریدار کی رقم');
 
   // Receipt row + matching cash movement post atomically: a failure can never
-  // leave settlement revenue recorded without the money in an account.
+  // leave settlement revenue recorded without the money in an account. The
+  // receipt stores its txn_id so voiding the transaction voids it too.
   let txnId = '';
   await db.withExclusiveTransactionAsync(async (tx) => {
-    await tx.runAsync(
-      `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, doc_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      nowISO(),
-      input.createdBy ?? DEFAULT_USER,
-      input.saleId,
-      input.amount,
-      input.date,
-      input.accountId,
-      input.payType ?? null,
-      null
-    );
     txnId = await insertTransaction(tx, {
       direction: 'IN',
       amount: input.amount,
@@ -111,6 +99,19 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
       counterpartyName: sale.buyer_name,
       createdBy: input.createdBy,
     });
+    await tx.runAsync(
+      `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, doc_id, txn_id, is_void)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0)`,
+      id,
+      nowISO(),
+      input.createdBy ?? DEFAULT_USER,
+      input.saleId,
+      input.amount,
+      input.date,
+      input.accountId,
+      input.payType ?? null,
+      txnId
+    );
   });
 
   if (input.receiptUri) {
@@ -128,7 +129,7 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
 export async function listSaleReceipts(saleId: string): Promise<SaleReceiptRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<SaleReceiptRow>(
-    'SELECT * FROM sale_receipts WHERE sale_id = ? ORDER BY date',
+    'SELECT * FROM sale_receipts WHERE sale_id = ? AND is_void = 0 ORDER BY date',
     saleId
   );
 }
@@ -148,6 +149,7 @@ export async function upsertSale(
   data: { buyerPartyId?: string | null; buyerName?: string | null; agreedPrice: number }
 ): Promise<SaleRow> {
   const db = await getDatabase();
+  await assertProjectActive(projectId);
   const existing = await getProjectSale(projectId);
   if (existing) {
     await db.runAsync(
@@ -203,6 +205,7 @@ export async function addSaleCost(input: {
   accountId: string;
   createdBy?: string;
 }): Promise<void> {
+  await assertProjectActive(input.projectId);
   const categoryId = await categoryIdByName('Sale Cost', 'EXPENSE', 'فروخت کے اخراجات');
   await addTransaction({
     direction: 'OUT',

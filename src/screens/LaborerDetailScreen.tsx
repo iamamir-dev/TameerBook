@@ -53,8 +53,11 @@ export function LaborerDetailScreen(): React.JSX.Element {
   const [attachOpen, setAttachOpen] = useState(false);
   const [wageFor, setWageFor] = useState<LaborerProjectParticipation | null>(null);
   const [calendarFor, setCalendarFor] = useState<LaborerProjectParticipation | null>(null);
+  // Which participation's attendance save is in flight — only THAT card's
+  // chips disable, not every card's.
+  const [savingPlId, setSavingPlId] = useState<string | null>(null);
 
-  const { saving, run: runSave } = useSaveAction();
+  const { run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
     const [k, accs, projs] = await Promise.all([
@@ -84,14 +87,19 @@ export function LaborerDetailScreen(): React.JSX.Element {
   /** Mark today's dihari on one project (one earning day across projects). */
   const onMarkAttendance = (p: LaborerProjectParticipation, status: AttendanceStatus) => {
     void (async () => {
-      const ok = await runSave(async () => {
-        await markAttendance({
-          projectLaborerId: p.projectLaborer.id,
-          date: todayISO().slice(0, 10),
-          status,
+      setSavingPlId(p.projectLaborer.id);
+      try {
+        const ok = await runSave(async () => {
+          await markAttendance({
+            projectLaborerId: p.projectLaborer.id,
+            date: todayISO().slice(0, 10),
+            status,
+          });
         });
-      });
-      if (ok) await reload();
+        if (ok) await reload();
+      } finally {
+        setSavingPlId(null);
+      }
     })();
   };
 
@@ -135,7 +143,7 @@ export function LaborerDetailScreen(): React.JSX.Element {
             <ParticipationCard
               key={p.projectLaborer.id}
               participation={p}
-              saving={saving}
+              saving={savingPlId === p.projectLaborer.id}
               onMarkAttendance={(status) => onMarkAttendance(p, status)}
               onEditWage={() => setWageFor(p)}
               onOpenCalendar={() => setCalendarFor(p)}

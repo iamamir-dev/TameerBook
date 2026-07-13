@@ -6,7 +6,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText } from '@/components/ui';
-import { addDocument, type DocumentRow, listDocuments } from '@/db';
+import { addDocument, type DocumentRow, getProject, listDocuments, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -27,11 +27,17 @@ export function PhotoDiaryScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [photos, setPhotos] = useState<DocumentRow[]>([]);
+  const [project, setProject] = useState<ProjectRow | null>(null);
   const { saving: busy, run: runSave } = useSaveAction();
   const [viewer, setViewer] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setPhotos(await listDocuments('site_photo', projectId));
+    const [pics, p] = await Promise.all([
+      listDocuments('site_photo', projectId),
+      getProject(projectId),
+    ]);
+    setPhotos(pics);
+    setProject(p);
   }, [projectId]);
 
   useEffect(() => {
@@ -68,7 +74,10 @@ export function PhotoDiaryScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
-        <AppButton label={t('todayPhotos')} icon="camera" onPress={onCapture} loading={busy} />
+        {/* A completed project's diary is history — no new photos. */}
+        {project?.status !== 'COMPLETED' ? (
+          <AppButton label={t('todayPhotos')} icon="camera" onPress={onCapture} loading={busy} />
+        ) : null}
 
         {groups.length === 0 ? (
           <AppText size="sm" color="textSecondary" center style={styles.empty}>

@@ -238,7 +238,7 @@ async function testLaborAccrual(): Promise<TestResult> {
   try {
     const acc = await addAccount({ name: 'DBTEST L-Acc', type: 'CASH', openingBalance: 10_000 });
     c.accounts.push(acc.id);
-    const project = await createProject({ name: 'DBTEST Labor' }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST Labor' });
     c.projects.push(project.id);
     const worker = await addLaborer({ name: 'DBTEST Mazdoor' });
     c.laborers.push(worker.id);
@@ -308,7 +308,7 @@ async function testSaleAndProjectCost(): Promise<TestResult> {
     await addPlotExpense({ plotId: plot.id, categoryId: taxCat, amount: 100, date: D, accountId: acc.id });
 
     // Project includes the plot → history backfills
-    const project = await createProject({ name: 'DBTEST S-Proj', plotId: plot.id }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST S-Proj', plotId: plot.id });
     c.projects.push(project.id);
 
     const checks: Check[] = [];
@@ -374,10 +374,7 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     const plot = await createPlot({ name: 'DBTEST Set-Plot', dealPrice: 0 });
     c.plots.push(plot.id);
     // donation 10% via per-project override (doesn't touch user settings)
-    const project = await createProject(
-      { name: 'DBTEST Set', donationPct: 10, plotId: plot.id },
-      { withDefaultMilestones: false }
-    );
+    const project = await createProject({ name: 'DBTEST Set', donationPct: 10, plotId: plot.id });
     c.projects.push(project.id);
 
     const amir = await addInvestor({ name: 'DBTEST Amir' });
@@ -436,7 +433,7 @@ async function testSettlementLossIncludesOwner(): Promise<TestResult> {
     // Opening balance = the owner's own money (the residual financier).
     const acc = await addAccount({ name: 'DBTEST Loss-Acc', type: 'BANK', openingBalance: 1000 });
     c.accounts.push(acc.id);
-    const project = await createProject({ name: 'DBTEST Loss', donationPct: 10 }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST Loss', donationPct: 10 });
     c.projects.push(project.id);
 
     const amir = await addInvestor({ name: 'DBTEST L-Amir' });
@@ -555,7 +552,7 @@ async function testInvestorPayments(): Promise<TestResult> {
 async function testAttachInvestors(): Promise<TestResult> {
   const c = new Cleanup();
   try {
-    const project = await createProject({ name: 'DBTEST AT-Proj' }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST AT-Proj' });
     c.projects.push(project.id);
     // Pledges are required now: a stake must fit committed − staked (T-CAP).
     const a = await addInvestor({ name: 'DBTEST AT-A', committedAmount: 3000 });
@@ -590,8 +587,8 @@ async function testAttachInvestors(): Promise<TestResult> {
 async function testInvestorCapacity(): Promise<TestResult> {
   const c = new Cleanup();
   try {
-    const pA = await createProject({ name: 'DBTEST Cap-A' }, { withDefaultMilestones: false });
-    const pB = await createProject({ name: 'DBTEST Cap-B' }, { withDefaultMilestones: false });
+    const pA = await createProject({ name: 'DBTEST Cap-A' });
+    const pB = await createProject({ name: 'DBTEST Cap-B' });
     c.projects.push(pA.id, pB.id);
     const inv = await addInvestor({ name: 'DBTEST Cap-Inv', committedAmount: 5000 });
     c.investors.push(inv.id);
@@ -640,8 +637,8 @@ async function testLaborDayConflictAndOverpay(): Promise<TestResult> {
   try {
     const acc = await addAccount({ name: 'DBTEST Lab2-Acc', type: 'CASH', openingBalance: 5000 });
     c.accounts.push(acc.id);
-    const pA = await createProject({ name: 'DBTEST Lab2-A' }, { withDefaultMilestones: false });
-    const pB = await createProject({ name: 'DBTEST Lab2-B' }, { withDefaultMilestones: false });
+    const pA = await createProject({ name: 'DBTEST Lab2-A' });
+    const pB = await createProject({ name: 'DBTEST Lab2-B' });
     c.projects.push(pA.id, pB.id);
     const worker = await addLaborer({ name: 'DBTEST Lab2-W' });
     c.laborers.push(worker.id);
@@ -686,7 +683,7 @@ async function testLaborDayConflictAndOverpay(): Promise<TestResult> {
 async function testProjectCompletionGuards(): Promise<TestResult> {
   const c = new Cleanup();
   try {
-    const p = await createProject({ name: 'DBTEST Done' }, { withDefaultMilestones: false });
+    const p = await createProject({ name: 'DBTEST Done' });
     c.projects.push(p.id);
     const inv = await addInvestor({ name: 'DBTEST Done-Inv', committedAmount: 1000 });
     c.investors.push(inv.id);
@@ -720,7 +717,7 @@ async function testInvestorCommitmentVsCash(): Promise<TestResult> {
   try {
     const acc = await addAccount({ name: 'DBTEST I-Acc', type: 'BANK', openingBalance: 0 });
     c.accounts.push(acc.id);
-    const project = await createProject({ name: 'DBTEST I-Proj' }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST I-Proj' });
     c.projects.push(project.id);
     const inv = await addInvestor({ name: 'DBTEST I-Amir' });
     c.investors.push(inv.id);
@@ -835,7 +832,7 @@ async function testValidationGuards(): Promise<TestResult> {
     ]);
 
     // Buyer can't pay more than outstanding.
-    const project = await createProject({ name: 'DBTEST V-Proj' }, { withDefaultMilestones: false });
+    const project = await createProject({ name: 'DBTEST V-Proj' });
     c.projects.push(project.id);
     const sale = await upsertSale(project.id, { agreedPrice: 50 });
     checks.push([

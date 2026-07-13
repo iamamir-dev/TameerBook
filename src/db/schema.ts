@@ -164,6 +164,9 @@ export interface PlotRow extends Base {
   status: PlotStatus;
   /** Set when the plot is included in a project. */
   project_id: string | null;
+  /** Standalone sale: agreed price with the buyer (null = not for sale yet). */
+  sale_price: number | null;
+  buyer_name: string | null;
 }
 
 export interface ProjectRow extends Base {
@@ -223,6 +226,8 @@ export interface TransactionRow extends Base {
   udhaar_id: string | null;
   /** Links a wage payment to the worker's project attachment. */
   labor_id: string | null;
+  /** Links a supplier payment to its material booking. */
+  booking_id: string | null;
   /** Links a payment received to the investor it came from (like plot_id). */
   investor_id: string | null;
   description: string | null;
@@ -301,6 +306,39 @@ export interface SaleReceiptRow extends Base {
   /** Named instalment from the buyer (TOKEN/BAYANA/...). */
   pay_type: PayType | null;
   doc_id: string | null;
+  /** The paired cash transaction (v12+); voiding it voids this receipt too. */
+  txn_id: string | null;
+  is_void: number; // 0 | 1
+}
+
+/** Booking status: OPEN until fully received AND fully paid. */
+export const BOOKING_STATUSES = ['OPEN', 'CLOSED'] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+
+/**
+ * A material order: qty booked at a rate (e.g. 5000 bricks @ 10). Deliveries
+ * arrive against the qty; supplier payments are OUT transactions tagged with
+ * `booking_id`. Received/paid/remaining are always DERIVED.
+ */
+export interface MaterialBookingRow extends Base {
+  company_id: string | null;
+  project_id: string | null;
+  party_id: string | null;
+  supplier_name: string | null;
+  item_name: string;
+  unit: string | null;
+  qty: number;
+  rate: number;
+  /** qty × rate at booking time (the agreed order value). */
+  total: number;
+  status: BookingStatus;
+}
+
+export interface MaterialDeliveryRow extends Base {
+  booking_id: string;
+  date: string;
+  qty: number;
+  note: string | null;
 }
 
 /** A reusable worker (mazdoor)  attach to projects with a per-project wage. */
@@ -729,12 +767,77 @@ CREATE INDEX IF NOT EXISTS idx_udhaar_company ON udhaar (company_id);
 CREATE INDEX IF NOT EXISTS idx_party_company ON parties (company_id);
 `;
 
+/**
+ * Schema version 12 — link each sale receipt to its cash transaction so
+ * voiding the transaction can void the receipt too. Without this, voiding a
+ * buyer receipt reversed the cash but left phantom revenue in sale_receipts.
+ */
+export const SCHEMA_V12_RECEIPT_VOID = `
+ALTER TABLE sale_receipts ADD COLUMN txn_id TEXT;
+ALTER TABLE sale_receipts ADD COLUMN is_void INTEGER NOT NULL DEFAULT 0;
+`;
+
+/**
+ * Schema version 13 — three features:
+ * 1. MATERIAL BOOKINGS: order 5000 bricks @ rate, receive deliveries against
+ *    the booked qty, pay the supplier in instalments (payments are normal OUT
+ *    transactions tagged with `booking_id`).
+ * 2. STANDALONE PLOT SALE: a plot can be sold WITHOUT a project — sale_price
+ *    + buyer on the plot, receipts as IN transactions on the plot.
+ * 3. HOME EXPENSE: the owner's personal/household kharcha as a seeded
+ *    category, kept separate from every project P&L.
+ */
+export const SCHEMA_V13_BOOKINGS_PLOT_SALE = `
+CREATE TABLE material_bookings (
+  id            TEXT PRIMARY KEY NOT NULL,
+  created_at    TEXT NOT NULL,
+  created_by    TEXT NOT NULL DEFAULT 'local',
+  company_id    TEXT,
+  project_id    TEXT,
+  party_id      TEXT,
+  supplier_name TEXT,
+  item_name     TEXT NOT NULL,
+  unit          TEXT,
+  qty           REAL NOT NULL DEFAULT 0,
+  rate          REAL NOT NULL DEFAULT 0,
+  total         REAL NOT NULL DEFAULT 0,
+  status        TEXT NOT NULL DEFAULT 'OPEN',
+  FOREIGN KEY (project_id) REFERENCES projects (id),
+  FOREIGN KEY (party_id) REFERENCES parties (id)
+);
+
+CREATE TABLE material_deliveries (
+  id         TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'local',
+  booking_id TEXT NOT NULL,
+  date       TEXT NOT NULL,
+  qty        REAL NOT NULL DEFAULT 0,
+  note       TEXT,
+  FOREIGN KEY (booking_id) REFERENCES material_bookings (id)
+);
+
+ALTER TABLE transactions ADD COLUMN booking_id TEXT;
+CREATE INDEX idx_txn_booking ON transactions (booking_id);
+CREATE INDEX idx_deliv_booking ON material_deliveries (booking_id);
+CREATE INDEX idx_booking_company ON material_bookings (company_id);
+
+ALTER TABLE plots ADD COLUMN sale_price REAL;
+ALTER TABLE plots ADD COLUMN buyer_name TEXT;
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon)
+SELECT lower(hex(randomblob(16))), datetime('now'), 'local', NULL, 'Home Expense', 'Ghar ka kharcha', 'EXPENSE', 'home'
+WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Home Expense');
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
   { version: 9, sql: SCHEMA_V9_INVESTOR_PLEDGE },
   { version: 10, sql: SCHEMA_V10_INVESTOR_PAYMENTS },
   { version: 11, sql: SCHEMA_V11_INDEXES },
+  { version: 12, sql: SCHEMA_V12_RECEIPT_VOID },
+  { version: 13, sql: SCHEMA_V13_BOOKINGS_PLOT_SALE },
 ];
 
 /* -------------------------------------------------------------------------- */

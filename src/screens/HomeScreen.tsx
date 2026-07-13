@@ -192,7 +192,9 @@ export function HomeScreen(): React.JSX.Element {
           >
             <AppIcon name="today" size={18} color="danger" />
             <AppText size="sm" weight="bold" color="danger" style={styles.warnText} numberOfLines={2}>
-              {t('deadlineSoon')}: {deadlineWarn.plotName} · {Math.max(0, deadlineWarn.days)} {t('daysLeftSuffix')}
+              {deadlineWarn.days < 0
+                ? `${t('deadlineSoon')}: ${deadlineWarn.plotName} · ${t('overdueLabel')}`
+                : `${t('deadlineSoon')}: ${deadlineWarn.plotName} · ${deadlineWarn.days} ${t('daysLeftSuffix')}`}
             </AppText>
           </Pressable>
         ) : null}
@@ -267,16 +269,16 @@ export function HomeScreen(): React.JSX.Element {
           </Pressable>
         </ScrollView>
 
-        {/* Shortcuts  Cash / Labor / Reports as one card, cells separated by
-            light hairlines (Jazz-grid style). Udhaar + Transfer live inside
-            the Cash hub; Accounts lives in Settings; Settings is the header
-            gear. Only these three company-level sections are surfaced here. */}
+        {/* Shortcuts  Cash / Labor / Material bookings as one card, cells
+            separated by light hairlines (Jazz-grid style). Udhaar + Transfer
+            live inside the Cash hub; Accounts + Reports live in Settings;
+            Settings is the header gear. */}
         <View style={styles.sectionsCard}>
           <SectionTile icon="balance" tone="primary" label={t('tabCash')} onPress={() => navigation.navigate('Cash')} />
           <View style={styles.sectionDivider} />
           <SectionTile icon="dehari" tone="accent" label={t('laborTitle')} onPress={() => navigation.navigate('Labor')} />
           <View style={styles.sectionDivider} />
-          <SectionTile icon="reports" tone="gold" label={t('reports')} onPress={() => navigation.navigate('Reports')} />
+          <SectionTile icon="material" tone="gold" label={t('bookingsTitle')} onPress={() => navigation.navigate('Bookings')} />
         </View>
 
         {/* Udhaar position (optional, off by default) */}
@@ -510,16 +512,17 @@ function ProjectCard({
           <AppText size="xs" color="textSecondary">{t('phaseConstruction')}</AppText>
           <AppText size="xs" weight="semibold" tabular>{formatRupees(summary.cost.constructionCost)}</AppText>
         </View>
-        {summary.saleReceived > 0 ? (
-          <View style={styles.projectMathRow}>
-            <AppText size="xs" color="textSecondary">{t('phaseSale')}</AppText>
-            <AppText size="xs" weight="semibold" color="success" tabular>{formatRupees(summary.saleReceived)}</AppText>
-          </View>
-        ) : null}
         <View style={styles.projectMathTotal}>
           <AppText size="sm" weight="bold">{t('projectTotalCost')}</AppText>
           <AppText size="sm" weight="bold" tabular>{formatRupees(summary.cost.totalCost)}</AppText>
         </View>
+        {/* Money IN sits apart from the cost math — it is not a cost row. */}
+        {summary.saleReceived > 0 ? (
+          <View style={styles.projectMathSale}>
+            <AppText size="xs" color="textSecondary">{t('phaseSale')}</AppText>
+            <AppText size="xs" weight="semibold" color="success" tabular>{formatRupees(summary.saleReceived)}</AppText>
+          </View>
+        ) : null}
       </View>
     </AppCard>
   );
@@ -694,6 +697,15 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
       paddingTop: theme.spacing.xs,
       marginTop: 2,
+    },
+    projectMathSale: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      paddingTop: theme.spacing.xs,
+      marginTop: theme.spacing.xs,
     },
     progressTrackWrap: {
       marginTop: theme.spacing.xs,

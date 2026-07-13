@@ -38,7 +38,7 @@ export function InvestorsScreen(): React.JSX.Element {
     setInvestors(await listInvestorsWithCapital());
   }, []);
 
-  const { reload } = useFocusReload(load);
+  const { loaded, reload } = useFocusReload(load);
   const { run: runSave } = useSaveAction();
 
   const openAdd = () => {
@@ -87,21 +87,28 @@ export function InvestorsScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('investors')} />
+      <AppHeader
+        title={t('investors')}
+        rightAction={{ icon: 'add', onPress: openAdd, accessibilityLabel: t('addInvestor') }}
+      />
 
       {investors.length === 0 ? (
-        <EmptyState
-          icon="investors"
-          title={t('noInvestorsYet')}
-          message={t('noInvestorsDetail')}
-          actionLabel={t('addInvestor')}
-          actionIcon="add"
-          onAction={openAdd}
-        />
+        // Only claim "no investors" once the first load has finished — before
+        // that the plain screen shell avoids an empty-state flash.
+        loaded ? (
+          <EmptyState
+            icon="investors"
+            title={t('noInvestorsYet')}
+            message={t('noInvestorsDetail')}
+            actionLabel={t('addInvestor')}
+            actionIcon="add"
+            onAction={openAdd}
+          />
+        ) : null
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE + 72 }]}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE }]}
         >
           {investors.map((inv) => (
             <AppCard
@@ -139,22 +146,6 @@ export function InvestorsScreen(): React.JSX.Element {
           ))}
         </ScrollView>
       )}
-
-      <Pressable
-        onPress={openAdd}
-        accessibilityRole="button"
-        accessibilityLabel={t('addInvestor')}
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: insets.bottom + FLOATING_BAR_CLEARANCE + theme.spacing.sm },
-          pressed && styles.fabPressed,
-        ]}
-      >
-        <AppIcon name="add" size={22} color="onAccent" strokeWidth={2.4} />
-        <AppText size="sm" weight="bold" color="onAccent">
-          {t('addInvestor')}
-        </AppText>
-      </Pressable>
 
       {/* Add / edit investor — the ONE shared person modal (identity + money) */}
       <InvestorPersonSheet
@@ -243,19 +234,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    fab: {
-      position: 'absolute',
-      right: theme.spacing.lg,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      height: theme.touch.minTarget,
-      paddingHorizontal: theme.spacing.xl,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accent,
-      ...theme.shadows.fab,
-    },
-    fabPressed: { opacity: 0.9 },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     menuSheet: {

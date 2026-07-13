@@ -20,6 +20,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  LoadErrorState,
   type PhaseMetric,
 } from '@/components/ui';
 import {
@@ -126,7 +127,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
     await Promise.all([loadAll(), listInvestorsWithCapacity().then(setAllInvestors)]);
   }, [loadAll]);
 
-  const { reload } = useFocusReload(load);
+  const { loadFailed, reload } = useFocusReload(load);
 
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
@@ -205,21 +206,25 @@ export function ProjectDetailScreen(): React.JSX.Element {
     await Promise.all([reload(), refreshProjects().catch(swallow('project:refresh'))]);
   };
 
-  /** Capture a site photo into the project gallery, then refresh it. */
+  /**
+   * Capture a site photo into the project gallery, then refresh it. The
+   * camera step stays OUTSIDE the save action — a cancelled capture is not a
+   * failed save (and must not alert or bump the data version).
+   */
   const onCapturePhoto = () => {
-    void runSave(async () => {
-      const uri = await captureReceipt();
+    void (async () => {
+      const uri = await captureReceipt().catch(swallow('project:capture'));
       if (!uri) return;
-      await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
-      setPhotos(await listDocuments('site_photo', projectId));
-    });
+      await runSave(async () => {
+        await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
+        setPhotos(await listDocuments('site_photo', projectId));
+      });
+    })();
   };
 
-  /** "Add plot later" (UC-2): open the OWNED-plot picker, or fall back to the Plots tab. */
-  const onAddPlot = () => {
-    if (freePlots.length > 0) setPlotSheetOpen(true);
-    else navigation.navigate('Tabs', { screen: 'Plots' });
-  };
+  /** "Add plot later" (UC-2): always open the picker — it lists OWNED plots
+   *  and a "New plot" row, so an empty list is never a dead end. */
+  const onAddPlot = () => setPlotSheetOpen(true);
 
   const onSelectPlot = async (plotId: string) => {
     setPlotSheetOpen(false);
@@ -267,6 +272,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
     return (
       <View style={styles.screen}>
         <AppHeader title="" onBack={() => navigation.goBack()} />
+        {loadFailed ? <LoadErrorState onRetry={() => void reload()} /> : null}
       </View>
     );
   }
@@ -426,12 +432,16 @@ export function ProjectDetailScreen(): React.JSX.Element {
         onSubmit={onAttachInvestors}
       />
 
-      {/* Add-plot picker (OWNED plots only). */}
+      {/* Add-plot picker: OWNED plots + a "New plot" row that returns here. */}
       <AddPlotSheet
         visible={plotSheetOpen}
         onClose={() => setPlotSheetOpen(false)}
         plots={freePlots}
         onSelect={(plotId) => void onSelectPlot(plotId)}
+        onNewPlot={() => {
+          setPlotSheetOpen(false);
+          navigation.navigate('NewPlot', { forProjectId: projectId });
+        }}
       />
     </View>
   );

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import {
   getConstructionSummary,
+  getProject,
   listAccountsWithBalance,
   listCategories,
   listLaborers,
@@ -29,6 +30,7 @@ import {
   type ConstructionSummary,
   type LaborerRow,
   type ProjectLaborerSummary,
+  type ProjectRow,
   type TransactionRow,
 } from '@/db';
 import { useCategoryLabel, useFocusReload } from '@/hooks';
@@ -73,6 +75,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<ConstructionSummary | null>(null);
+  const [project, setProject] = useState<ProjectRow | null>(null);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [workers, setWorkers] = useState<ProjectLaborerSummary[]>([]);
@@ -85,8 +88,9 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [sum, cats, accs, wkrs, tx, labs] = await Promise.all([
+    const [sum, proj, cats, accs, wkrs, tx, labs] = await Promise.all([
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
+      getProject(projectId),
       listCategories(),
       listAccountsWithBalance(),
       listProjectLaborers(projectId),
@@ -94,6 +98,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
       listLaborers(),
     ]);
     setSummary(sum);
+    setProject(proj);
     setCategories(cats);
     setAccounts(accs);
     setWorkers(wkrs);
@@ -102,6 +107,9 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   }, [projectId]);
 
   const { reload } = useFocusReload(loadData);
+
+  // A completed project's construction phase is read-only history.
+  const completed = project?.status === 'COMPLETED';
 
   const catLabel = useCategoryLabel();
   const catNameById = useCallback(
@@ -162,7 +170,9 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         {/* Top categories */}
         <CategoryBars byCategory={summary?.byCategory ?? []} laborAccrued={summary?.laborAccrued ?? 0} />
 
-        <AppButton label={t('addExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
+        {!completed ? (
+          <AppButton label={t('addExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
+        ) : null}
 
         {/* Labor on THIS project only. The worker's full khata (all projects
             + company history) lives in the company-level Labor section. */}
@@ -170,11 +180,13 @@ export function ConstructionDetailScreen(): React.JSX.Element {
           <AppText size="lg" weight="bold">
             {t('laborTitle')}
           </AppText>
-          <Pressable onPress={() => setAddWorkerOpen(true)} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
-            <AppText size="sm" weight="semibold" color="accent">
-              {t('addWorker')}
-            </AppText>
-          </Pressable>
+          {!completed ? (
+            <Pressable onPress={() => setAddWorkerOpen(true)} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
+              <AppText size="sm" weight="semibold" color="accent">
+                {t('addWorker')}
+              </AppText>
+            </Pressable>
+          ) : null}
         </View>
 
         {workers.length === 0 ? (
@@ -185,7 +197,9 @@ export function ConstructionDetailScreen(): React.JSX.Element {
           </AppCard>
         ) : (
           workers.map((w) => (
-            <AppCard key={w.projectLaborer.id} compact onPress={() => setWorker(w)}>
+            // On a completed project the card is informational only — the
+            // pay/attendance sheet never opens.
+            <AppCard key={w.projectLaborer.id} compact onPress={completed ? undefined : () => setWorker(w)}>
               <View style={styles.workerTop}>
                 <View style={styles.flex}>
                   <AppText size="md" weight="bold" numberOfLines={1}>

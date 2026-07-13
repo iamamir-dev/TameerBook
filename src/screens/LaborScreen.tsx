@@ -39,7 +39,7 @@ export function LaborScreen(): React.JSX.Element {
     setWorkers(await listLaborersWithTotals());
   }, []);
 
-  const { reload } = useFocusReload(load);
+  const { loaded, reload } = useFocusReload(load);
 
   // Single-open accordion: expanding one row collapses any other. The
   // LayoutAnimation call immediately before setState animates the reveal.
@@ -63,7 +63,11 @@ export function LaborScreen(): React.JSX.Element {
       />
 
       {workers.length === 0 ? (
-        <EmptyState icon="dehari" title={t('noWorkers')} actionLabel={t('addWorker')} onAction={() => setAddOpen(true)} />
+        // Only claim "no workers" once the first load has finished — before
+        // that the plain screen shell avoids an empty-state flash.
+        loaded ? (
+          <EmptyState icon="dehari" title={t('noWorkers')} actionLabel={t('addWorker')} onAction={() => setAddOpen(true)} />
+        ) : null
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}

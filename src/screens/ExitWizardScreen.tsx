@@ -193,19 +193,21 @@ export function ExitWizardScreen(): React.JSX.Element {
 
   const onConfirm = async () => {
     if (!selectedPart || !scenario || !leaverShare) return;
+    let buyerName = t('scOwnerBuy');
+    if (scenario === 'NEW_INVESTOR') {
+      buyerName = newName.trim();
+    } else if (scenario === 'PARTNER_BUY') {
+      buyerName = shares.find((s) => s.projectInvestorId === buyerPiId)?.name ?? t('buyer');
+    } else if (scenario === 'PARTIAL' || scenario === 'COMMITTED_UNPAID') {
+      buyerName = '';
+    }
+    const amount = scenario === 'PARTIAL' ? portion : leaverShare.capital;
     const ok = await runSave(async () => {
       let newInvestorId: string | null = null;
-      let buyerName = t('scOwnerBuy');
       if (scenario === 'NEW_INVESTOR') {
         const created = await addInvestor({ name: newName.trim() });
         newInvestorId = created.id;
-        buyerName = newName.trim();
-      } else if (scenario === 'PARTNER_BUY') {
-        buyerName = shares.find((s) => s.projectInvestorId === buyerPiId)?.name ?? t('buyer');
-      } else if (scenario === 'PARTIAL' || scenario === 'COMMITTED_UNPAID') {
-        buyerName = '';
       }
-      const amount = scenario === 'PARTIAL' ? portion : leaverShare.capital;
       await exitInvestor({
         projectId: selectedPart.project_id,
         projectInvestorId: selectedPart.id,
@@ -217,9 +219,12 @@ export function ExitWizardScreen(): React.JSX.Element {
         newInvestorId,
       });
       await refreshProjects();
-      await sharePdf(buyerName, scenario === 'PARTIAL' ? portion : amount);
     });
-    if (ok) navigation.goBack();
+    if (!ok) return;
+    // The exit is committed at this point — a share failure/cancel must not
+    // make it look failed (double-exit risk), so the PDF is best-effort.
+    await sharePdf(buyerName, amount).catch(swallow('exitWizard:sharePdf'));
+    navigation.goBack();
   };
 
   return (
@@ -367,7 +372,10 @@ export function ExitWizardScreen(): React.JSX.Element {
                 </AppText>
               </View>
               {after.map((a, i) => {
-                const b = before.find((x) => x.name === a.name);
+                // `after` preserves `before` order for existing rows (appended
+                // buyer/owner rows come last) — match by index, never by name,
+                // so same-name investors cannot collide.
+                const b = i < before.length ? before[i] : undefined;
                 return (
                   <View key={a.name + i} style={styles.tblRow}>
                     <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex}>

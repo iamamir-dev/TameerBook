@@ -535,6 +535,31 @@ export interface TranslationKeys {
   fsXL: string;
   homeSettingsTitle: string;
   homeShortcuts: string;
+
+  // Review fixes + new features (bookings / plot sale / home expense)
+  overdueLabel: string;
+  ctTransferIn: string;
+  ctTransferOut: string;
+  ctWithdrawal: string;
+  ctExitSettlement: string;
+  ctProfitPayout: string;
+  ctDonation: string;
+  ctLossAdj: string;
+  bookingsTitle: string;
+  newBooking: string;
+  bookedQty: string;
+  receivedQty: string;
+  remainingQty: string;
+  addDelivery: string;
+  payBookingLabel: string;
+  payRemainingLabel: string;
+  noBookings: string;
+  itemName: string;
+  sellPlot: string;
+  salePriceLabel: string;
+  plotProfit: string;
+  gharKharcha: string;
+  fixMistakeConfirmTitle: string;
   duplicateAccount: string;
   exceedsRemaining: string;
   tabCash: string;

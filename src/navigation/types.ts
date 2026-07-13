@@ -37,7 +37,8 @@ export type RootStackParamList = {
   Reports: undefined;
   Allocation: undefined;
   // Plots
-  NewPlot: undefined;
+  /** `forProjectId` set → the created plot is auto-included in that project. */
+  NewPlot: { forProjectId?: string } | undefined;
   PlotDetail: { plotId: string };
   // Projects
   NewProject: undefined;
@@ -50,6 +51,9 @@ export type RootStackParamList = {
   // Money entry
   Entry: { direction: TxnDirection; prefill?: EntryPrefill };
   MaterialEntry: undefined;
+  // Material bookings
+  Bookings: undefined;
+  BookingDetail: { bookingId: string };
   Investment: { investorId?: string } | undefined;
   // Udhaar
   Udhaar: undefined;

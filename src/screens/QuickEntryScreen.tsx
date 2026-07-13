@@ -1,23 +1,25 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppHeader, AppIcon, AppText } from '@/components/ui';
-import type { ColorPalette } from '@/theme/theme';
 import type { IconKey } from '@/components/ui';
+import { categoryIdByName } from '@/db';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { softToneColor, type ColorKey } from '@/utils/tones';
+import { swallow } from '@/utils/log';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type ToneKey = keyof ColorPalette;
 
 interface Tile {
   labelKey: TranslationKey;
   icon: IconKey;
-  tone: ToneKey;
+  tone: ColorKey;
 }
 
 /** The quick-entry actions, in user-facing Roman Urdu terms. */
@@ -29,37 +31,49 @@ const TILES: Tile[] = [
   { labelKey: 'udhaar', icon: 'investor', tone: 'gold' },
   { labelKey: 'investor', icon: 'investor', tone: 'accent' },
   { labelKey: 'dehari', icon: 'dehari', tone: 'primary' },
+  { labelKey: 'gharKharcha', icon: 'home', tone: 'danger' },
 ];
 
 /**
- * Full-screen Quick Entry launcher. Big, color-coded tiles  each well
- * above the 56px minimum  let a user start the right kind of entry with one
- * tap.
+ * Quick Entry launcher: one clean grid of color-coded tiles, each a soft-tinted
+ * icon disc over its label. Tiles PUSH their screen (not replace), so the back
+ * button returns here rather than skipping past to the dashboard.
  */
 export function QuickEntryScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const openTile = (tile: Tile) => {
-    if (tile.labelKey === 'kharcha') navigation.replace('Entry', { direction: 'OUT' });
-    else if (tile.labelKey === 'aamdani') navigation.replace('Entry', { direction: 'IN' });
-    else if (tile.labelKey === 'material') navigation.replace('MaterialEntry');
-    else if (tile.labelKey === 'transferTitleV2') navigation.replace('Transfer');
-    else if (tile.labelKey === 'udhaar') navigation.replace('Udhaar');
-    else if (tile.labelKey === 'investor') navigation.replace('Investment');
-    else if (tile.labelKey === 'dehari') navigation.replace('Labor');
-    else navigation.replace('ComingSoon', { titleKey: tile.labelKey });
+    if (tile.labelKey === 'kharcha') navigation.navigate('Entry', { direction: 'OUT' });
+    else if (tile.labelKey === 'aamdani') navigation.navigate('Entry', { direction: 'IN' });
+    else if (tile.labelKey === 'material') navigation.navigate('MaterialEntry');
+    else if (tile.labelKey === 'transferTitleV2') navigation.navigate('Transfer');
+    else if (tile.labelKey === 'udhaar') navigation.navigate('Udhaar');
+    else if (tile.labelKey === 'investor') navigation.navigate('Investment');
+    else if (tile.labelKey === 'dehari') navigation.navigate('Labor');
+    else if (tile.labelKey === 'gharKharcha') {
+      // Personal/home spending: an OUT entry pre-tagged with the Home Expense
+      // category (created on first use).
+      void (async () => {
+        const catId = await categoryIdByName('Home Expense', 'EXPENSE', 'Ghar ka kharcha');
+        navigation.navigate('Entry', { direction: 'OUT', prefill: { categoryId: catId } });
+      })().catch(swallow('quickEntry:ghar'));
+    }
   };
 
   return (
     <View style={styles.screen}>
       <AppHeader title={t('quickEntry')} onBack={() => navigation.goBack()} />
 
-      <View style={styles.grid}>
-        {TILES.map((tile) => {
-          return (
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxl }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.grid}>
+          {TILES.map((tile) => (
             <Pressable
               key={tile.labelKey}
               onPress={() => openTile(tile)}
@@ -67,32 +81,18 @@ export function QuickEntryScreen(): React.JSX.Element {
               accessibilityLabel={t(tile.labelKey)}
               style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
             >
-              <View style={[styles.tileIcon, { backgroundColor: softFor(theme, tile.tone) }]}>
-                <AppIcon name={tile.icon} size={32} color={tile.tone} />
+              <View style={[styles.tileIcon, { backgroundColor: softToneColor(theme, tile.tone) }]}>
+                <AppIcon name={tile.icon} size={30} color={tile.tone} />
               </View>
-              <AppText size="md" weight="semibold" center>
+              <AppText size="md" weight="bold" center numberOfLines={2}>
                 {t(tile.labelKey)}
               </AppText>
             </Pressable>
-          );
-        })}
-      </View>
+          ))}
+        </View>
+      </ScrollView>
     </View>
   );
-}
-
-/** Soft background tint for a given tone, falling back to primary-soft. */
-function softFor(theme: Theme, tone: ToneKey): string {
-  switch (tone) {
-    case 'success':
-      return theme.colors.successSoft;
-    case 'danger':
-      return theme.colors.dangerSoft;
-    case 'accent':
-      return theme.colors.accentSoft;
-    default:
-      return theme.colors.primarySoft;
-  }
 }
 
 const makeStyles = (theme: Theme) =>
@@ -101,32 +101,35 @@ const makeStyles = (theme: Theme) =>
       flex: 1,
       backgroundColor: theme.colors.background,
     },
+    content: {
+      padding: theme.spacing.lg,
+    },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'space-between',
-      gap: theme.spacing.lg,
-      padding: theme.spacing.lg,
+      rowGap: theme.spacing.lg,
     },
     tile: {
-      width: '46%',
-      flexGrow: 1,
-      minHeight: 140,
-      borderRadius: theme.radius.card,
+      width: '48%',
+      minHeight: 130,
+      borderRadius: theme.radius.hero,
       backgroundColor: theme.colors.card,
       alignItems: 'center',
       justifyContent: 'center',
       gap: theme.spacing.md,
-      padding: theme.spacing.lg,
+      paddingVertical: theme.spacing.xl,
+      paddingHorizontal: theme.spacing.md,
       ...theme.shadows.card,
     },
     tilePressed: {
       opacity: 0.85,
+      transform: [{ scale: 0.98 }],
     },
     tileIcon: {
-      width: 64,
-      height: 64,
-      borderRadius: theme.radius.lg,
+      width: 62,
+      height: 62,
+      borderRadius: theme.radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },

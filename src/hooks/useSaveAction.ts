@@ -47,7 +47,7 @@ export function useSaveAction(): SaveAction {
         else if (isLimitExceeded(e)) Alert.alert(t('exceedsRemaining'));
         else if (isDuplicateAccount(e)) Alert.alert(t('duplicateAccount'));
         else if (isAttendanceConflict(e))
-          Alert.alert(t('attendanceConflict'), e.conflictingProjectName);
+          Alert.alert(t('attendanceConflict'), e.conflictingProjectName || undefined);
         else if (isProjectClosed(e)) Alert.alert(t('projectClosedNote'));
         else if (isPlotUnavailable(e)) Alert.alert(t('plotTaken'));
         else {

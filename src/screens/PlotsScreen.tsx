@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
@@ -47,7 +47,14 @@ export function PlotsScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('plotsTitle')} />
+      <AppHeader
+        title={t('plotsTitle')}
+        rightAction={{
+          icon: 'add',
+          onPress: () => navigation.navigate('NewPlot'),
+          accessibilityLabel: t('newPlot'),
+        }}
+      />
 
       {items.length === 0 ? (
         <EmptyState
@@ -63,7 +70,7 @@ export function PlotsScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + theme.spacing.xxxl + 72 },
+            { paddingBottom: insets.bottom + theme.spacing.xxxl },
           ]}
         >
           {items.map((item) => (
@@ -75,23 +82,6 @@ export function PlotsScreen(): React.JSX.Element {
           ))}
         </ScrollView>
       )}
-
-      {/* Floating "Naya Plot" button */}
-      <Pressable
-        onPress={() => navigation.navigate('NewPlot')}
-        accessibilityRole="button"
-        accessibilityLabel={t('newPlot')}
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: insets.bottom + theme.spacing.lg },
-          pressed && styles.fabPressed,
-        ]}
-      >
-        <AppIcon name="add" size={22} color="onAccent" strokeWidth={2.4} />
-        <AppText size="sm" weight="bold" color="onAccent">
-          {t('newPlot')}
-        </AppText>
-      </Pressable>
     </View>
   );
 }
@@ -200,17 +190,4 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
       marginVertical: theme.spacing.xs,
     },
-    fab: {
-      position: 'absolute',
-      right: theme.spacing.lg,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      height: theme.touch.minTarget,
-      paddingHorizontal: theme.spacing.xl,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accent,
-      ...theme.shadows.fab,
-    },
-    fabPressed: { opacity: 0.9 },
   });

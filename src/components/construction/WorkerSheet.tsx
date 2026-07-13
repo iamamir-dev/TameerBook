@@ -7,6 +7,7 @@ import {
   AppButton,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
 } from '@/components/ui';
 import {
@@ -54,6 +55,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
   const [attendance, setAttendance] = useState<LaborAttendanceRow[]>([]);
   const [payAmount, setPayAmount] = useState(0);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
+  const [payDate, setPayDate] = useState(todayISO().slice(0, 10));
   const [payAccountSheet, setPayAccountSheet] = useState(false);
 
   const { saving: paying, run: runPay } = useSaveAction();
@@ -71,6 +73,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
     currentWorkerIdRef.current = workerId;
     setPayAmount(0);
     setPayAccountId(null);
+    setPayDate(todayISO().slice(0, 10));
     setAttendance([]);
     if (!workerId) return;
     listAttendance(workerId)
@@ -104,7 +107,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
       await payLaborer({
         projectLaborerId: workerId,
         amount: payAmount,
-        date: today,
+        date: payDate,
         accountId: payAccountId,
       });
       onClose();
@@ -186,6 +189,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
+          <DateField value={payDate} onChange={setPayDate} />
           <AppButton
             label={t('payWorker')}
             icon="moneyOut"

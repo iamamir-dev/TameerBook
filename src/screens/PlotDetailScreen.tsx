@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { SellPlotSheet, type SellPlotSheetMode } from '@/components/plot/SellPlotSheet';
+import { StageBadge } from '@/components/StageBadge';
 import {
   AmountInput,
   AppButton,
@@ -21,8 +23,10 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   ICONS,
   LedgerTable,
+  LoadErrorState,
   SelectSheet,
   type IconKey,
   type LedgerRow,
@@ -36,6 +40,7 @@ import {
   type CategoryRow,
   type DocumentRow,
   getPlotSummary,
+  getProject,
   listAccountsWithBalance,
   listCategories,
   listDocuments,
@@ -44,6 +49,7 @@ import {
   PAY_TYPES,
   type PayType,
   type PlotSummary,
+  type ProjectRow,
   type TransactionRow,
 } from '@/db';
 import { useAccountOptions, useCategoryLabel, useFocusReload, useSaveAction } from '@/hooks';
@@ -80,6 +86,7 @@ export function PlotDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<PlotSummary | null>(null);
+  const [linkedProject, setLinkedProject] = useState<ProjectRow | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [docs, setDocs] = useState<DocumentRow[]>([]);
@@ -90,6 +97,7 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [payType, setPayType] = useState<PayType>('TOKEN');
   const [payAmount, setPayAmount] = useState(0);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
+  const [payDate, setPayDate] = useState(todayISO().slice(0, 10));
   const [payReceiptUri, setPayReceiptUri] = useState<string | null>(null);
 
   // Expense sheet
@@ -97,8 +105,12 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [expCategoryId, setExpCategoryId] = useState<string | null>(null);
   const [expAmount, setExpAmount] = useState(0);
   const [expAccountId, setExpAccountId] = useState<string | null>(null);
+  const [expDate, setExpDate] = useState(todayISO().slice(0, 10));
   const [expNote, setExpNote] = useState('');
   const [expReceiptUri, setExpReceiptUri] = useState<string | null>(null);
+
+  // Standalone plot sale (set price / receive buyer money)
+  const [sellSheet, setSellSheet] = useState<SellPlotSheetMode | null>(null);
 
   // Pickers
   const [accountSheetFor, setAccountSheetFor] = useState<'pay' | 'exp' | null>(null);
@@ -108,21 +120,23 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [viewer, setViewer] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [s, accs, cats, documents, transactions] = await Promise.all([
-      getPlotSummary(plotId),
+    const s = await getPlotSummary(plotId);
+    const [accs, cats, documents, transactions, project] = await Promise.all([
       listAccountsWithBalance(),
       listCategories(),
       listDocuments('plot', plotId),
       listPlotTransactions(plotId),
+      s.plot.project_id ? getProject(s.plot.project_id) : Promise.resolve(null),
     ]);
     setSummary(s);
+    setLinkedProject(project);
     setAccounts(accs);
     setCategories(cats);
     setDocs(documents);
     setTxns(transactions);
   }, [plotId]);
 
-  const { reload } = useFocusReload(load);
+  const { loadFailed, reload } = useFocusReload(load);
   const { saving, run: runSave } = useSaveAction();
 
   const catName = useCategoryLabel();
@@ -174,7 +188,7 @@ export function PlotDetailScreen(): React.JSX.Element {
         plotId,
         payType,
         amount: payAmount,
-        date: todayISO().slice(0, 10),
+        date: payDate,
         accountId: payAccountId,
         receiptUri: payReceiptUri,
       });
@@ -182,6 +196,7 @@ export function PlotDetailScreen(): React.JSX.Element {
     if (!ok) return;
     setPaySheet(false);
     setPayAmount(0);
+    setPayDate(todayISO().slice(0, 10));
     setPayReceiptUri(null);
     await reload();
   };
@@ -193,7 +208,7 @@ export function PlotDetailScreen(): React.JSX.Element {
         plotId,
         categoryId: expCategoryId,
         amount: expAmount,
-        date: todayISO().slice(0, 10),
+        date: expDate,
         accountId: expAccountId,
         note: expNote.trim() || null,
         receiptUri: expReceiptUri,
@@ -202,6 +217,7 @@ export function PlotDetailScreen(): React.JSX.Element {
     if (!ok) return;
     setExpSheet(false);
     setExpAmount(0);
+    setExpDate(todayISO().slice(0, 10));
     setExpNote('');
     setExpCategoryId(null);
     setExpReceiptUri(null);
@@ -211,20 +227,27 @@ export function PlotDetailScreen(): React.JSX.Element {
   const onAddDocument = async () => {
     const uri = await pickDocumentImage();
     if (!uri) return;
-    await addDocument({ entityType: 'plot', entityId: plotId, label: 'docOther', fileUri: uri });
-    setDocs(await listDocuments('plot', plotId));
+    await runSave(async () => {
+      await addDocument({ entityType: 'plot', entityId: plotId, label: 'docOther', fileUri: uri });
+      setDocs(await listDocuments('plot', plotId));
+    });
   };
 
   if (!summary) {
     return (
       <View style={styles.screen}>
         <AppHeader title={t('plotLabel')} onBack={() => navigation.goBack()} />
+        {loadFailed ? <LoadErrorState onRetry={() => void reload()} /> : null}
       </View>
     );
   }
 
   const { plot, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
+  const { salePrice, saleReceived, saleOutstanding, saleProfit } = summary;
   const location = [plot.society, plot.block, plot.plot_no].filter(Boolean).join(' · ');
+  const sold = plot.status === 'SOLD';
+  // No mutating actions on a sold plot or one inside a completed project.
+  const readOnly = sold || linkedProject?.status === 'COMPLETED';
 
   return (
     <View style={styles.screen}>
@@ -236,6 +259,11 @@ export function PlotDetailScreen(): React.JSX.Element {
       >
         {/* Summary hero  the owner's card math */}
         <AppCard style={styles.hero}>
+          {sold ? (
+            <View style={styles.badgeRow}>
+              <StageBadge tone="gold" label={t('plotSold')} />
+            </View>
+          ) : null}
           <AppText size="overline" weight="bold" color="textSecondary" uppercase>
             {t('totalCostLabel')}
           </AppText>
@@ -254,20 +282,63 @@ export function PlotDetailScreen(): React.JSX.Element {
           <SummaryRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} />
         </AppCard>
 
-        {/* Primary actions */}
-        <View style={styles.actionsRow}>
-          <View style={styles.flex}>
-            <AppButton label={t('sellerPayment')} icon="rupee" onPress={() => setPaySheet(true)} />
+        {/* Primary actions (hidden once the plot is sold / its project closed) */}
+        {!readOnly ? (
+          <View style={styles.actionsRow}>
+            <View style={styles.flex}>
+              <AppButton label={t('sellerPayment')} icon="rupee" onPress={() => setPaySheet(true)} />
+            </View>
+            <View style={styles.flex}>
+              <AppButton
+                label={t('addExpense')}
+                icon="kharcha"
+                variant="secondary"
+                onPress={() => setExpSheet(true)}
+              />
+            </View>
           </View>
-          <View style={styles.flex}>
-            <AppButton
-              label={t('addExpense')}
-              icon="kharcha"
-              variant="secondary"
-              onPress={() => setExpSheet(true)}
+        ) : null}
+
+        {/* Standalone sale — a plot NOT in a project can be flipped directly. */}
+        {!plot.project_id && salePrice <= 0 && !readOnly ? (
+          <AppButton
+            label={t('sellPlot')}
+            icon="tag"
+            variant="secondary"
+            onPress={() => setSellSheet('price')}
+          />
+        ) : null}
+        {!plot.project_id && salePrice > 0 ? (
+          <AppCard style={styles.hero}>
+            <View style={styles.saleHeader}>
+              <AppText size="overline" weight="bold" color="textSecondary" uppercase style={styles.flex}>
+                {t('sellPlot')}
+              </AppText>
+              {sold ? <StageBadge tone="gold" label={t('plotSold')} /> : null}
+            </View>
+            {plot.buyer_name ? (
+              <AppText size="sm" color="textSecondary" numberOfLines={1}>
+                {`${t('buyerName')}: ${plot.buyer_name}`}
+              </AppText>
+            ) : null}
+            <SummaryRow label={t('salePriceLabel')} value={formatRupees(salePrice)} />
+            <SummaryRow label={t('buyerReceipts')} value={formatRupees(saleReceived)} valueColor="success" />
+            <SummaryRow label={t('remaining')} value={formatRupees(saleOutstanding)} />
+            <View style={styles.divider} />
+            <SummaryRow
+              label={t('plotProfit')}
+              value={formatRupees(saleProfit)}
+              valueColor={saleProfit >= 0 ? 'success' : 'danger'}
             />
-          </View>
-        </View>
+            {!sold ? (
+              <AppButton
+                label={t('addReceipt')}
+                icon="moneyIn"
+                onPress={() => setSellSheet('receipt')}
+              />
+            ) : null}
+          </AppCard>
+        ) : null}
 
         {/* Linked project */}
         {plot.project_id ? (
@@ -290,12 +361,14 @@ export function PlotDetailScreen(): React.JSX.Element {
           <AppText size="lg" weight="bold" style={styles.flex}>
             {t('tabDocs')}
           </AppText>
-          <Pressable onPress={onAddDocument} accessibilityRole="button" style={styles.addChip}>
-            <AppIcon name="add" size={16} color="primary" />
-            <AppText size="xs" weight="bold" color="primary">
-              {t('addDocument')}
-            </AppText>
-          </Pressable>
+          {!readOnly ? (
+            <Pressable onPress={onAddDocument} accessibilityRole="button" style={styles.addChip}>
+              <AppIcon name="add" size={16} color="primary" />
+              <AppText size="xs" weight="bold" color="primary">
+                {t('addDocument')}
+              </AppText>
+            </Pressable>
+          ) : null}
         </View>
         {docs.length === 0 ? (
           <AppText size="sm" color="textSecondary">
@@ -371,6 +444,8 @@ export function PlotDetailScreen(): React.JSX.Element {
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
+
+          <DateField value={payDate} onChange={setPayDate} />
 
           {payReceiptUri ? (
             <Pressable onPress={() => setPayReceiptUri(null)} style={styles.receiptRow} accessibilityRole="button">
@@ -453,6 +528,8 @@ export function PlotDetailScreen(): React.JSX.Element {
 
           <FloatingLabelInput label={t('note')} value={expNote} onChangeText={setExpNote} />
 
+          <DateField value={expDate} onChange={setExpDate} />
+
           {expReceiptUri ? (
             <Pressable onPress={() => setExpReceiptUri(null)} style={styles.receiptRow} accessibilityRole="button">
               <Image source={{ uri: expReceiptUri }} style={styles.receiptThumb} />
@@ -512,6 +589,18 @@ export function PlotDetailScreen(): React.JSX.Element {
         onSelect={(o) => setExpCategoryId(o.id)}
       />
 
+      {/* Standalone plot sale: set the price, then receive buyer money. */}
+      {!plot.project_id ? (
+        <SellPlotSheet
+          visible={sellSheet !== null}
+          mode={sellSheet ?? 'price'}
+          onClose={() => setSellSheet(null)}
+          summary={summary}
+          accounts={accounts}
+          onSaved={reload}
+        />
+      ) : null}
+
       {/* Full-screen document viewer */}
       <Modal visible={viewer !== null} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
         <View style={styles.viewer}>
@@ -566,6 +655,8 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.md,
     },
     actionsRow: { flexDirection: 'row', gap: theme.spacing.sm },
+    badgeRow: { flexDirection: 'row' },
+    saleHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     linkRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -585,7 +676,7 @@ const makeStyles = (theme: Theme) =>
       borderRadius: theme.radius.pill,
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.xs,
-      minHeight: 32,
+      minHeight: theme.touch.minTarget,
     },
     docGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
     docThumb: {

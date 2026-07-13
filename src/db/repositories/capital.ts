@@ -76,6 +76,21 @@ export const CAPITAL_SUM_SQL = `SUM(CASE cl.entry_type
 
 const CAPITAL_SUM = `COALESCE(${CAPITAL_SUM_SQL}, 0)`;
 
+/**
+ * SQL for GROSS capital contributed (aliased on `cl`): what a participation
+ * actually put in, net of transfers/withdrawals between partners but NOT
+ * zeroed by EXIT_SETTLEMENT — so settled projects still report the capital
+ * that funded them, while an investor exit (leaver TRANSFER_OUT + buyer
+ * TRANSFER_IN) doesn't double-count the moved stake.
+ */
+export const GROSS_CONTRIBUTED_SQL = `SUM(CASE cl.entry_type
+    WHEN 'INITIAL'      THEN cl.amount
+    WHEN 'ADDITIONAL'   THEN cl.amount
+    WHEN 'TRANSFER_IN'  THEN cl.amount
+    WHEN 'TRANSFER_OUT' THEN -cl.amount
+    WHEN 'WITHDRAWAL'   THEN -cl.amount
+    ELSE 0 END)`;
+
 /** Net paid-in capital for one project-investor participation. */
 export async function getInvestorCapital(projectInvestorId: string): Promise<number> {
   const db = await getDatabase();

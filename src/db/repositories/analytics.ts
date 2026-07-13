@@ -1,6 +1,6 @@
 import { getDatabase } from '../database';
 import type { ProjectStatus } from '../schema';
-import { CAPITAL_SUM_SQL as CAP_SUM } from './capital';
+import { CAPITAL_SUM_SQL as CAP_SUM, GROSS_CONTRIBUTED_SQL } from './capital';
 import { requireCompanyId } from './companies';
 
 export interface ProjectReportRow {
@@ -17,7 +17,7 @@ export async function getProjectReport(): Promise<ProjectReportRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<ProjectReportRow>(
     `SELECT p.id, p.name, p.status, p.start_date, p.created_at,
-       COALESCE((SELECT ${CAP_SUM} FROM capital_ledger cl
+       COALESCE((SELECT ${GROSS_CONTRIBUTED_SQL} FROM capital_ledger cl
                  JOIN project_investors pi ON pi.id = cl.project_investor_id
                  WHERE pi.project_id = p.id), 0) AS invested,
        COALESCE((SELECT SUM(amount) FROM transactions
@@ -39,7 +39,7 @@ export async function getPnl(): Promise<PnlRow[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<{ id: string; name: string; saleRev: number; otherInc: number; expenses: number }>(
     `SELECT p.id, p.name,
-       COALESCE((SELECT SUM(sr.amount) FROM sale_receipts sr JOIN sales s ON s.id = sr.sale_id WHERE s.project_id = p.id), 0) AS saleRev,
+       COALESCE((SELECT SUM(sr.amount) FROM sale_receipts sr JOIN sales s ON s.id = sr.sale_id WHERE s.project_id = p.id AND sr.is_void = 0), 0) AS saleRev,
        COALESCE((SELECT SUM(t.amount) FROM transactions t JOIN categories c ON c.id = t.category_id
                  WHERE t.project_id = p.id AND t.direction = 'IN' AND t.is_void = 0 AND c.name_en = 'Other Income'), 0) AS otherInc,
        COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = p.id AND direction = 'OUT' AND is_void = 0), 0) AS expenses
@@ -118,7 +118,7 @@ export async function getInvestmentMatrix(): Promise<InvestmentMatrixRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<InvestmentMatrixRow>(
     `SELECT inv.name AS investorName, pr.name AS projectName, pi.committed_amount AS committed,
-       COALESCE((SELECT ${CAP_SUM} FROM capital_ledger cl WHERE cl.project_investor_id = pi.id), 0) AS paid
+       COALESCE((SELECT ${GROSS_CONTRIBUTED_SQL} FROM capital_ledger cl WHERE cl.project_investor_id = pi.id), 0) AS paid
      FROM project_investors pi
      JOIN investors inv ON inv.id = pi.investor_id
      JOIN projects pr ON pr.id = pi.project_id
@@ -141,13 +141,13 @@ export async function getRoiReport(): Promise<RoiRow[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<{ id: string; name: string; start_date: string | null; saleRev: number; otherInc: number; expenses: number; grossCapital: number }>(
     `SELECT p.id, p.name, p.start_date,
-       COALESCE((SELECT SUM(sr.amount) FROM sale_receipts sr JOIN sales s ON s.id = sr.sale_id WHERE s.project_id = p.id), 0) AS saleRev,
+       COALESCE((SELECT SUM(sr.amount) FROM sale_receipts sr JOIN sales s ON s.id = sr.sale_id WHERE s.project_id = p.id AND sr.is_void = 0), 0) AS saleRev,
        COALESCE((SELECT SUM(t.amount) FROM transactions t JOIN categories c ON c.id = t.category_id
                  WHERE t.project_id = p.id AND t.direction = 'IN' AND t.is_void = 0 AND c.name_en = 'Other Income'), 0) AS otherInc,
        COALESCE((SELECT SUM(amount) FROM transactions WHERE project_id = p.id AND direction = 'OUT' AND is_void = 0), 0) AS expenses,
-       COALESCE((SELECT SUM(cl.amount) FROM capital_ledger cl
+       COALESCE((SELECT ${GROSS_CONTRIBUTED_SQL} FROM capital_ledger cl
                  JOIN project_investors pi ON pi.id = cl.project_investor_id
-                 WHERE pi.project_id = p.id AND cl.entry_type IN ('INITIAL', 'ADDITIONAL', 'TRANSFER_IN')), 0) AS grossCapital
+                 WHERE pi.project_id = p.id), 0) AS grossCapital
      FROM projects p WHERE p.status = 'COMPLETED' AND p.company_id = ? ORDER BY p.created_at DESC`,
     requireCompanyId()
   );

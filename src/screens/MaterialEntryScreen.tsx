@@ -20,6 +20,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
   type IconKey,
   type SelectOption,
@@ -92,6 +93,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [rate, setRate] = useState('');
   const [accountChoice, setAccountChoice] = useState<string | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
 
   const [projectSheet, setProjectSheet] = useState(false);
@@ -161,7 +163,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
       const txn = await addTransaction({
         direction: 'OUT',
         amount: total,
-        date: todayISO().slice(0, 10),
+        date,
         accountId,
         projectId,
         phase: 'CONSTRUCTION',
@@ -196,7 +198,15 @@ export function MaterialEntryScreen(): React.JSX.Element {
   if (projects.length === 0) {
     return (
       <View style={styles.screen}>
-        <AppHeader title={t('material')} onBack={() => navigation.goBack()} />
+        <AppHeader
+          title={t('material')}
+          onBack={() => navigation.goBack()}
+          rightAction={{
+            icon: 'ledger',
+            onPress: () => navigation.navigate('Bookings'),
+            accessibilityLabel: t('bookingsTitle'),
+          }}
+        />
         <View style={styles.empty}>
           <AppText size="md" color="textSecondary" center>
             {t('noProjectsDetail')}
@@ -209,7 +219,15 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('material')} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={t('material')}
+        onBack={() => navigation.goBack()}
+        rightAction={{
+          icon: 'ledger',
+          onPress: () => navigation.navigate('Bookings'),
+          accessibilityLabel: t('bookingsTitle'),
+        }}
+      />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
@@ -270,6 +288,9 @@ export function MaterialEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
+          {/* Date */}
+          <DateField value={date} onChange={setDate} />
+
           {/* Bill photo */}
           {receiptUri ? (
             <Pressable onPress={() => setReceiptUri(null)} style={styles.chip} accessibilityRole="button">
@@ -285,7 +306,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
               icon="camera"
               variant="secondary"
               onPress={async () => {
-                const uri = await captureReceipt();
+                const uri = await captureReceipt().catch(swallow('material:receipt'));
                 if (uri) setReceiptUri(uri);
               }}
             />

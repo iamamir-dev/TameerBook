@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -63,12 +63,30 @@ export function InvestorSheet({
   const [personOpen, setPersonOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  // Reset the form ONLY when the sheet actually opens (visible false→true).
+  // A data-version refresh while the sheet is open changes the
+  // `existingInvestors` identity and must NOT wipe an in-progress selection —
+  // it only re-syncs the people list (keeping locally-added investors).
+  const prevVisibleRef = useRef(visible);
   useEffect(() => {
+    const wasVisible = prevVisibleRef.current;
+    prevVisibleRef.current = visible;
     if (!visible) return;
-    setPeople(existingInvestors.filter((p) => p.remaining > 0));
-    setSelected(new Set());
-    setAmounts({});
-    setExpanded(false);
+    const eligible = existingInvestors.filter((p) => p.remaining > 0);
+    if (!wasVisible) {
+      setPeople(eligible);
+      setSelected(new Set());
+      setAmounts({});
+      setExpanded(false);
+      return;
+    }
+    setPeople((prev) => {
+      const ids = new Set(eligible.map((p) => p.id));
+      // Keep rows the refresh doesn't know about yet (e.g. "+ New investor"
+      // additions) so selected ids and their amounts survive the sync.
+      const extras = prev.filter((p) => !ids.has(p.id));
+      return [...eligible, ...extras];
+    });
   }, [visible, existingInvestors]);
 
   // Ticking an investor pre-fills their project stake with their remaining

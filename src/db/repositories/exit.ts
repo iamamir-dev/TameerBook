@@ -2,6 +2,7 @@ import { getDatabase } from '../database';
 import { DEFAULT_USER, type ProjectInvestorRow } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { getInvestorCapital } from './capital';
+import { assertProjectActive } from './guards';
 
 export type ExitScenario =
   | 'PARTNER_BUY'
@@ -54,6 +55,8 @@ export interface ExitInput {
  * ledger. Never deletes anything.
  */
 export async function exitInvestor(input: ExitInput): Promise<void> {
+  // A completed project is read-only (V-7) — exits happen before closing.
+  await assertProjectActive(input.projectId);
   const db = await getDatabase();
   const by = input.createdBy ?? DEFAULT_USER;
   const createdAt = nowISO();

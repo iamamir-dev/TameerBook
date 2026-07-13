@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
@@ -27,6 +27,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { ColorPalette, Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -36,10 +37,22 @@ type ColorKey = keyof ColorPalette;
 /** Capital entry types that add to capital (+) vs reduce it (−). */
 const POSITIVE = new Set(['INITIAL', 'ADDITIONAL', 'TRANSFER_IN', 'PROFIT_PAYOUT']);
 
+/** Human label for every capital-entry type; falls back to the raw value. */
+const ENTRY_LABEL: Record<string, TranslationKey> = {
+  INITIAL: 'ctInitial',
+  ADDITIONAL: 'ctAdditional',
+  TRANSFER_IN: 'ctTransferIn',
+  TRANSFER_OUT: 'ctTransferOut',
+  WITHDRAWAL: 'ctWithdrawal',
+  EXIT_SETTLEMENT: 'ctExitSettlement',
+  PROFIT_PAYOUT: 'ctProfitPayout',
+  DONATION: 'ctDonation',
+  LOSS_ADJ: 'ctLossAdj',
+};
+
 function entryLabel(type: string, t: (k: TranslationKey) => string): string {
-  if (type === 'INITIAL') return t('ctInitial');
-  if (type === 'ADDITIONAL') return t('ctAdditional');
-  return type;
+  const key = ENTRY_LABEL[type];
+  return key ? t(key) : type;
 }
 
 export function InvestorProfileScreen(): React.JSX.Element {
@@ -87,6 +100,10 @@ export function InvestorProfileScreen(): React.JSX.Element {
   const { saving: savingPay, run: runSave } = useSaveAction();
 
   const plColor = (v: number): ColorKey => (v >= 0 ? 'success' : 'danger');
+
+  // Exiting only makes sense while the investor still has un-settled
+  // participation somewhere — otherwise the action is hidden.
+  const canExit = returns.some((r) => !r.settled);
 
   const payAccount = accounts.find((a) => a.id === payAccountId) ?? null;
   const accountOptions: SelectOption[] = accounts.map((a) => ({
@@ -143,6 +160,9 @@ export function InvestorProfileScreen(): React.JSX.Element {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: t('statement') });
       }
+    } catch (e) {
+      swallow('investor:statement')(e);
+      Alert.alert(t('errorTitle'), t('errorBody'));
     } finally {
       setSharing(false);
     }
@@ -254,7 +274,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
           })}
           {ledger.length === 0 ? (
             <AppText size="sm" color="textSecondary" center style={styles.empty}>
-              {t('comingSoon')}
+              {t('emptyLedger')}
             </AppText>
           ) : null}
         </AppCard>
@@ -273,9 +293,11 @@ export function InvestorProfileScreen(): React.JSX.Element {
           <View style={styles.flex}>
             <AppButton label={t('statement')} icon="statement" variant="secondary" onPress={onShareStatement} loading={sharing} />
           </View>
-          <View style={styles.flex}>
-            <AppButton label={t('exitTitle')} icon="forward" variant="secondary" onPress={() => navigation.navigate('ExitWizard', { investorId })} />
-          </View>
+          {canExit ? (
+            <View style={styles.flex}>
+              <AppButton label={t('exitTitle')} icon="forward" variant="secondary" onPress={() => navigation.navigate('ExitWizard', { investorId })} />
+            </View>
+          ) : null}
         </View>
       </StickyFooter>
 

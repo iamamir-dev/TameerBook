@@ -5,7 +5,6 @@ import {
   useRoute,
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
@@ -27,6 +26,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   ICONS,
   SelectSheet,
   StickyFooter,
@@ -112,7 +112,6 @@ export function EntryScreen(): React.JSX.Element {
   const [projectSheet, setProjectSheet] = useState(false);
   const [partySheet, setPartySheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
-  const [dateSheet, setDateSheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [newPartyName, setNewPartyName] = useState('');
 
@@ -152,17 +151,6 @@ export function EntryScreen(): React.JSX.Element {
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
   const catName = useCategoryLabel();
-
-  const dateOptions: SelectOption[] = useMemo(
-    () =>
-      Array.from({ length: 14 }, (_, i) => {
-        const d = dayjs().subtract(i, 'day');
-        const iso = d.format('YYYY-MM-DD');
-        return { id: iso, label: i === 0 ? t('today') : d.format('DD MMM YYYY') };
-      }),
-    [t]
-  );
-  const dateLabel = date === todayISO().slice(0, 10) ? t('today') : dayjs(date).format('DD MMM YYYY');
 
   const partyOptions: SelectOption[] = useMemo(
     () => [
@@ -326,13 +314,7 @@ export function EntryScreen(): React.JSX.Element {
           </Pressable>
 
           {/* Date */}
-          <Pressable onPress={() => setDateSheet(true)} style={styles.rowChip} accessibilityRole="button">
-            <AppIcon name="today" size={18} color="primary" />
-            <AppText size="sm" weight="semibold" style={styles.flex}>
-              {dateLabel}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </Pressable>
+          <DateField value={date} onChange={setDate} />
 
           {/* Receipt photo */}
           {receiptUri ? (
@@ -404,16 +386,6 @@ export function EntryScreen(): React.JSX.Element {
         title={t('party')}
         onSelect={(o) => (o.id === ADD_PARTY_ID ? setAddPartyOpen(true) : setPartyId(o.id))}
       />
-      <SelectSheet
-        visible={dateSheet}
-        onClose={() => setDateSheet(false)}
-        options={dateOptions}
-        selectedId={date}
-        title={t('date')}
-        searchable={false}
-        onSelect={(o) => setDate(o.id)}
-      />
-
       {/* Add-party modal */}
       <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
         <KeyboardAvoidingView

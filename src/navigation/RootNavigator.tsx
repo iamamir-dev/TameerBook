@@ -7,6 +7,8 @@ import { useTheme } from '@/theme';
 import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
 import { AccountsScreen } from '@/screens/AccountsScreen';
 import { AllocationScreen } from '@/screens/AllocationScreen';
+import { BookingDetailScreen } from '@/screens/BookingDetailScreen';
+import { BookingsScreen } from '@/screens/BookingsScreen';
 import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
 import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
@@ -117,6 +119,10 @@ export function RootNavigator(): React.JSX.Element {
       <Stack.Screen name="Entry" component={EntryScreen} options={MODAL} />
       <Stack.Screen name="MaterialEntry" component={MaterialEntryScreen} options={MODAL} />
       <Stack.Screen name="Investment" component={InvestmentEntryScreen} options={MODAL} />
+
+      {/* Material bookings */}
+      <Stack.Screen name="Bookings" component={BookingsScreen} />
+      <Stack.Screen name="BookingDetail" component={BookingDetailScreen} />
 
       {/* Udhaar */}
       <Stack.Screen name="Udhaar" component={UdhaarScreen} />

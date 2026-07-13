@@ -235,7 +235,7 @@ export function ReportScreen(): React.JSX.Element {
                   <AppText size="xs" color="textSecondary">{formatRupees(r.profit)} · {days(r.startDate)} {t('daysRunning')}</AppText></>}
                 right={<AppText size="md" weight="bold" color={r.roiPct >= 0 ? 'success' : 'danger'} tabular>{r.roiPct.toFixed(1)}%</AppText>} />
             ))}
-            {roi.length === 0 ? <AppText size="sm" color="textSecondary" center style={styles.empty}>{t('comingSoon')}</AppText> : null}
+            {roi.length === 0 ? <AppText size="sm" color="textSecondary" center style={styles.empty}>{t('emptyLedger')}</AppText> : null}
           </AppCard>
         ) : null}
 
