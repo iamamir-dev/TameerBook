@@ -8,6 +8,10 @@ import {
   BrickWall,
   Building,
   Building2,
+  Phone,
+  Pencil,
+  Type,
+  ALargeSmall,
   Calendar,
   Camera,
   ChartColumn,
@@ -114,6 +118,10 @@ export const ICONS = {
 
   // UI affordances
   bell: Bell,
+  phone: Phone,
+  edit: Pencil,
+  font: Type,
+  textSize: ALargeSmall,
   back: ChevronLeft,
   forward: ChevronRight,
   expand: Maximize2,

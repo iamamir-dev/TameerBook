@@ -5,10 +5,11 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
-import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
-import { listPlotSummaries, type PlotStatus, type PlotSummary } from '@/db';
+import { AppCard, AppHeader, AppIcon, AppText, EmptyState, SearchBar } from '@/components/ui';
+import { listPlotSummaries, listStages, SIZE_UNIT_LABEL_KEYS, type PlotStatus, type PlotSummary, type StageRow } from '@/db';
 import { useFocusReload } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -32,15 +33,18 @@ const STATUS_TONE: Record<PlotStatus, ColorKey> = {
 /** Plots list: one card per plot with the owner's card math, plus a FAB. */
 export function PlotsScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const [items, setItems] = useState<PlotSummary[]>([]);
+  const [stages, setStages] = useState<StageRow[]>([]);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setItems(await listPlotSummaries());
+    setStages(await listStages('PLOT'));
   }, []);
 
   useFocusReload(load);
@@ -58,6 +62,7 @@ export function PlotsScreen(): React.JSX.Element {
 
       {items.length === 0 ? (
         <EmptyState
+          bottomInset={insets.bottom + FLOATING_BAR_CLEARANCE}
           icon="plot"
           title={t('noPlotsYet')}
           message={t('noPlotsDetail')}
@@ -73,10 +78,24 @@ export function PlotsScreen(): React.JSX.Element {
             { paddingBottom: insets.bottom + theme.spacing.xxxl },
           ]}
         >
-          {items.map((item) => (
+          {items.length > 5 ? <SearchBar value={query} onChange={setQuery} /> : null}
+          {items
+            .filter((it) => {
+              const q = query.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                it.plot.name.toLowerCase().includes(q) ||
+                (it.plot.society ?? '').toLowerCase().includes(q)
+              );
+            })
+            .map((item) => (
             <PlotCard
               key={item.plot.id}
               summary={item}
+              stageLabel={(() => {
+                const st = stages.find((x) => x.id === item.plot.stage_id);
+                return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
+              })()}
               onPress={() => navigation.navigate('PlotDetail', { plotId: item.plot.id })}
             />
           ))}
@@ -89,9 +108,12 @@ export function PlotsScreen(): React.JSX.Element {
 /** One plot card, laid out exactly like the owner reads his notebook. */
 function PlotCard({
   summary,
+  stageLabel,
   onPress,
 }: {
   summary: PlotSummary;
+  /** User-set display status (Settings → Statuses); null = none. */
+  stageLabel: string | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -99,6 +121,10 @@ function PlotCard({
   const styles = makeStyles(theme);
   const { plot, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
   const tone = STATUS_TONE[plot.status];
+  const subtitle = [plot.society, plot.block, plot.plot_no].filter(Boolean).join(' · ');
+  const sizeText = plot.size_value
+    ? `${plot.size_value} ${t(SIZE_UNIT_LABEL_KEYS[plot.size_unit ?? 'MARLA'])}`
+    : null;
 
   return (
     <AppCard onPress={onPress} style={styles.card}>
@@ -110,8 +136,21 @@ function PlotCard({
           <AppText size="md" weight="bold" numberOfLines={1}>
             {plot.name}
           </AppText>
+          {subtitle ? (
+            <AppText size="xs" color="textSecondary" numberOfLines={1}>
+              {subtitle}
+            </AppText>
+          ) : null}
           <View style={styles.badgeWrap}>
-            <StageBadge tone={tone} label={t(STATUS_LABEL[plot.status])} />
+            <StageBadge tone={tone} label={stageLabel ?? t(STATUS_LABEL[plot.status])} />
+            {sizeText ? (
+              <View style={styles.sizePill}>
+                <AppIcon name="plot" size={12} color="gold" />
+                <AppText size="xs" weight="bold" color="gold">
+                  {sizeText}
+                </AppText>
+              </View>
+            ) : null}
           </View>
         </View>
         <AppIcon name="forward" size={20} color="textSecondary" />
@@ -119,9 +158,9 @@ function PlotCard({
 
       <View style={styles.mathBlock}>
         <MathRow label={t('dealPrice')} value={formatRupees(dealPrice)} />
-        <MathRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="success" />
+        <MathRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="danger" />
         <MathRow label={t('remaining')} value={formatRupees(remaining)} />
-        <MathRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} />
+        <MathRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} valueColor="danger" />
         <View style={styles.divider} />
         <View style={styles.mathRow}>
           <AppText size="sm" weight="bold">
@@ -177,7 +216,16 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     cardTitle: { flex: 1, gap: theme.spacing.xs },
-    badgeWrap: { flexDirection: 'row' },
+    badgeWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, flexWrap: 'wrap' },
+    sizePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingVertical: 2,
+      paddingHorizontal: theme.spacing.sm,
+      borderRadius: theme.radius.pill,
+      backgroundColor: softToneColor(theme, 'gold'),
+    },
     mathBlock: { gap: theme.spacing.xs },
     mathRow: {
       flexDirection: 'row',

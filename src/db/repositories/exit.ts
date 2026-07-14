@@ -11,6 +11,17 @@ export type ExitScenario =
   | 'PARTIAL'
   | 'COMMITTED_UNPAID';
 
+/** Thrown when trying to exit a participation that already left (EXITED/SETTLED). */
+export class InvestorAlreadyExitedError extends Error {
+  constructor() {
+    super('INVESTOR_EXITED');
+    this.name = 'InvestorAlreadyExitedError';
+  }
+}
+export function isInvestorAlreadyExited(e: unknown): e is InvestorAlreadyExitedError {
+  return e instanceof Error && e.message === 'INVESTOR_EXITED';
+}
+
 /** Marker CNIC used to identify the auto-created "Owner" investor. */
 const OWNER_MARKER = '__OWNER__';
 
@@ -66,6 +77,8 @@ export async function exitInvestor(input: ExitInput): Promise<void> {
     input.projectInvestorId
   );
   if (!leaver) throw new Error('exitInvestor: leaver not found');
+  // Can't exit someone who already left (V-20).
+  if (leaver.status !== 'ACTIVE') throw new InvestorAlreadyExitedError();
 
   const leaverCapital = await getInvestorCapital(input.projectInvestorId);
   const amount = input.scenario === 'PARTIAL' ? input.portionAmount ?? 0 : leaverCapital;

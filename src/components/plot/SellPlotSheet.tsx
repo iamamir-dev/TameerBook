@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AmountInput, AppButton, AppIcon, AppText, DateField, SelectSheet } from '@/components/ui';
 import {
   addPlotSaleReceipt,
+  listUsedPayTypes,
+  ONCE_PAY_TYPES,
   PAY_TYPE_LABEL_KEYS,
   PAY_TYPES,
   setPlotSale,
@@ -17,6 +19,8 @@ import { useAccountOptions, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
+import { captureReceipt } from '@/utils/photo';
 import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
@@ -65,9 +69,19 @@ export function SellPlotSheet({
   // Receipt form
   const [amount, setAmount] = useState(0);
   const [payType, setPayType] = useState<PayType | null>(null);
+  const [usedPayTypes, setUsedPayTypes] = useState<PayType[]>([]);
+  const availablePayTypes = PAY_TYPES.filter(
+    (pt) => !ONCE_PAY_TYPES.includes(pt) || !usedPayTypes.includes(pt)
+  );
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
+
+  const onPickReceipt = async () => {
+    const uri = await captureReceipt().catch(swallow('sell:receipt'));
+    if (uri) setReceiptUri(uri);
+  };
 
   // Fresh form per open; the account keeps its last choice (default: first).
   const summaryRef = useRef(summary);
@@ -81,7 +95,14 @@ export function SellPlotSheet({
     setAmount(0);
     setPayType(null);
     setDate(todayISO().slice(0, 10));
+    setReceiptUri(null);
     setAccountId((prev) => prev ?? accountsRef.current[0]?.id ?? null);
+    // Hide a one-time buyer pay type (Token/Bayana) that's already received.
+    if (mode === 'receipt') {
+      listUsedPayTypes(summaryRef.current.plot.id, 'SALE', 'IN')
+        .then(setUsedPayTypes)
+        .catch(swallow('sell:usedPayTypes'));
+    }
   }, [visible, mode]);
 
   const accountOptions = useAccountOptions(accounts);
@@ -106,6 +127,7 @@ export function SellPlotSheet({
         date,
         accountId,
         payType,
+        receiptUri,
       });
     });
     if (!ok) return;
@@ -149,7 +171,7 @@ export function SellPlotSheet({
               <>
                 {/* Pay-type chips (optional tag on the receipt) */}
                 <View style={styles.chipRow}>
-                  {PAY_TYPES.map((pt) => {
+                  {availablePayTypes.map((pt) => {
                     const selected = payType === pt;
                     return (
                       <Pressable
@@ -171,7 +193,13 @@ export function SellPlotSheet({
                   })}
                 </View>
 
-                <AmountInput value={amount} onChange={setAmount} floating surface={theme.colors.card} />
+                <AmountInput
+                  value={amount}
+                  onChange={setAmount}
+                  floating
+                  surface={theme.colors.card}
+                  error={amount > 0 && amount > summary.saleOutstanding ? t('exceedsRemaining') : null}
+                />
 
                 <Pressable
                   onPress={() => setAccountSheet(true)}
@@ -198,6 +226,24 @@ export function SellPlotSheet({
                 </Pressable>
 
                 <DateField value={date} onChange={setDate} />
+
+                {/* Optional proof-of-payment photo. */}
+                {receiptUri ? (
+                  <Pressable onPress={() => setReceiptUri(null)} style={styles.rowChip} accessibilityRole="button">
+                    <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
+                    <AppText size="sm" weight="semibold" style={styles.flex}>
+                      {t('photoReceipt')}
+                    </AppText>
+                    <AppIcon name="close" size={20} color="danger" />
+                  </Pressable>
+                ) : (
+                  <AppButton
+                    label={t('photoReceipt')}
+                    icon="camera"
+                    variant="secondary"
+                    onPress={onPickReceipt}
+                  />
+                )}
 
                 <AppButton
                   label={t('save')}
@@ -228,6 +274,7 @@ export function SellPlotSheet({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
+    receiptThumb: { width: 44, height: 44, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
     modeBtn: {
       paddingHorizontal: theme.spacing.lg,

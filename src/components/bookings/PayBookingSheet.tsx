@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AmountInput, AppButton, AppIcon, AppText, SelectSheet } from '@/components/ui';
+import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { AmountInput, AppButton, AppIcon, AppText, DateField, SelectSheet } from '@/components/ui';
 import { payBooking, type AccountWithBalance } from '@/db';
 import { useAccountOptions, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { formatDisplayDate, todayISO } from '@/utils/date';
+import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
 interface Props {
@@ -40,23 +41,37 @@ export function PayBookingSheet({
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const today = todayISO();
+  const today = todayISO().slice(0, 10);
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [date, setDate] = useState(today);
+  const [note, setNote] = useState('');
   const [accountSheet, setAccountSheet] = useState(false);
 
   const { saving, run: runSave } = useSaveAction();
   const accountOptions = useAccountOptions(accounts);
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
 
-  // Fresh form every open.
+  // Fresh form every open; default to the first (usually only) account.
   useEffect(() => {
     if (!visible) return;
     setAmount(0);
-    setAccountId(null);
-  }, [visible]);
+    setAccountId(accounts[0]?.id ?? null);
+    setDate(today);
+    setNote('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, accounts]);
 
   const over = amount > payRemaining;
+  // Live error shown under the amount as the user types.
+  const amountError =
+    amount <= 0
+      ? null
+      : over
+        ? t('exceedsRemaining')
+        : selectedAccount && amount > selectedAccount.balance
+          ? t('insufficientFunds')
+          : null;
   const canSave =
     amount > 0 && accountId !== null && !over && (!selectedAccount || amount <= selectedAccount.balance);
 
@@ -64,7 +79,7 @@ export function PayBookingSheet({
     if (!canSave || saving || !accountId) return;
     void (async () => {
       const ok = await runSave(async () => {
-        await payBooking({ bookingId, amount, date: today, accountId });
+        await payBooking({ bookingId, amount, date, accountId, note: note.trim() || null });
         await onSaved();
       });
       if (ok) onClose();
@@ -99,13 +114,8 @@ export function PayBookingSheet({
               onChange={setAmount}
               floating
               surface={theme.colors.card}
+              error={amountError}
             />
-
-            {over ? (
-              <AppText size="xs" weight="semibold" color="danger">
-                {t('exceedsRemaining')}
-              </AppText>
-            ) : null}
 
             <Pressable onPress={() => setAccountSheet(true)} style={styles.rowChip} accessibilityRole="button">
               <AppIcon
@@ -127,13 +137,10 @@ export function PayBookingSheet({
               <AppIcon name="forward" size={18} color="textSecondary" />
             </Pressable>
 
-            {/* Payment date — always today, per the entry-form rules */}
-            <View style={styles.dateRow}>
-              <AppIcon name="today" size={16} color="textSecondary" />
-              <AppText size="xs" color="textSecondary">
-                {`${t('today')} · ${formatDisplayDate(today)}`}
-              </AppText>
-            </View>
+            {/* Payment date — defaults to today, back-datable for late logging. */}
+            <DateField value={date} onChange={setDate} maxDate={today} />
+
+            <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
             <AppButton
               label={t('payBookingLabel')}

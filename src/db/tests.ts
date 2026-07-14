@@ -10,6 +10,12 @@
 import { getDatabase } from './database';
 import {
   addAccount,
+  addCategory,
+  deleteCategory,
+  updateCategory,
+  listCategoryTree,
+  getCategory,
+  getCategoryByNameEn,
   addInvestor,
   addLaborer,
   addPlotExpense,
@@ -206,6 +212,22 @@ async function testPlotMath(): Promise<TestResult> {
     s = await getPlotSummary(plot.id);
     checks.push(['bayana 200 → paid 250 / remaining 750', near(s.paidToSeller, 250) && near(s.remaining, 750)]);
 
+    // Token / bayana are one-time — a second of either is blocked.
+    checks.push([
+      'second token blocked',
+      await expectThrow(
+        () => addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 10, date: D, accountId: acc.id }),
+        'ONE_TIME_PAYMENT'
+      ),
+    ]);
+    checks.push([
+      'second bayana blocked',
+      await expectThrow(
+        () => addPlotPayment({ plotId: plot.id, payType: 'BAYANA', amount: 10, date: D, accountId: acc.id }),
+        'ONE_TIME_PAYMENT'
+      ),
+    ]);
+
     // Expense before fully paid: tax 100 on top
     const db = await getDatabase();
     const taxCat = await db.getFirstAsync<{ id: string }>(
@@ -246,6 +268,19 @@ async function testLaborAccrual(): Promise<TestResult> {
     const pl = await attachLaborerToProject({ projectId: project.id, laborerId: worker.id, dailyWage: 1000 });
 
     const checks: Check[] = [];
+
+    // A paid day with no dihari rate set is blocked (V-15).
+    const noWage = await addLaborer({ name: 'DBTEST NoWage' });
+    c.laborers.push(noWage.id);
+    const plNoWage = await attachLaborerToProject({ projectId: project.id, laborerId: noWage.id, dailyWage: 0 });
+    checks.push([
+      'FULL day without wage blocked',
+      await expectThrow(
+        () => markAttendance({ projectLaborerId: plNoWage.id, date: '2026-06-01', status: 'FULL' }),
+        'WAGE_NOT_SET'
+      ),
+    ]);
+
     await markAttendance({ projectLaborerId: pl.id, date: '2026-06-01', status: 'FULL' });
     await markAttendance({ projectLaborerId: pl.id, date: '2026-06-02', status: 'FULL' });
     await markAttendance({ projectLaborerId: pl.id, date: '2026-06-03', status: 'HALF' });
@@ -950,6 +985,48 @@ async function testReconciliation(): Promise<TestResult> {
 /* -------------------------------------------------------------------------- */
 
 /** Run all DB self-tests in sequence and return their results. */
+async function testCategoryManagement(): Promise<TestResult> {
+  const checks: Check[] = [];
+  const main = await addCategory({ nameEn: 'DBTEST CMain', nameUr: 'DBTEST CMain', type: 'EXPENSE' });
+  const sub = await addCategory({
+    nameEn: 'DBTEST CSub',
+    nameUr: 'DBTEST CSub',
+    type: 'EXPENSE',
+    parentId: main.id,
+    defaultUnit: 'bori',
+  });
+
+  const tree = await listCategoryTree('EXPENSE');
+  const node = tree.find((n) => n.id === main.id);
+  checks.push(['sub nested under main', !!node && node.children.some((ch) => ch.id === sub.id)]);
+  checks.push(['default unit stored', sub.default_unit === 'bori']);
+  checks.push([
+    'delete main with child blocked',
+    await expectThrow(() => deleteCategory(main.id), 'CATEGORY_IN_USE'),
+  ]);
+
+  await updateCategory(sub.id, { name: 'DBTEST CSub2' });
+  checks.push(['sub renamed', (await getCategory(sub.id))?.name_en === 'DBTEST CSub2']);
+
+  const plotPay = await getCategoryByNameEn('Plot Payment');
+  checks.push([
+    'system category delete locked',
+    plotPay
+      ? await expectThrow(() => deleteCategory(plotPay.id), 'deleteCategory: system category is locked')
+      : true,
+  ]);
+
+  // Clean up (child first) — categories are global, so leave nothing behind.
+  await deleteCategory(sub.id);
+  await deleteCategory(main.id);
+  checks.push([
+    'cleaned up',
+    (await getCategory(sub.id)) === null && (await getCategory(main.id)) === null,
+  ]);
+
+  return report('T-CAT category management', checks);
+}
+
 export async function runDbTests(): Promise<TestResult[]> {
   // Everything is company-scoped now  run the whole suite inside a throwaway
   // test company, then restore the user's active company and delete it.
@@ -971,6 +1048,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testProjectCompletionGuards,
     testInvestorCommitmentVsCash,
     testValidationGuards,
+    testCategoryManagement,
     testCompanyIsolation,
     testReconciliation,
   ];

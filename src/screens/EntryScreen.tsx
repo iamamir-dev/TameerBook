@@ -44,6 +44,9 @@ import {
   listCategories,
   listParties,
   type PartyRow,
+  PHASE_LABEL_KEYS,
+  TXN_PHASES,
+  type TxnPhase,
 } from '@/db';
 import { SYSTEM_CATEGORY_NAMES } from '@/db/schema';
 import { useAccountOptions, useCategoryLabel, useSaveAction, useToast } from '@/hooks';
@@ -110,6 +113,10 @@ export function EntryScreen(): React.JSX.Element {
 
   const [resetKey, setResetKey] = useState(0);
   const [projectSheet, setProjectSheet] = useState(false);
+  // Which slice of a project this entry belongs to (only used when a project is
+  // chosen). Defaults to Construction — the common case — so it lands in the
+  // project's construction cost breakdown instead of the catch-all GENERAL.
+  const [phase, setPhase] = useState<TxnPhase>('CONSTRUCTION');
   const [partySheet, setPartySheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
@@ -124,8 +131,32 @@ export function EntryScreen(): React.JSX.Element {
 
   useEffect(() => {
     listCategories(catType)
-      // System categories are posted by business logic, not manual entry.
-      .then((cats) => setCategories(cats.filter((c) => !SYSTEM_CATS.has(c.name_en))))
+      // Show only bookable LEAF categories: drop system ones (posted by business
+      // logic) and main headings (parents) — you book against a sub-category.
+      .then((cats) => {
+        const parents = new Set(cats.map((c) => c.parent_id).filter(Boolean) as string[]);
+        // A prefilled HEADING (e.g. the Ghar-ka-Kharcha tile prefills "Home
+        // Expense") scopes the grid to that heading's sub-categories — the
+        // heading itself is an organizer, not bookable.
+        const scopeParent = prefill?.categoryId && parents.has(prefill.categoryId) ? prefill.categoryId : null;
+        if (scopeParent) {
+          const scoped = cats.filter((c) => c.parent_id === scopeParent);
+          if (scoped.length > 0) {
+            setCategories(scoped);
+            setCategoryId((cur) => (cur === scopeParent ? null : cur));
+            return;
+          }
+        }
+        // A prefilled heading with no children (shouldn't happen post-v17)
+        // falls through to the normal grid; never leave a hidden heading
+        // silently selected.
+        if (prefill?.categoryId && cats.find((c) => c.id === prefill.categoryId)?.is_system) {
+          setCategoryId((cur) => (cur === prefill.categoryId ? null : cur));
+        }
+        setCategories(
+          cats.filter((c) => !SYSTEM_CATS.has(c.name_en) && !c.is_system && !parents.has(c.id))
+        );
+      })
       .catch(swallow('entry:categories'));
     loadParties().catch(swallow('entry:parties'));
     listAccountsWithBalance().then(setAccounts).catch(swallow('entry:accounts'));
@@ -142,10 +173,14 @@ export function EntryScreen(): React.JSX.Element {
   const accountId =
     accountChoice ??
     (accounts.some((a) => a.id === lastAccountId) ? lastAccountId : accounts[0]?.id ?? null);
+  // Income is pure "other income" — never auto-attached to the last-used
+  // project (its picker is hidden; only an explicit prefill can link one).
   const projectId =
     projectChoice !== undefined
       ? projectChoice
-      : projects.find((p) => p.project.id === lastProjectId)?.project.id ?? null;
+      : direction === 'IN'
+        ? null
+        : projects.find((p) => p.project.id === lastProjectId)?.project.id ?? null;
 
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
@@ -187,7 +222,7 @@ export function EntryScreen(): React.JSX.Element {
         date,
         accountId,
         projectId,
-        phase: projectId ? 'GENERAL' : null,
+        phase: projectId ? phase : null,
         categoryId,
         partyId,
         description: note || null,
@@ -237,7 +272,7 @@ export function EntryScreen(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <AppHeader
-        title={t(direction === 'OUT' ? 'kharcha' : 'aamdani')}
+        title={t(direction === 'OUT' ? 'kharcha' : 'otherIncomeLabel')}
         onBack={() => navigation.goBack()}
       />
 
@@ -257,7 +292,17 @@ export function EntryScreen(): React.JSX.Element {
           </Pressable>
 
           {/* Amount */}
-          <AmountInput key={resetKey} value={amount} onChange={setAmount} autoFocus />
+          <AmountInput
+            key={resetKey}
+            value={amount}
+            onChange={setAmount}
+            autoFocus
+            error={
+              direction === 'OUT' && amount > 0 && !!selectedAccount && amount > selectedAccount.balance
+                ? t('insufficientFunds')
+                : null
+            }
+          />
 
           {/* Category grid */}
           <AppText size="sm" weight="bold" color="textSecondary">
@@ -289,20 +334,47 @@ export function EntryScreen(): React.JSX.Element {
           {/* Note */}
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
-          {/* Project (optional) */}
-          <Pressable onPress={() => setProjectSheet(true)} style={styles.rowChip} accessibilityRole="button">
-            <AppIcon name="project" size={18} color="primary" />
-            <AppText
-              size="sm"
-              weight="semibold"
-              numberOfLines={1}
-              style={styles.flex}
-              color={selectedProject ? 'textPrimary' : 'textSecondary'}
-            >
-              {selectedProject?.name ?? t('selectProject')}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </Pressable>
+          {/* Project (optional) — EXPENSE only. Income here is strictly "other
+              income": project/plot/investor money enters via its own page
+              (through the Payment In hub), never as a generic income entry. */}
+          {direction === 'OUT' ? (
+            <Pressable onPress={() => setProjectSheet(true)} style={styles.rowChip} accessibilityRole="button">
+              <AppIcon name="project" size={18} color="primary" />
+              <AppText
+                size="sm"
+                weight="semibold"
+                numberOfLines={1}
+                style={styles.flex}
+                color={selectedProject ? 'textPrimary' : 'textSecondary'}
+              >
+                {selectedProject?.name ?? t('selectProject')}
+              </AppText>
+              <AppIcon name="forward" size={18} color="textSecondary" />
+            </Pressable>
+          ) : null}
+
+          {/* Section of the project this entry belongs to (drives the cost
+              breakdown). Only shown once a project is chosen. */}
+          {direction === 'OUT' && selectedProject ? (
+            <View style={styles.phaseRow}>
+              {TXN_PHASES.map((ph) => {
+                const active = phase === ph;
+                return (
+                  <Pressable
+                    key={ph}
+                    onPress={() => setPhase(ph)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[styles.phaseChip, active && styles.phaseChipActive]}
+                  >
+                    <AppText size="xs" weight="bold" color={active ? 'onAccent' : 'textSecondary'}>
+                      {t(PHASE_LABEL_KEYS[ph])}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
 
           {/* Party */}
           <Pressable onPress={() => setPartySheet(true)} style={styles.rowChip} accessibilityRole="button">
@@ -454,6 +526,16 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
+    phaseRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
+    phaseChip: {
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.card,
+    },
+    phaseChipActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
     receiptRow: {
       flexDirection: 'row',
       alignItems: 'center',

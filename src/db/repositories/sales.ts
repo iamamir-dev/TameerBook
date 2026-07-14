@@ -9,6 +9,7 @@ import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { addDocument } from './documents';
 import { assertProjectActive } from './guards';
+import { ONCE_PAY_TYPES, OneTimePaymentError } from './plots';
 import { addTransaction, insertTransaction, LimitExceededError } from './transactions';
 
 export interface NewSale {
@@ -78,8 +79,18 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
     throw new LimitExceededError(outstanding, input.amount);
   }
 
+  // Buyer's token / bayana can only be received once per sale (V-11).
+  if (input.payType && ONCE_PAY_TYPES.includes(input.payType)) {
+    const dup = await db.getFirstAsync<{ c: number }>(
+      'SELECT COUNT(*) AS c FROM sale_receipts WHERE sale_id = ? AND pay_type = ? AND is_void = 0',
+      input.saleId,
+      input.payType
+    );
+    if ((dup?.c ?? 0) > 0) throw new OneTimePaymentError(input.payType);
+  }
+
   const id = uuid();
-  const categoryId = await categoryIdByName('Buyer Receipt', 'INCOME', 'خریدار کی رقم');
+  const categoryId = await categoryIdByName('Buyer Receipt', 'INCOME', 'خریدار کی رقم', true);
 
   // Receipt row + matching cash movement post atomically: a failure can never
   // leave settlement revenue recorded without the money in an account. The
@@ -206,7 +217,7 @@ export async function addSaleCost(input: {
   createdBy?: string;
 }): Promise<void> {
   await assertProjectActive(input.projectId);
-  const categoryId = await categoryIdByName('Sale Cost', 'EXPENSE', 'فروخت کے اخراجات');
+  const categoryId = await categoryIdByName('Sale Cost', 'EXPENSE', 'فروخت کے اخراجات', true);
   await addTransaction({
     direction: 'OUT',
     amount: input.amount,

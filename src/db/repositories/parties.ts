@@ -12,6 +12,8 @@ export interface NewParty {
 }
 
 export async function addParty(input: NewParty): Promise<PartyRow> {
+  const name = input.name.trim();
+  if (!name) throw new Error('addParty: name is required');
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
@@ -22,7 +24,7 @@ export async function addParty(input: NewParty): Promise<PartyRow> {
     input.createdBy ?? DEFAULT_USER,
     requireCompanyId(),
     input.type,
-    input.name,
+    name,
     input.phone ?? null,
     input.cnic ?? null
   );

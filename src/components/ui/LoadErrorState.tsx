@@ -12,6 +12,8 @@ import { AppText } from './AppText';
 interface LoadErrorStateProps {
   /** Re-run the failed load (wired to useFocusReload's `reload`). */
   onRetry: () => void;
+  /** Bottom room so content centres in the visible page (tab-bar clearance). */
+  bottomInset?: number;
 }
 
 /**
@@ -19,13 +21,13 @@ interface LoadErrorStateProps {
  * (instead of a blank loading branch) when `useFocusReload` reports
  * `loadFailed` and there is no data to show.
  */
-export function LoadErrorState({ onRetry }: LoadErrorStateProps): React.JSX.Element {
+export function LoadErrorState({ onRetry, bottomInset = 0 }: LoadErrorStateProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, bottomInset ? { paddingBottom: bottomInset } : null]}>
       <View style={styles.iconCircle}>
         <AppIcon name="close" size={48} color="danger" />
       </View>

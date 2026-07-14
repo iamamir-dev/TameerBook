@@ -26,6 +26,7 @@ import {
   DateField,
   ICONS,
   LedgerTable,
+  ContactRow,
   LoadErrorState,
   SelectSheet,
   type IconKey,
@@ -40,6 +41,10 @@ import {
   type CategoryRow,
   type DocumentRow,
   getPlotSummary,
+  listStages,
+  listUsedPayTypes,
+  setPlotStage,
+  ONCE_PAY_TYPES,
   getProject,
   listAccountsWithBalance,
   listCategories,
@@ -49,6 +54,8 @@ import {
   PAY_TYPES,
   type PayType,
   type PlotSummary,
+  SIZE_UNIT_LABEL_KEYS,
+  type StageRow,
   type ProjectRow,
   type TransactionRow,
 } from '@/db';
@@ -66,20 +73,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PlotRoute = RouteProp<RootStackParamList, 'PlotDetail'>;
 
 /** Categories offered in the plot-expense sheet (plot-phase costs). */
-const PLOT_EXPENSE_CATEGORIES = new Set([
-  'Transfer Fees & Tax',
-  'Naqsha/Approval',
-  'Utilities',
-  'Misc',
-]);
-
 /**
  * The core plot experience  the owner's notebook page for one plot:
  * cost summary, seller payments, plot expenses, documents, and the ledger.
  */
 export function PlotDetailScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
   const { plotId } = useRoute<PlotRoute>().params;
   const insets = useSafeAreaInsets();
@@ -94,6 +94,9 @@ export function PlotDetailScreen(): React.JSX.Element {
 
   // Seller-payment sheet
   const [paySheet, setPaySheet] = useState(false);
+  const [usedPayTypes, setUsedPayTypes] = useState<PayType[]>([]);
+  const [stages, setStages] = useState<StageRow[]>([]);
+  const [stageSheet, setStageSheet] = useState(false);
   const [payType, setPayType] = useState<PayType>('TOKEN');
   const [payAmount, setPayAmount] = useState(0);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
@@ -121,12 +124,14 @@ export function PlotDetailScreen(): React.JSX.Element {
 
   const load = useCallback(async () => {
     const s = await getPlotSummary(plotId);
-    const [accs, cats, documents, transactions, project] = await Promise.all([
+    const [accs, cats, documents, transactions, project, usedPt, stageRows] = await Promise.all([
       listAccountsWithBalance(),
       listCategories(),
       listDocuments('plot', plotId),
       listPlotTransactions(plotId),
       s.plot.project_id ? getProject(s.plot.project_id) : Promise.resolve(null),
+      listUsedPayTypes(plotId, 'PLOT', 'OUT'),
+      listStages('PLOT'),
     ]);
     setSummary(s);
     setLinkedProject(project);
@@ -134,19 +139,37 @@ export function PlotDetailScreen(): React.JSX.Element {
     setCategories(cats);
     setDocs(documents);
     setTxns(transactions);
+    setUsedPayTypes(usedPt);
+    setStages(stageRows);
   }, [plotId]);
 
   const { loadFailed, reload } = useFocusReload(load);
   const { saving, run: runSave } = useSaveAction();
 
+  // A one-time pay type (Token/Bayana) already used on this plot is hidden so
+  // the user can't pick something that would be rejected on save.
+  const availablePayTypes = PAY_TYPES.filter(
+    (pt) => !ONCE_PAY_TYPES.includes(pt) || !usedPayTypes.includes(pt)
+  );
+
   const catName = useCategoryLabel();
 
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const expenseCategories = useMemo(
-    () => categories.filter((c) => c.type === 'EXPENSE' && PLOT_EXPENSE_CATEGORIES.has(c.name_en)),
-    [categories]
-  );
+  // Plot-relevant EXPENSE categories only: the "Plot" heading's sub-categories
+  // plus stand-alone leaves (no heading). Home/Materials/Labor subs stay on
+  // their own pages — Groceries must never show here.
+  const expenseCategories = useMemo(() => {
+    const parents = new Set(categories.map((c) => c.parent_id).filter(Boolean) as string[]);
+    const plotHeadId = categories.find((c) => !c.parent_id && c.name_en === 'Plot')?.id;
+    return categories.filter(
+      (c) =>
+        c.type === 'EXPENSE' &&
+        !c.is_system &&
+        !parents.has(c.id) &&
+        (c.parent_id === plotHeadId || c.parent_id === null)
+    );
+  }, [categories]);
 
   const accountOptions = useAccountOptions(accounts);
 
@@ -244,14 +267,29 @@ export function PlotDetailScreen(): React.JSX.Element {
 
   const { plot, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
   const { salePrice, saleReceived, saleOutstanding, saleProfit } = summary;
-  const location = [plot.society, plot.block, plot.plot_no].filter(Boolean).join(' · ');
+  const sizeText = plot.size_value
+    ? `${plot.size_value} ${t(SIZE_UNIT_LABEL_KEYS[plot.size_unit ?? 'MARLA'])}`
+    : null;
+  const location = [plot.society, plot.block, plot.plot_no, sizeText].filter(Boolean).join(' · ');
   const sold = plot.status === 'SOLD';
   // No mutating actions on a sold plot or one inside a completed project.
   const readOnly = sold || linkedProject?.status === 'COMPLETED';
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={plot.name} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={plot.name}
+        onBack={() => navigation.goBack()}
+        rightAction={
+          readOnly
+            ? undefined
+            : {
+                icon: 'edit',
+                onPress: () => navigation.navigate('EditPlot', { plotId: plot.id }),
+                accessibilityLabel: t('editPlot'),
+              }
+        }
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -275,18 +313,52 @@ export function PlotDetailScreen(): React.JSX.Element {
               {location}
             </AppText>
           ) : null}
+          <Pressable
+            onPress={() => !readOnly && setStageSheet(true)}
+            accessibilityRole="button"
+            style={styles.stagePill}
+          >
+            <AppIcon name="tag" size={14} color="accent" />
+            <AppText size="xs" weight="bold" color="accent">
+              {(() => {
+                const st = stages.find((x) => x.id === plot.stage_id);
+                return st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel');
+              })()}
+            </AppText>
+          </Pressable>
           <View style={styles.divider} />
           <SummaryRow label={t('dealPrice')} value={formatRupees(dealPrice)} />
-          <SummaryRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="success" />
+          <SummaryRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="danger" />
           <SummaryRow label={t('remaining')} value={formatRupees(remaining)} />
-          <SummaryRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} />
+          <SummaryRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} valueColor="danger" />
+          {plot.seller_name || plot.seller_phone ? (
+            <>
+              <View style={styles.divider} />
+              <AppText size="overline" weight="bold" color="textSecondary" uppercase>
+                {t('seller')}
+              </AppText>
+              {plot.seller_name ? (
+                <AppText size="sm" weight="semibold" numberOfLines={1}>
+                  {plot.seller_name}
+                </AppText>
+              ) : null}
+              <ContactRow phone={plot.seller_phone} />
+            </>
+          ) : null}
         </AppCard>
 
         {/* Primary actions (hidden once the plot is sold / its project closed) */}
         {!readOnly ? (
           <View style={styles.actionsRow}>
             <View style={styles.flex}>
-              <AppButton label={t('sellerPayment')} icon="rupee" onPress={() => setPaySheet(true)} />
+              <AppButton
+                label={t('sellerPayment')}
+                icon="rupee"
+                onPress={() => {
+                  setPayType(availablePayTypes[0] ?? 'INSTALLMENT');
+                  setPaySheet(true);
+                }}
+              />
             </View>
             <View style={styles.flex}>
               <AppButton
@@ -411,7 +483,7 @@ export function PlotDetailScreen(): React.JSX.Element {
           </AppText>
 
           <View style={styles.chipRow}>
-            {PAY_TYPES.map((pt) => {
+            {availablePayTypes.map((pt) => {
               const selected = pt === payType;
               return (
                 <Pressable
@@ -429,7 +501,21 @@ export function PlotDetailScreen(): React.JSX.Element {
             })}
           </View>
 
-          <AmountInput value={payAmount} onChange={setPayAmount} floating surface={theme.colors.card} />
+          <AmountInput
+            value={payAmount}
+            onChange={setPayAmount}
+            floating
+            surface={theme.colors.card}
+            error={
+              payAmount <= 0
+                ? null
+                : payAmount > remaining
+                  ? t('exceedsRemaining')
+                  : payAccount && payAmount > payAccount.balance
+                    ? t('insufficientFunds')
+                    : null
+            }
+          />
 
           <Pressable onPress={() => setAccountSheetFor('pay')} style={styles.rowChip} accessibilityRole="button">
             <AppIcon name={payAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
@@ -510,7 +596,13 @@ export function PlotDetailScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          <AmountInput value={expAmount} onChange={setExpAmount} floating surface={theme.colors.card} />
+          <AmountInput
+            value={expAmount}
+            onChange={setExpAmount}
+            floating
+            surface={theme.colors.card}
+            error={expAmount > 0 && expAccount && expAmount > expAccount.balance ? t('insufficientFunds') : null}
+          />
 
           <Pressable onPress={() => setAccountSheetFor('exp')} style={styles.rowChip} accessibilityRole="button">
             <AppIcon name={expAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
@@ -588,6 +680,24 @@ export function PlotDetailScreen(): React.JSX.Element {
         searchable={false}
         onSelect={(o) => setExpCategoryId(o.id)}
       />
+      <SelectSheet
+        visible={stageSheet}
+        onClose={() => setStageSheet(false)}
+        title={t('setStatusLabel')}
+        searchable={false}
+        selectedId={summary?.plot.stage_id ?? '__none__'}
+        options={[
+          { id: '__none__', label: t('noStatus') },
+          ...stages.map((st) => ({ id: st.id, label: language === 'ur' ? st.name_ur : st.name_en })),
+        ]}
+        onSelect={(o) => {
+          setStageSheet(false);
+          void (async () => {
+            const ok = await runSave(() => setPlotStage(plotId, o.id === '__none__' ? null : o.id));
+            if (ok) await reload();
+          })();
+        }}
+      />
 
       {/* Standalone plot sale: set the price, then receive buyer money. */}
       {!plot.project_id ? (
@@ -639,6 +749,17 @@ function SummaryRow({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    stagePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: theme.colors.accentSoft,
+      marginTop: 4,
+    },
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
@@ -647,6 +768,12 @@ const makeStyles = (theme: Theme) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.border,
       marginVertical: theme.spacing.sm,
+    },
+    sellerPhoneRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: theme.spacing.xs,
     },
     summaryRow: {
       flexDirection: 'row',

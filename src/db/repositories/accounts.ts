@@ -170,7 +170,7 @@ export async function transferBetween(input: TransferInput): Promise<string> {
 
   const db = await getDatabase();
   const transferId = uuid();
-  const categoryId = await categoryIdByName('Transfer', 'EXPENSE', 'ٹرانسفر');
+  const categoryId = await categoryIdByName('Transfer', 'EXPENSE', 'ٹرانسفر', true);
   const common = {
     amount: input.amount,
     date: input.date,

@@ -119,7 +119,7 @@ export function BookingDetailScreen(): React.JSX.Element {
             {formatRupees(booking.total)}
           </AppText>
           <AppText size="sm" color="textSecondary" numberOfLines={1}>
-            {[`${fmtQty(booking.qty)} @ ${formatRupees(booking.rate)}`, booking.supplier_name]
+            {[`${fmtQty(booking.qty)} @ ${formatRupees(booking.rate)}`, booking.supplier_name, summary.projectName]
               .filter(Boolean)
               .join(' · ')}
           </AppText>
@@ -136,7 +136,7 @@ export function BookingDetailScreen(): React.JSX.Element {
             <View style={styles.vDivider} />
             {/* Money side */}
             <View style={styles.col}>
-              <ColumnStat label={t('paidLabel')} value={formatRupees(paid)} valueColor="success" />
+              <ColumnStat label={t('paidLabel')} value={formatRupees(paid)} valueColor="danger" />
               <ColumnStat
                 label={t('payRemainingLabel')}
                 value={formatRupees(payRemaining)}
@@ -207,6 +207,8 @@ export function BookingDetailScreen(): React.JSX.Element {
         bookingId={booking.id}
         qtyRemaining={qtyRemaining}
         unit={booking.unit}
+        payRemaining={payRemaining}
+        accounts={accounts}
         onSaved={reload}
       />
       <PayBookingSheet

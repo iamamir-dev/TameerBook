@@ -1,18 +1,27 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { LayoutAnimation, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddLaborerSheet } from '@/components/labor/AddLaborerSheet';
+import { PayWorkerSheet } from '@/components/labor/PayWorkerSheet';
 import { WorkerAccordion } from '@/components/labor/WorkerAccordion';
-import { AppHeader, EmptyState, StatCard } from '@/components/ui';
-import { listLaborersWithTotals, type LaborerTotals } from '@/db';
+import { AppHeader, EmptyState, HubShortcuts, SearchBar, StatCard } from '@/components/ui';
+import {
+  getLaborerKhata,
+  listAccountsWithBalance,
+  listLaborersWithTotals,
+  type AccountWithBalance,
+  type LaborerProjectParticipation,
+  type LaborerTotals,
+} from '@/db';
 import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -34,12 +43,36 @@ export function LaborScreen(): React.JSX.Element {
   const [workers, setWorkers] = useState<LaborerTotals[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  // Pay-a-worker straight from the Labor home (no drilling into the khata).
+  const [payFor, setPayFor] = useState<LaborerTotals | null>(null);
+  const [payData, setPayData] = useState<{
+    participations: LaborerProjectParticipation[];
+    accounts: AccountWithBalance[];
+  } | null>(null);
 
   const load = useCallback(async () => {
     setWorkers(await listLaborersWithTotals());
   }, []);
 
   const { loaded, reload } = useFocusReload(load);
+
+  // Load the chosen worker's participations + accounts for the pay sheet.
+  useEffect(() => {
+    if (!payFor) {
+      setPayData(null);
+      return;
+    }
+    let alive = true;
+    Promise.all([getLaborerKhata(payFor.id), listAccountsWithBalance()])
+      .then(([khata, accounts]) => {
+        if (alive) setPayData({ participations: khata.participations, accounts });
+      })
+      .catch(swallow('LaborScreen:payload'));
+    return () => {
+      alive = false;
+    };
+  }, [payFor]);
 
   // Single-open accordion: expanding one row collapses any other. The
   // LayoutAnimation call immediately before setState animates the reveal.
@@ -61,6 +94,8 @@ export function LaborScreen(): React.JSX.Element {
           accessibilityLabel: t('addWorker'),
         }}
       />
+
+      <HubShortcuts current="Labor" />
 
       {workers.length === 0 ? (
         // Only claim "no workers" once the first load has finished — before
@@ -87,19 +122,37 @@ export function LaborScreen(): React.JSX.Element {
             <StatCard label={t('allWorkers')} value={String(workers.length)} icon="investors" />
           </View>
 
-          {workers.map((worker) => (
-            <WorkerAccordion
-              key={worker.id}
-              worker={worker}
-              expanded={expandedId === worker.id}
-              onToggle={() => toggle(worker.id)}
-              onSeeAll={() => navigation.navigate('LaborerDetail', { laborerId: worker.id })}
-            />
-          ))}
+          {workers.length > 5 ? <SearchBar value={query} onChange={setQuery} /> : null}
+
+          {/* Workers you owe float to the top (largest balance first). */}
+          {[...workers]
+            .filter((w) => !query.trim() || w.name.toLowerCase().includes(query.trim().toLowerCase()) || (w.phone ?? '').includes(query.trim()))
+            .sort((a, b) => b.balance - a.balance)
+            .map((worker) => (
+              <WorkerAccordion
+                key={worker.id}
+                worker={worker}
+                expanded={expandedId === worker.id}
+                onToggle={() => toggle(worker.id)}
+                onPay={worker.balance > 0 ? () => setPayFor(worker) : undefined}
+                onSeeAll={() => navigation.navigate('LaborerDetail', { laborerId: worker.id })}
+              />
+            ))}
         </ScrollView>
       )}
 
       <AddLaborerSheet visible={addOpen} onClose={() => setAddOpen(false)} onSaved={reload} />
+
+      <PayWorkerSheet
+        visible={!!payFor && !!payData}
+        onClose={() => setPayFor(null)}
+        participations={payData?.participations ?? []}
+        accounts={payData?.accounts ?? []}
+        onSaved={async () => {
+          await reload();
+          setPayFor(null);
+        }}
+      />
     </View>
   );
 }

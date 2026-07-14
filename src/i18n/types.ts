@@ -53,6 +53,7 @@ export interface TranslationKeys {
   // Common actions
   save: string;
   cancel: string;
+  call: string;
   delete: string;
   add: string;
   search: string;
@@ -89,6 +90,7 @@ export interface TranslationKeys {
   // Projects module
   newProject: string;
   projectName: string;
+  projectStartDate: string;
   totalSpent: string;
   back: string;
   create: string;
@@ -180,6 +182,45 @@ export interface TranslationKeys {
   totalPaid: string;
   remaining: string;
   transferDeadline: string;
+  editPlot: string;
+  seller: string;
+  categoryInUse: string;
+  manageCategories: string;
+  addCategoryLabel: string;
+  addSubcategory: string;
+  mainCategory: string;
+  defaultUnit: string;
+  name: string;
+  deleteConfirm: string;
+  paymentIn: string;
+  paymentFromTitle: string;
+  fromInvestor: string;
+  fromProjectSale: string;
+  fromPlotSale: string;
+  fromUdhaarReturn: string;
+  otherIncomeLabel: string;
+  bookingTile: string;
+  alsoPaidNow: string;
+  goToSection: string;
+  netSoFar: string;
+  selectSavedSupplier: string;
+  selectSavedParty: string;
+  statusesTitle: string;
+  addStatus: string;
+  setStatusLabel: string;
+  noStatus: string;
+  stageInUse: string;
+  preferencesSection: string;
+  setTransferDeadline: string;
+  clearDeadline: string;
+  profitSharePct: string;
+  byCapitalHint: string;
+  bankDetails: string;
+  optional: string;
+  setPledgeToAdd: string;
+  notMarkedToday: string;
+  owedToSuppliers: string;
+  openBookings: string;
   daysLeftSuffix: string;
   deadlineSoon: string;
   ptToken: string;
@@ -438,6 +479,8 @@ export interface TranslationKeys {
   phasePlot: string;
   phaseConstruction: string;
   phaseSale: string;
+  phaseSaleCost: string;
+  phaseGeneral: string;
   projectTotalCost: string;
   viewPlotDetail: string;
 
@@ -519,6 +562,11 @@ export interface TranslationKeys {
   noPlotChoice: string;
   ownerFunded: string;
   plotTaken: string;
+  payTypeOnce: string;
+  setWageFirst: string;
+  workerInactive: string;
+  investorAlreadyExited: string;
+  profitPctRange: string;
   categoryRequired: string;
   remainingToInvest: string;
   investedLabel: string;

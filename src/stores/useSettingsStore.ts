@@ -61,6 +61,7 @@ export const DEFAULT_QUICK_ORDER = [
   'kharcha',
   'aamdani',
   'material',
+  'booking',
   'transferTitleV2',
   'udhaar',
   'investor',

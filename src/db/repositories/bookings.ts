@@ -71,6 +71,8 @@ export interface BookingSummary {
   paid: number;
   /** total − paid: what we still owe in money. */
   payRemaining: number;
+  /** Name of the project this booking belongs to (null = general/no project). */
+  projectName: string | null;
 }
 
 async function summarize(booking: MaterialBookingRow): Promise<BookingSummary> {
@@ -84,6 +86,12 @@ async function summarize(booking: MaterialBookingRow): Promise<BookingSummary> {
      WHERE booking_id = ? AND direction = 'OUT' AND is_void = 0`,
     booking.id
   );
+  const project = booking.project_id
+    ? await db.getFirstAsync<{ name: string }>(
+        'SELECT name FROM projects WHERE id = ?',
+        booking.project_id
+      )
+    : null;
   const qtyReceived = recv?.s ?? 0;
   const paidTotal = paid?.s ?? 0;
   return {
@@ -92,6 +100,7 @@ async function summarize(booking: MaterialBookingRow): Promise<BookingSummary> {
     qtyRemaining: Math.max(0, booking.qty - qtyReceived),
     paid: paidTotal,
     payRemaining: Math.max(0, booking.total - paidTotal),
+    projectName: project?.name ?? null,
   };
 }
 
@@ -201,7 +210,7 @@ export async function payBooking(input: BookingPaymentInput): Promise<void> {
   if (input.amount > s.payRemaining + 0.001) {
     throw new LimitExceededError(s.payRemaining, input.amount);
   }
-  const categoryId = await categoryIdByName('Material Booking', 'EXPENSE', 'Material booking');
+  const categoryId = await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true);
   await addTransaction({
     direction: 'OUT',
     amount: input.amount,

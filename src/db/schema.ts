@@ -43,6 +43,38 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export const SIZE_UNITS = ['MARLA', 'KANAL', 'SQYD'] as const;
 export type SizeUnit = (typeof SIZE_UNITS)[number];
 
+/** i18n label key per plot size unit (shared by the plot form + displays). */
+export const SIZE_UNIT_LABEL_KEYS = {
+  MARLA: 'unitMarla',
+  KANAL: 'unitKanal',
+  SQYD: 'unitSqyd',
+} as const satisfies Record<SizeUnit, string>;
+
+/** User-manageable display statuses (Settings → Statuses), per module. */
+export const STAGE_MODULES = ['PROJECT', 'PLOT'] as const;
+export type StageModule = (typeof STAGE_MODULES)[number];
+
+export interface StageRow {
+  id: string;
+  created_at: string;
+  created_by: string;
+  module: StageModule;
+  name_en: string;
+  name_ur: string;
+  sort_order: number;
+}
+
+/** Seeded once (and after a wipe); the user manages the rest in Settings. */
+export const DEFAULT_STAGES: { module: StageModule; name_en: string; name_ur: string }[] = [
+  { module: 'PROJECT', name_en: 'Planning', name_ur: 'منصوبہ بندی' },
+  { module: 'PROJECT', name_en: 'Under Construction', name_ur: 'زیر تعمیر' },
+  { module: 'PROJECT', name_en: 'Finishing', name_ur: 'فنشنگ' },
+  { module: 'PROJECT', name_en: 'Ready for Sale', name_ur: 'برائے فروخت' },
+  { module: 'PLOT', name_en: 'Transfer Pending', name_ur: 'ٹرانسفر باقی' },
+  { module: 'PLOT', name_en: 'Possession', name_ur: 'قبضہ' },
+  { module: 'PLOT', name_en: 'Ready to Sell', name_ur: 'برائے فروخت' },
+];
+
 /** Named instalments of a property deal (seller side or buyer side). */
 export const PAY_TYPES = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
 export type PayType = (typeof PAY_TYPES)[number];
@@ -58,6 +90,14 @@ export const PAY_TYPE_LABEL_KEYS = {
 /** Which slice of the business a transaction belongs to. */
 export const TXN_PHASES = ['PLOT', 'CONSTRUCTION', 'SALE', 'GENERAL'] as const;
 export type TxnPhase = (typeof TXN_PHASES)[number];
+
+/** i18n label key per transaction phase (project section pickers). */
+export const PHASE_LABEL_KEYS = {
+  PLOT: 'phasePlot',
+  CONSTRUCTION: 'phaseConstruction',
+  SALE: 'phaseSale',
+  GENERAL: 'phaseGeneral',
+} as const satisfies Record<TxnPhase, string>;
 
 export const PARTY_TYPES = [
   'SELLER',
@@ -167,6 +207,8 @@ export interface PlotRow extends Base {
   /** Standalone sale: agreed price with the buyer (null = not for sale yet). */
   sale_price: number | null;
   buyer_name: string | null;
+  /** User-facing display status (Settings → Statuses); null = none. */
+  stage_id: string | null;
 }
 
 export interface ProjectRow extends Base {
@@ -178,6 +220,8 @@ export interface ProjectRow extends Base {
   status: ProjectStatus;
   /** Optional per-project override of the Settings donation %. */
   donation_pct: number | null;
+  /** User-facing display status (Settings → Statuses); null = none. */
+  stage_id: string | null;
 }
 
 export interface PartyRow extends Base {
@@ -194,6 +238,12 @@ export interface CategoryRow extends Base {
   name_ur: string;
   type: CategoryType;
   icon: string | null;
+  /** 1 = created/used by business logic; can't be renamed or deleted. */
+  is_system: number;
+  /** For material sub-categories: the unit it's usually measured in (bori, kg…). */
+  default_unit: string | null;
+  /** User-defined display order within its level (drag-to-reorder). */
+  sort_order: number;
 }
 
 /**
@@ -830,6 +880,123 @@ SELECT lower(hex(randomblob(16))), datetime('now'), 'local', NULL, 'Home Expense
 WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Home Expense');
 `;
 
+/**
+ * v14 — user-manageable categories with a main→sub tree.
+ *  - `is_system` locks business categories from rename/delete.
+ *  - `default_unit` lets a material sub-category (Cement) carry its unit (bori).
+ *  - Existing installs: group the seeded material categories under a new
+ *    "Materials" heading with default units. Fresh installs have an empty
+ *    categories table here (seedDefaults runs afterwards), so the guarded
+ *    INSERT/UPDATEs no-op and the tree comes from the new DEFAULT_CATEGORIES.
+ */
+export const SCHEMA_V14_CATEGORY_TREE = `
+ALTER TABLE categories ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE categories ADD COLUMN default_unit TEXT;
+CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories (parent_id);
+
+UPDATE categories SET is_system = 1
+  WHERE name_en IN ('Plot Payment','Labor Payment','Sale Cost','Investor Investment','Buyer Receipt','Transfer','Udhaar','Material Booking','Plot Sale');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit)
+SELECT 'cat-materials', datetime('now'), 'local', NULL, 'Materials', 'میٹریل', 'EXPENSE', 'material', 0, NULL
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Materials');
+
+UPDATE categories SET parent_id = 'cat-materials', default_unit = 'bori' WHERE name_en = 'Cement' AND parent_id IS NULL;
+UPDATE categories SET parent_id = 'cat-materials', default_unit = 'kg' WHERE name_en = 'Sariya' AND parent_id IS NULL;
+UPDATE categories SET parent_id = 'cat-materials', default_unit = 'adad' WHERE name_en = 'Bricks' AND parent_id IS NULL;
+UPDATE categories SET parent_id = 'cat-materials', default_unit = 'truck' WHERE name_en = 'Sand/Crush' AND parent_id IS NULL;
+UPDATE categories SET parent_id = 'cat-materials' WHERE name_en IN ('Tiles','Wood','Paint','Electric','Sanitary') AND parent_id IS NULL;
+`;
+
+/** v15 — persist a user-defined order for categories (drag-to-reorder). */
+export const SCHEMA_V15_CATEGORY_ORDER = `
+ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+`;
+
+/**
+ * v16 — lock the remaining business categories that were born unlocked:
+ * "Plot Sale" (lazily created by plot-sale receipts) plus the two structural
+ * headings ("Materials", "Home Expense") whose exact names the material picker
+ * and the Ghar-ka-Kharcha tile look up — renaming them would break those flows.
+ */
+export const SCHEMA_V16_LOCK_SYSTEM_CATS = `
+UPDATE categories SET is_system = 1
+  WHERE name_en IN ('Plot Sale','Materials','Home Expense');
+`;
+
+/**
+ * v17 — existing installs: give the "Home Expense" heading its default
+ * sub-categories (fresh installs already seed them). Without children the
+ * Ghar-ka-Kharcha tile scoped to an empty list. Idempotent per-name guards.
+ */
+export const SCHEMA_V17_HOME_EXPENSE_SUBS = `
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT lower(hex(randomblob(16))), datetime('now'), 'local',
+       (SELECT id FROM categories WHERE name_en = 'Home Expense' LIMIT 1),
+       'Groceries', 'راشن', 'EXPENSE', 'kharcha', 0, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en = 'Home Expense')
+  AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Groceries');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT lower(hex(randomblob(16))), datetime('now'), 'local',
+       (SELECT id FROM categories WHERE name_en = 'Home Expense' LIMIT 1),
+       'Utilities Bill', 'یوٹیلٹی بل', 'EXPENSE', 'receipt', 0, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en = 'Home Expense')
+  AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Utilities Bill');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT lower(hex(randomblob(16))), datetime('now'), 'local',
+       (SELECT id FROM categories WHERE name_en = 'Home Expense' LIMIT 1),
+       'Rent', 'کرایہ', 'EXPENSE', 'home', 0, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en = 'Home Expense')
+  AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Rent');
+`;
+
+/**
+ * v18 — complete the category tree on EXISTING installs (fresh installs seed
+ * it already): create the Labor / Plot / Sale headings and group the seeded
+ * categories under them, so context pickers can scope correctly (e.g. the
+ * plot page never offers Groceries). Headings are locked — scoping looks them
+ * up by name. Idempotent.
+ */
+export const SCHEMA_V18_CATEGORY_HEADINGS = `
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-labor', datetime('now'), 'local', NULL, 'Labor', 'مزدوری', 'EXPENSE', 'dehari', 1, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Labor');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-plot', datetime('now'), 'local', NULL, 'Plot', 'پلاٹ', 'EXPENSE', 'home', 1, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Plot');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sale', datetime('now'), 'local', NULL, 'Sale', 'فروخت', 'EXPENSE', 'tag', 1, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Sale');
+
+UPDATE categories SET parent_id = (SELECT id FROM categories WHERE name_en = 'Labor' LIMIT 1)
+  WHERE name_en IN ('Labor Dehari','Labor Payment','Contractor') AND parent_id IS NULL;
+UPDATE categories SET parent_id = (SELECT id FROM categories WHERE name_en = 'Plot' LIMIT 1)
+  WHERE name_en IN ('Plot Payment','Transfer Fees & Tax','Naqsha/Approval') AND parent_id IS NULL;
+UPDATE categories SET parent_id = (SELECT id FROM categories WHERE name_en = 'Sale' LIMIT 1)
+  WHERE name_en IN ('Sale Cost') AND parent_id IS NULL;
+
+UPDATE categories SET is_system = 1 WHERE name_en IN ('Labor','Plot','Sale') AND parent_id IS NULL;
+`;
+
+/** v19 — user-manageable display statuses for projects & plots. */
+export const SCHEMA_V19_STAGES = `
+CREATE TABLE stages (
+  id         TEXT PRIMARY KEY NOT NULL,
+  created_at TEXT NOT NULL,
+  created_by TEXT NOT NULL DEFAULT 'local',
+  module     TEXT NOT NULL,
+  name_en    TEXT NOT NULL,
+  name_ur    TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE projects ADD COLUMN stage_id TEXT;
+ALTER TABLE plots ADD COLUMN stage_id TEXT;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -838,6 +1005,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 11, sql: SCHEMA_V11_INDEXES },
   { version: 12, sql: SCHEMA_V12_RECEIPT_VOID },
   { version: 13, sql: SCHEMA_V13_BOOKINGS_PLOT_SALE },
+  { version: 14, sql: SCHEMA_V14_CATEGORY_TREE },
+  { version: 15, sql: SCHEMA_V15_CATEGORY_ORDER },
+  { version: 16, sql: SCHEMA_V16_LOCK_SYSTEM_CATS },
+  { version: 17, sql: SCHEMA_V17_HOME_EXPENSE_SUBS },
+  { version: 18, sql: SCHEMA_V18_CATEGORY_HEADINGS },
+  { version: 19, sql: SCHEMA_V19_STAGES },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -849,6 +1022,12 @@ export interface DefaultCategory {
   name_ur: string;
   type: CategoryType;
   icon: string;
+  /** name_en of the parent main-category (undefined = a top-level heading). */
+  parent?: string;
+  /** Business category — locked from rename/delete in the manager. */
+  system?: boolean;
+  /** Default measuring unit for a material sub-category. */
+  unit?: string;
 }
 
 /**
@@ -858,30 +1037,46 @@ export interface DefaultCategory {
  * Investment, Buyer Receipt.
  */
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
-  // Expenses  plot phase
-  { name_en: 'Plot Payment', name_ur: 'پلاٹ کی ادائیگی', type: 'EXPENSE', icon: 'home' },
-  { name_en: 'Transfer Fees & Tax', name_ur: 'ٹرانسفر فیس و ٹیکس', type: 'EXPENSE', icon: 'receipt' },
-  { name_en: 'Naqsha/Approval', name_ur: 'نقشہ/منظوری', type: 'EXPENSE', icon: 'project' },
-  // Expenses  construction phase
-  { name_en: 'Cement', name_ur: 'سیمنٹ', type: 'EXPENSE', icon: 'material' },
-  { name_en: 'Sariya', name_ur: 'سریا', type: 'EXPENSE', icon: 'material' },
-  { name_en: 'Bricks', name_ur: 'اینٹیں', type: 'EXPENSE', icon: 'brick' },
-  { name_en: 'Sand/Crush', name_ur: 'ریت/بجری', type: 'EXPENSE', icon: 'truck' },
-  { name_en: 'Tiles', name_ur: 'ٹائلیں', type: 'EXPENSE', icon: 'material' },
-  { name_en: 'Wood', name_ur: 'لکڑی', type: 'EXPENSE', icon: 'material' },
-  { name_en: 'Paint', name_ur: 'پینٹ', type: 'EXPENSE', icon: 'material' },
-  { name_en: 'Electric', name_ur: 'بجلی کا سامان', type: 'EXPENSE', icon: 'tools' },
-  { name_en: 'Sanitary', name_ur: 'سینٹری', type: 'EXPENSE', icon: 'tools' },
-  { name_en: 'Labor Dehari', name_ur: 'مزدور دیہاڑی', type: 'EXPENSE', icon: 'dehari' },
-  { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari' },
-  { name_en: 'Contractor', name_ur: 'ٹھیکیدار', type: 'EXPENSE', icon: 'tools' },
-  { name_en: 'Utilities', name_ur: 'یوٹیلٹی بل', type: 'EXPENSE', icon: 'receipt' },
-  // Expenses  sale phase + general
-  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag' },
+  // ---- Main headings (top-level) ----
+  { name_en: 'Materials', name_ur: 'میٹریل', type: 'EXPENSE', icon: 'material', system: true },
+  { name_en: 'Labor', name_ur: 'مزدوری', type: 'EXPENSE', icon: 'dehari', system: true },
+  { name_en: 'Plot', name_ur: 'پلاٹ', type: 'EXPENSE', icon: 'home', system: true },
+  { name_en: 'Home Expense', name_ur: 'گھر کا خرچ', type: 'EXPENSE', icon: 'home', system: true },
+  { name_en: 'Sale', name_ur: 'فروخت', type: 'EXPENSE', icon: 'tag', system: true },
   { name_en: 'Misc', name_ur: 'متفرق', type: 'EXPENSE', icon: 'kharcha' },
-  // Income
-  { name_en: 'Investor Investment', name_ur: 'سرمایہ کاری', type: 'INCOME', icon: 'investor' },
-  { name_en: 'Buyer Receipt', name_ur: 'خریدار کی رقم', type: 'INCOME', icon: 'aamdani' },
+
+  // ---- Materials sub-categories (with default units) ----
+  { name_en: 'Cement', name_ur: 'سیمنٹ', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'bori' },
+  { name_en: 'Sariya', name_ur: 'سریا', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'kg' },
+  { name_en: 'Bricks', name_ur: 'اینٹیں', type: 'EXPENSE', icon: 'brick', parent: 'Materials', unit: 'adad' },
+  { name_en: 'Sand/Crush', name_ur: 'ریت/بجری', type: 'EXPENSE', icon: 'truck', parent: 'Materials', unit: 'truck' },
+  { name_en: 'Tiles', name_ur: 'ٹائلیں', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'adad' },
+  { name_en: 'Wood', name_ur: 'لکڑی', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'ft' },
+  { name_en: 'Paint', name_ur: 'پینٹ', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'kg' },
+  { name_en: 'Electric', name_ur: 'بجلی کا سامان', type: 'EXPENSE', icon: 'tools', parent: 'Materials' },
+  { name_en: 'Sanitary', name_ur: 'سینٹری', type: 'EXPENSE', icon: 'tools', parent: 'Materials' },
+
+  // ---- Labor sub-categories ----
+  { name_en: 'Labor Dehari', name_ur: 'مزدور دیہاڑی', type: 'EXPENSE', icon: 'dehari', parent: 'Labor' },
+  { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari', parent: 'Labor', system: true },
+  { name_en: 'Contractor', name_ur: 'ٹھیکیدار', type: 'EXPENSE', icon: 'tools', parent: 'Labor' },
+
+  // ---- Plot sub-categories ----
+  { name_en: 'Plot Payment', name_ur: 'پلاٹ کی ادائیگی', type: 'EXPENSE', icon: 'home', parent: 'Plot', system: true },
+  { name_en: 'Transfer Fees & Tax', name_ur: 'ٹرانسفر فیس و ٹیکس', type: 'EXPENSE', icon: 'receipt', parent: 'Plot' },
+  { name_en: 'Naqsha/Approval', name_ur: 'نقشہ/منظوری', type: 'EXPENSE', icon: 'project', parent: 'Plot' },
+
+  // ---- Home Expense sub-categories ----
+  { name_en: 'Groceries', name_ur: 'راشن', type: 'EXPENSE', icon: 'kharcha', parent: 'Home Expense' },
+  { name_en: 'Utilities Bill', name_ur: 'یوٹیلٹی بل', type: 'EXPENSE', icon: 'receipt', parent: 'Home Expense' },
+  { name_en: 'Rent', name_ur: 'کرایہ', type: 'EXPENSE', icon: 'home', parent: 'Home Expense' },
+
+  // ---- Sale sub-categories ----
+  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag', parent: 'Sale', system: true },
+
+  // ---- Income ----
+  { name_en: 'Investor Investment', name_ur: 'سرمایہ کاری', type: 'INCOME', icon: 'investor', system: true },
+  { name_en: 'Buyer Receipt', name_ur: 'خریدار کی رقم', type: 'INCOME', icon: 'aamdani', system: true },
   { name_en: 'Other Income', name_ur: 'دیگر آمدنی', type: 'INCOME', icon: 'aamdani' },
 ];
 
@@ -897,6 +1092,8 @@ export const SYSTEM_CATEGORY_NAMES = [
   'Buyer Receipt',
   'Transfer',
   'Udhaar',
+  'Plot Sale',
+  'Material Booking',
 ] as const;
 
 export interface DefaultAccount {

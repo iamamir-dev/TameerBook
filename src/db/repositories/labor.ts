@@ -33,6 +33,28 @@ export function isAttendanceConflict(e: unknown): e is AttendanceConflictError {
   return e instanceof Error && e.message === 'ATTENDANCE_CONFLICT';
 }
 
+/** Thrown when a paid day (FULL/HALF) is marked before a dihari rate is set. */
+export class WageNotSetError extends Error {
+  constructor() {
+    super('WAGE_NOT_SET');
+    this.name = 'WageNotSetError';
+  }
+}
+export function isWageNotSet(e: unknown): e is WageNotSetError {
+  return e instanceof Error && e.message === 'WAGE_NOT_SET';
+}
+
+/** Thrown when attendance is marked for a worker no longer on the project. */
+export class WorkerInactiveError extends Error {
+  constructor() {
+    super('WORKER_INACTIVE');
+    this.name = 'WorkerInactiveError';
+  }
+}
+export function isWorkerInactive(e: unknown): e is WorkerInactiveError {
+  return e instanceof Error && e.message === 'WORKER_INACTIVE';
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Laborers (reusable workers)                                               */
 /* -------------------------------------------------------------------------- */
@@ -46,6 +68,8 @@ export interface NewLaborer {
 }
 
 export async function addLaborer(input: NewLaborer): Promise<LaborerRow> {
+  const name = input.name.trim();
+  if (!name) throw new Error('addLaborer: name is required');
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
@@ -55,7 +79,7 @@ export async function addLaborer(input: NewLaborer): Promise<LaborerRow> {
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
     requireCompanyId(),
-    input.name,
+    name,
     input.phone ?? null,
     input.cnic ?? null,
     input.photoUri ?? null
@@ -188,6 +212,11 @@ export async function markAttendance(input: MarkAttendanceInput): Promise<LaborA
   if (!pl) throw new Error(`markAttendance: project laborer ${input.projectLaborerId} not found`);
   await assertProjectActive(pl.project_id);
 
+  // A worker removed from the project can't have new attendance logged (V-17).
+  if (pl.status !== 'ACTIVE') throw new WorkerInactiveError();
+  // A paid day needs a dihari rate first; ABSENT earns nothing so it's fine (V-15).
+  if (input.status !== 'ABSENT' && pl.daily_wage <= 0) throw new WageNotSetError();
+
   // One dihari per day: an earning mark (FULL/HALF) is blocked when the same
   // worker already earned on a DIFFERENT project that date. ABSENT is always
   // allowed — recording an absence earns nothing.
@@ -300,7 +329,7 @@ export async function payLaborer(input: PayLaborerInput): Promise<void> {
   }
 
   const laborer = await getLaborer(pl.laborer_id);
-  const categoryId = await categoryIdByName('Labor Payment', 'EXPENSE', 'مزدور کی ادائیگی');
+  const categoryId = await categoryIdByName('Labor Payment', 'EXPENSE', 'مزدور کی ادائیگی', true);
 
   await addTransaction({
     direction: 'OUT',
@@ -370,6 +399,8 @@ export interface ProjectLaborerSummary {
   projectLaborer: ProjectLaborerRow;
   laborer: LaborerRow;
   balance: LaborBalance;
+  /** Today's attendance mark on THIS project (null = not marked yet). */
+  todayStatus: AttendanceStatus | null;
 }
 
 /** Every active worker on a project with wage + balance (the labor section). */
@@ -379,11 +410,22 @@ export async function listProjectLaborers(projectId: string): Promise<ProjectLab
     "SELECT * FROM project_laborers WHERE project_id = ? AND status = 'ACTIVE' ORDER BY created_at ASC",
     projectId
   );
+  const today = nowISO().slice(0, 10);
   const out: ProjectLaborerSummary[] = [];
   for (const pl of rows) {
     const laborer = await getLaborer(pl.laborer_id);
     if (!laborer) continue;
-    out.push({ projectLaborer: pl, laborer, balance: await getLaborBalance(pl.id) });
+    const todayRow = await db.getFirstAsync<{ status: AttendanceStatus }>(
+      'SELECT status FROM labor_attendance WHERE project_laborer_id = ? AND date = ?',
+      pl.id,
+      today
+    );
+    out.push({
+      projectLaborer: pl,
+      laborer,
+      balance: await getLaborBalance(pl.id),
+      todayStatus: todayRow?.status ?? null,
+    });
   }
   return out;
 }

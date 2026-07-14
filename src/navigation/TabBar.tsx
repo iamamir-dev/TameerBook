@@ -87,6 +87,8 @@ export function TabBar({ state, navigation }: MaterialTopTabBarProps): React.JSX
 
       <Pressable
         onPress={() => rootNav.navigate('QuickEntry')}
+        // Long-press jumps straight to the expense form — the most common entry.
+        onLongPress={() => rootNav.navigate('Entry', { direction: 'OUT' })}
         accessibilityRole="button"
         accessibilityLabel={t('quickEntry')}
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}

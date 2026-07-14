@@ -10,6 +10,8 @@ import { formatRupees } from '@/utils/money';
 
 interface Props {
   cost: ProjectCost;
+  /** Buyer money received so far (sale receipts) — shows a Received/Net line. */
+  received?: number;
 }
 
 type Tone = 'gold' | 'accent' | 'success';
@@ -17,12 +19,13 @@ type Tone = 'gold' | 'accent' | 'success';
 /** Each phase keeps a fixed brand tone, carried by the LABEL COLOR (no fills). */
 const SEGMENTS: {
   key: 'plotCost' | 'constructionCost' | 'saleCost';
-  labelKey: 'phasePlot' | 'phaseConstruction' | 'phaseSale';
+  labelKey: 'phasePlot' | 'phaseConstruction' | 'phaseSaleCost';
   tone: Tone;
 }[] = [
   { key: 'plotCost', labelKey: 'phasePlot', tone: 'gold' },
   { key: 'constructionCost', labelKey: 'phaseConstruction', tone: 'accent' },
-  { key: 'saleCost', labelKey: 'phaseSale', tone: 'success' },
+  // "Sale costs" = commission/transfer paid on the sale side (NOT money in).
+  { key: 'saleCost', labelKey: 'phaseSaleCost', tone: 'gold' },
 ];
 
 /**
@@ -31,10 +34,11 @@ const SEGMENTS: {
  * construction green-accent, sale green) — separated by light hairlines.
  * Deliberately no progress bar and no tinted fills: color lives in the type.
  */
-export function ProjectCostCard({ cost }: Props): React.JSX.Element {
+export function ProjectCostCard({ cost, received = 0 }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
+  const net = received - cost.totalCost;
 
   return (
     <View style={styles.card}>
@@ -48,7 +52,7 @@ export function ProjectCostCard({ cost }: Props): React.JSX.Element {
       <View style={styles.rule} />
 
       <View style={styles.columns}>
-        {SEGMENTS.map((s, i) => (
+        {SEGMENTS.filter((s) => s.key !== 'saleCost' || cost.saleCost > 0).map((s, i) => (
           <React.Fragment key={s.key}>
             {i > 0 ? <View style={styles.colDivider} /> : null}
             <View style={styles.col}>
@@ -62,6 +66,27 @@ export function ProjectCostCard({ cost }: Props): React.JSX.Element {
           </React.Fragment>
         ))}
       </View>
+
+      {/* "Did I make money?" at a glance — buyer money in vs total cost. */}
+      {received > 0 ? (
+        <>
+          <View style={styles.rule} />
+          <View style={styles.netRow}>
+            <AppText size="sm" color="textSecondary">
+              {t('receivedLabel')}
+            </AppText>
+            <AppText size="sm" weight="bold" color="success" tabular>
+              {formatRupees(received)}
+            </AppText>
+            <AppText size="sm" color="textSecondary" style={styles.netLabel}>
+              {t('netSoFar')}
+            </AppText>
+            <AppText size="sm" weight="bold" color={net >= 0 ? 'success' : 'danger'} tabular>
+              {formatRupees(net)}
+            </AppText>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -75,6 +100,8 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.xs,
       ...theme.shadows.card,
     },
+    netRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    netLabel: { marginLeft: 'auto' },
     rule: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: theme.colors.border,

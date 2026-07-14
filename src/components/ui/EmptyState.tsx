@@ -20,6 +20,12 @@ interface EmptyStateProps {
   actionLabel?: string;
   actionIcon?: IconKey | GlyphName;
   onAction?: () => void;
+  /**
+   * Space to leave at the bottom so the centered content sits in the visible
+   * middle of the page. On tab screens pass the floating tab-bar clearance
+   * (the bar overlays the bottom); otherwise the content centres too low.
+   */
+  bottomInset?: number;
 }
 
 /**
@@ -34,12 +40,13 @@ export function EmptyState({
   actionLabel,
   actionIcon = 'add',
   onAction,
+  bottomInset = 0,
 }: EmptyStateProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, bottomInset ? { paddingBottom: bottomInset } : null]}>
       <View style={styles.iconCircle}>
         <AppIcon name={icon} size={48} color="primary" />
       </View>

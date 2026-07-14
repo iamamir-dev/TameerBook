@@ -13,6 +13,75 @@ import { addDocument } from './documents';
 import { assertProjectActive } from './guards';
 import { addTransaction, LimitExceededError } from './transactions';
 
+/**
+ * TOKEN and BAYANA are one-off milestones of a property deal — you pay token
+ * money, then bayana, then instalments. Each of these two can happen at most
+ * once per plot (on the seller side) and once per sale (on the buyer side);
+ * INSTALLMENT/FINAL may repeat.
+ */
+const ONCE_PER_DEAL: readonly PayType[] = ['TOKEN', 'BAYANA'];
+
+/** Thrown when a one-time pay type (TOKEN/BAYANA) already exists for the deal. */
+export class OneTimePaymentError extends Error {
+  constructor(public readonly payType: PayType) {
+    super('ONE_TIME_PAYMENT');
+    this.name = 'OneTimePaymentError';
+  }
+}
+
+/** True when a save failed because a token/bayana was already recorded. */
+export function isOneTimePayment(e: unknown): e is OneTimePaymentError {
+  return e instanceof Error && e.message === 'ONE_TIME_PAYMENT';
+}
+
+/**
+ * Guard: for a one-time pay type, ensure no live transaction of that type
+ * already exists for the plot in the given phase/direction.
+ */
+/** Pay types that can be used at most once per deal (seller or buyer side). */
+export const ONCE_PAY_TYPES: readonly PayType[] = ONCE_PER_DEAL;
+
+/**
+ * Which one-time pay types (TOKEN/BAYANA) have ALREADY been used on this plot
+ * for the given phase/direction — so the UI can hide those options instead of
+ * letting the user pick one that would be rejected on save.
+ */
+export async function listUsedPayTypes(
+  plotId: string,
+  phase: 'PLOT' | 'SALE',
+  direction: 'IN' | 'OUT'
+): Promise<PayType[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ pay_type: PayType }>(
+    `SELECT DISTINCT pay_type FROM transactions
+     WHERE plot_id = ? AND phase = ? AND direction = ? AND is_void = 0 AND pay_type IS NOT NULL`,
+    plotId,
+    phase,
+    direction
+  );
+  return rows.map((r) => r.pay_type);
+}
+
+async function assertPayTypeUnused(
+  plotId: string,
+  payType: PayType,
+  phase: 'PLOT' | 'SALE',
+  direction: 'IN' | 'OUT'
+): Promise<void> {
+  if (!ONCE_PER_DEAL.includes(payType)) return;
+  const db = await getDatabase();
+  const dup = await db.getFirstAsync<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE plot_id = ? AND pay_type = ? AND phase = ?
+       AND direction = ? AND is_void = 0`,
+    plotId,
+    payType,
+    phase,
+    direction
+  );
+  if ((dup?.c ?? 0) > 0) throw new OneTimePaymentError(payType);
+}
+
 export interface NewPlot {
   name: string;
   society?: string | null;
@@ -31,6 +100,9 @@ export interface NewPlot {
 
 /** Record a purchased plot (standalone  no project needed). */
 export async function createPlot(input: NewPlot): Promise<PlotRow> {
+  const name = input.name.trim();
+  if (!name) throw new Error('createPlot: name is required');
+  if (input.dealPrice < 0) throw new Error('createPlot: deal price cannot be negative');
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
@@ -43,7 +115,7 @@ export async function createPlot(input: NewPlot): Promise<PlotRow> {
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
     requireCompanyId(),
-    input.name,
+    name,
     input.society ?? null,
     input.block ?? null,
     input.plotNo ?? null,
@@ -163,8 +235,10 @@ export async function addPlotPayment(input: PlotPaymentInput): Promise<void> {
   if (input.amount > summary.remaining + 0.001) {
     throw new LimitExceededError(summary.remaining, input.amount);
   }
+  // Token / bayana can only be paid to the seller once per plot.
+  await assertPayTypeUnused(input.plotId, input.payType, 'PLOT', 'OUT');
 
-  const categoryId = await categoryIdByName('Plot Payment', 'EXPENSE', 'پلاٹ کی ادائیگی');
+  const categoryId = await categoryIdByName('Plot Payment', 'EXPENSE', 'پلاٹ کی ادائیگی', true);
 
   const txn = await addTransaction({
     direction: 'OUT',
@@ -337,6 +411,7 @@ export async function addPlotSaleReceipt(input: {
   date: string;
   accountId: string;
   payType?: PayType | null;
+  receiptUri?: string | null;
   createdBy?: string;
 }): Promise<void> {
   if (input.amount <= 0) throw new Error('addPlotSaleReceipt: amount must be positive');
@@ -347,9 +422,11 @@ export async function addPlotSaleReceipt(input: {
   if (input.amount > summary.saleOutstanding + 0.001) {
     throw new LimitExceededError(summary.saleOutstanding, input.amount);
   }
+  // Buyer's token / bayana can only be received once per sale.
+  if (input.payType) await assertPayTypeUnused(input.plotId, input.payType, 'SALE', 'IN');
 
-  const categoryId = await categoryIdByName('Plot Sale', 'INCOME', 'Plot ki farokht');
-  await addTransaction({
+  const categoryId = await categoryIdByName('Plot Sale', 'INCOME', 'پلاٹ کی فروخت', true);
+  const txn = await addTransaction({
     direction: 'IN',
     amount: input.amount,
     date: input.date,
@@ -361,6 +438,16 @@ export async function addPlotSaleReceipt(input: {
     counterpartyName: plot.buyer_name,
     createdBy: input.createdBy,
   });
+
+  // Optional proof-of-payment photo, like every other payment flow.
+  if (input.receiptUri) {
+    await addDocument({
+      entityType: 'transaction',
+      entityId: txn.id,
+      label: 'photoReceipt',
+      fileUri: input.receiptUri,
+    });
+  }
 
   // Fully received → the plot is SOLD.
   if (summary.saleReceived + input.amount >= plot.sale_price - 0.001) {

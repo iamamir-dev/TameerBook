@@ -60,14 +60,26 @@ export function PayWorkerSheet({
   useEffect(() => {
     if (!visible) return;
     setAmount(0);
-    setAccountId(null);
+    // Default to the first (usually the only) account so a single-account user
+    // never has to open the picker.
+    setAccountId(accounts[0]?.id ?? null);
     setSelectedPlId(
       participations.find((p) => p.balance.balance > 0)?.projectLaborer.id ?? null
     );
-  }, [visible, participations]);
+  }, [visible, participations, accounts]);
 
   const selected = payables.find((p) => p.projectLaborer.id === selectedPlId) ?? null;
   const owed = selected?.balance.balance ?? 0;
+
+  // Live error under the amount as the user types.
+  const amountError =
+    amount <= 0
+      ? null
+      : amount > owed
+        ? t('exceedsRemaining')
+        : selectedAccount && amount > selectedAccount.balance
+          ? t('insufficientFunds')
+          : null;
 
   const canSave =
     amount > 0 &&
@@ -147,14 +159,8 @@ export function PayWorkerSheet({
               onChange={setAmount}
               floating
               surface={theme.colors.card}
+              error={amountError}
             />
-            {/* Say WHY the save button is disabled instead of silently
-                greying it out when the amount exceeds what is owed. */}
-            {amount > owed ? (
-              <AppText size="xs" color="danger">
-                {t('exceedsRemaining')}
-              </AppText>
-            ) : null}
 
             <Pressable
               onPress={() => setAccountSheet(true)}

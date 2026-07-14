@@ -24,6 +24,7 @@ import { LaborScreen } from '@/screens/LaborScreen';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
 import { NewPlotScreen } from '@/screens/NewPlotScreen';
+import { EditPlotScreen } from '@/screens/EditPlotScreen';
 import { NewProjectWizard } from '@/screens/NewProjectWizard';
 import { PhotoDiaryScreen } from '@/screens/PhotoDiaryScreen';
 import { PlotDetailScreen } from '@/screens/PlotDetailScreen';
@@ -32,6 +33,8 @@ import { ProjectDetailScreen } from '@/screens/ProjectDetailScreen';
 import { ProjectsScreen } from '@/screens/ProjectsScreen';
 import { QuickEntryScreen } from '@/screens/QuickEntryScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
+import { CategoriesScreen } from '@/screens/CategoriesScreen';
+import { StatusesScreen } from '@/screens/StatusesScreen';
 import { ReportsScreen } from '@/screens/ReportsScreen';
 import { SaleDetailScreen } from '@/screens/SaleDetailScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
@@ -100,10 +103,13 @@ export function RootNavigator(): React.JSX.Element {
 
       {/* Reports hub (reached from Settings) */}
       <Stack.Screen name="Reports" component={ReportsScreen} />
+      <Stack.Screen name="Categories" component={CategoriesScreen} />
+      <Stack.Screen name="Statuses" component={StatusesScreen} />
       <Stack.Screen name="Allocation" component={AllocationScreen} />
 
       {/* Plots (the list itself is a tab) */}
       <Stack.Screen name="NewPlot" component={NewPlotScreen} />
+      <Stack.Screen name="EditPlot" component={EditPlotScreen} />
       <Stack.Screen name="PlotDetail" component={PlotDetailScreen} />
 
       {/* Projects */}

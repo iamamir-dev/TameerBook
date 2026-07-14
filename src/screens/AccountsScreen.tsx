@@ -28,6 +28,9 @@ import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+/** Soft, readable chip colors a user can tag an account with. */
+const ACCOUNT_COLORS = ['#DDEBDD', '#DCE8F5', '#F5E9D6', '#F0DDDD', '#E6DFF0', '#DDF0EC'];
+
 const ACCOUNT_TYPES: AccountType[] = ['BANK', 'CASH', 'WALLET'];
 
 /**
@@ -47,6 +50,7 @@ export function AccountsScreen(): React.JSX.Element {
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<AccountType>('BANK');
+  const [newColor, setNewColor] = useState<string | null>(null);
   const [newOpening, setNewOpening] = useState(0);
 
   const loadData = useCallback(async () => {
@@ -65,11 +69,12 @@ export function AccountsScreen(): React.JSX.Element {
     const name = newName.trim();
     if (!name) return;
     const ok = await runSave(async () => {
-      await addAccount({ name, type: newType, openingBalance: newOpening });
+      await addAccount({ name, type: newType, openingBalance: newOpening, color: newColor });
     });
     if (!ok) return;
     await reload();
     setNewName('');
+    setNewColor(null);
     setNewType('BANK');
     setNewOpening(0);
     setAddOpen(false);
@@ -101,6 +106,7 @@ export function AccountsScreen(): React.JSX.Element {
             type={a.type}
             balance={a.balance}
             typeLabel={typeLabel(a.type)}
+            color={a.color}
             onPress={() => navigation.navigate('AccountDetail', { accountId: a.id })}
           />
         ))}
@@ -157,6 +163,18 @@ export function AccountsScreen(): React.JSX.Element {
             onChange={setNewOpening}
           />
 
+          {/* Optional card color, so accounts are tellable at a glance. */}
+          <View style={styles.colorRow}>
+            {ACCOUNT_COLORS.map((c) => (
+              <Pressable
+                key={c}
+                onPress={() => setNewColor(newColor === c ? null : c)}
+                accessibilityRole="button"
+                style={[styles.colorDot, { backgroundColor: c }, newColor === c && styles.colorDotActive]}
+              />
+            ))}
+          </View>
+
           <AppButton
             label={t('save')}
             icon="check"
@@ -173,6 +191,9 @@ export function AccountsScreen(): React.JSX.Element {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    colorRow: { flexDirection: 'row', gap: theme.spacing.md, alignItems: 'center' },
+    colorDot: { width: 32, height: 32, borderRadius: 16 },
+    colorDotActive: { borderWidth: 3, borderColor: theme.colors.accent },
     screen: { flex: 1, backgroundColor: theme.colors.background },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: {

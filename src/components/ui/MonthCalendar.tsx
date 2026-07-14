@@ -95,7 +95,7 @@ export function MonthCalendar({
           accessibilityRole="button"
           style={styles.monthBtn}
         >
-          <AppIcon name="back" size={18} color="textPrimary" />
+          <AppIcon name="back" size={18} color="accent" />
         </Pressable>
         <Pressable
           onPress={mode === 'pick' ? () => setMode('days') : openPicker}
@@ -115,7 +115,7 @@ export function MonthCalendar({
           accessibilityState={{ disabled: !canGoNext }}
           style={[styles.monthBtn, !canGoNext && styles.monthBtnDisabled]}
         >
-          <AppIcon name="forward" size={18} color={canGoNext ? 'textPrimary' : 'textSecondary'} />
+          <AppIcon name="forward" size={18} color={canGoNext ? 'accent' : 'textSecondary'} />
         </Pressable>
       </View>
 
@@ -129,7 +129,7 @@ export function MonthCalendar({
               accessibilityRole="button"
               style={styles.monthBtn}
             >
-              <AppIcon name="back" size={18} color="textPrimary" />
+              <AppIcon name="back" size={18} color="accent" />
             </Pressable>
             <AppText size="lg" weight="bold" center style={styles.yearLabel} tabular>
               {String(pickYear)}
@@ -144,7 +144,7 @@ export function MonthCalendar({
               <AppIcon
                 name="forward"
                 size={18}
-                color={pickYear >= limitMonth.year() ? 'textSecondary' : 'textPrimary'}
+                color={pickYear >= limitMonth.year() ? 'textSecondary' : 'accent'}
               />
             </Pressable>
           </View>
@@ -170,7 +170,7 @@ export function MonthCalendar({
                   <AppText
                     size="sm"
                     weight={isCurrent ? 'bold' : 'semibold'}
-                    color={isCurrent ? 'onPrimary' : isFuture ? 'textSecondary' : 'textPrimary'}
+                    color={isCurrent ? 'onAccent' : isFuture ? 'textSecondary' : 'accent'}
                   >
                     {label}
                   </AppText>
@@ -196,6 +196,7 @@ export function MonthCalendar({
               if (!date) return <View key={`blank-${i}`} style={styles.cell} />;
               const disabled = date > limit;
               const isSelected = date === selected;
+              const isToday = date === dayjs().format('YYYY-MM-DD');
               const visual = (!disabled && dayVisual?.(date)) || {};
               return (
                 <Pressable
@@ -211,14 +212,21 @@ export function MonthCalendar({
                     style={[
                       styles.day,
                       { backgroundColor: visual.bg ?? 'transparent' },
+                      isToday && !isSelected && styles.dayToday,
                       isSelected && styles.daySelected,
                       disabled && styles.dayDisabled,
                     ]}
                   >
                     <AppText
                       size="sm"
-                      weight={visual.tone || isSelected ? 'bold' : 'regular'}
-                      color={disabled ? 'textSecondary' : visual.tone ?? 'textPrimary'}
+                      weight={visual.tone || isSelected || isToday ? 'bold' : 'regular'}
+                      color={
+                        isSelected
+                          ? 'onAccent'
+                          : disabled
+                            ? 'textSecondary'
+                            : visual.tone ?? (isToday ? 'accent' : 'textPrimary')
+                      }
                       tabular
                     >
                       {String(dayjs(date).date())}
@@ -246,7 +254,7 @@ const makeStyles = (theme: Theme) =>
       width: 36,
       height: 36,
       borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: theme.colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -277,8 +285,11 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     daySelected: {
+      backgroundColor: theme.colors.accent,
+    },
+    dayToday: {
       borderWidth: 1.5,
-      borderColor: theme.colors.primary,
+      borderColor: theme.colors.accent,
     },
     dayDisabled: { opacity: 0.35 },
     /* month + year picker */
@@ -297,7 +308,7 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: theme.colors.accentSoft,
     },
-    monthCellActive: { backgroundColor: theme.colors.primary },
+    monthCellActive: { backgroundColor: theme.colors.accent },
   });

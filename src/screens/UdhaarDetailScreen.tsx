@@ -133,6 +133,21 @@ export function UdhaarDetailScreen(): React.JSX.Element {
 
   const balance = udhaar?.balance ?? 0;
 
+  // Live amount validation (returns capped at outstanding; money-out capped at
+  // the account balance).
+  const moneyOut =
+    !!udhaar &&
+    ((move === 'give' && udhaar.direction === 'GIVEN') ||
+      (move === 'return' && udhaar.direction === 'TAKEN'));
+  const amountError =
+    amount <= 0
+      ? null
+      : move === 'return' && amount > balance
+        ? t('exceedsRemaining')
+        : moneyOut && !!selectedAccount && amount > selectedAccount.balance
+          ? t('insufficientFunds')
+          : null;
+
   return (
     <View style={styles.screen}>
       <AppHeader title={udhaar?.person_name ?? t('udhaar')} onBack={() => navigation.goBack()} />
@@ -201,7 +216,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
               </AppText>
             ) : null}
 
-            <AmountInput floating surface={theme.colors.card} value={amount} onChange={setAmount} />
+            <AmountInput floating surface={theme.colors.card} value={amount} onChange={setAmount} error={amountError} />
 
             {/* Account the money moves through */}
             <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">

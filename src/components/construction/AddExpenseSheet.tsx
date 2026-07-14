@@ -141,7 +141,13 @@ export function AddExpenseSheet({
             </AppText>
           ) : null}
 
-          <AmountInput value={amount} onChange={setAmount} floating surface={theme.colors.card} />
+          <AmountInput
+            value={amount}
+            onChange={setAmount}
+            floating
+            surface={theme.colors.card}
+            error={amount > 0 && !!selectedAccount && amount > selectedAccount.balance ? t('insufficientFunds') : null}
+          />
 
           {/* Account */}
           <Pressable onPress={() => setAccountSheet(true)} style={styles.rowChip} accessibilityRole="button">

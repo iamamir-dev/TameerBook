@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookingCard } from '@/components/bookings/BookingCard';
 import { NewBookingSheet } from '@/components/bookings/NewBookingSheet';
-import { AppHeader, EmptyState } from '@/components/ui';
+import { AppHeader, EmptyState, HubShortcuts, StatCard } from '@/components/ui';
+import { formatRupees } from '@/utils/money';
 import { listBookingSummaries, type BookingSummary } from '@/db';
 import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -49,6 +50,8 @@ export function BookingsScreen(): React.JSX.Element {
         }}
       />
 
+      <HubShortcuts current="Bookings" />
+
       {loaded && items.length === 0 ? (
         <EmptyState
           icon="material"
@@ -64,6 +67,20 @@ export function BookingsScreen(): React.JSX.Element {
             { paddingBottom: insets.bottom + theme.spacing.xxxl },
           ]}
         >
+          <View style={styles.statRow}>
+            <StatCard
+              label={t('owedToSuppliers')}
+              value={formatRupees(items.reduce((s, i) => s + i.payRemaining, 0))}
+              icon="material"
+              tone={items.some((i) => i.payRemaining > 0) ? 'danger' : 'textPrimary'}
+            />
+            <StatCard
+              label={t('openBookings')}
+              value={String(items.filter((i) => i.booking.status === 'OPEN').length)}
+              icon="ledger"
+            />
+          </View>
+
           {items.map((item) => (
             <BookingCard
               key={item.booking.id}
@@ -83,4 +100,5 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    statRow: { flexDirection: 'row', gap: theme.spacing.md },
   });

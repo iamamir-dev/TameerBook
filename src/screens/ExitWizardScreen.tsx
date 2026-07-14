@@ -340,7 +340,13 @@ export function ExitWizardScreen(): React.JSX.Element {
                 <AppText size="sm" color="textSecondary">
                   {t('paidInCapital')}: {formatRupees(leaverShare?.capital ?? 0)}
                 </AppText>
-                <AmountInput label={t('portionAmount')} value={portion} onChange={setPortion} autoFocus />
+                <AmountInput
+                  label={t('portionAmount')}
+                  value={portion}
+                  onChange={setPortion}
+                  autoFocus
+                  error={portion > 0 && portion > (leaverShare?.capital ?? 0) ? t('exceedsRemaining') : null}
+                />
               </>
             ) : null}
             {scenario === 'OWNER_BUY' || scenario === 'COMMITTED_UNPAID' ? (

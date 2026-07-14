@@ -21,6 +21,7 @@ import {
   AppIcon,
   AppText,
   LoadErrorState,
+  SelectSheet,
   type PhaseMetric,
 } from '@/components/ui';
 import {
@@ -38,7 +39,9 @@ import {
   listDocuments,
   listInvestorsWithCapacity,
   listPlots,
+  listStages,
   markProjectCompleted,
+  setProjectStage,
   type ConstructionSummary,
   type DocumentRow,
   type InvestorCapacity,
@@ -49,6 +52,7 @@ import {
   type ProjectSummary,
   type SaleSummary,
   type SettlementSummary,
+  type StageRow,
 } from '@/db';
 import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -97,13 +101,15 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [allInvestors, setAllInvestors] = useState<InvestorCapacity[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
   const [plotSheetOpen, setPlotSheetOpen] = useState(false);
+  const [stages, setStages] = useState<StageRow[]>([]);
+  const [stageSheet, setStageSheet] = useState(false);
 
   const { saving, run: runSave } = useSaveAction();
 
   const loadAll = useCallback(async () => {
     const s = await getProjectSummary(projectId);
     setSummary(s);
-    const [c, cs, ss, cap, stl, plot, pics, owned] = await Promise.all([
+    const [c, cs, ss, cap, stl, plot, pics, stageRows, owned] = await Promise.all([
       getProjectCost(projectId),
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
       getSaleSummary(projectId),
@@ -111,6 +117,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
       getProjectSettlementSummary(projectId),
       s?.project.plot_id ? getPlotSummary(s.project.plot_id) : Promise.resolve(null),
       listDocuments('site_photo', projectId),
+      listStages('PROJECT'),
       s?.project.plot_id ? Promise.resolve<PlotRow[]>([]) : listPlots('OWNED'),
     ]);
     setCost(c);
@@ -120,6 +127,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
     setSettlement(stl);
     setPlotSum(plot);
     setPhotos(pics);
+    setStages(stageRows);
     setFreePlots(owned);
   }, [projectId]);
 
@@ -198,7 +206,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
         projectId,
         inclusions
           .filter(({ investorId }) => allInvestors.some((i) => i.id === investorId))
-          .map(({ investorId, amount }) => ({ investorId, amount, profitPct: defaultPct }))
+          .map(({ investorId, amount, profitPct }) => ({ investorId, amount, profitPct }))
       );
     });
     if (!ok) return;
@@ -304,7 +312,22 @@ export function ProjectDetailScreen(): React.JSX.Element {
         ) : null}
 
         {/* Total cost hero with the color-coded phase columns */}
-        <ProjectCostCard cost={cost} />
+        <Pressable
+          onPress={() => !completed && setStageSheet(true)}
+          accessibilityRole="button"
+          style={styles.stagePill}
+        >
+          <AppIcon name="tag" size={14} color="accent" />
+          <AppText size="xs" weight="bold" color="accent">
+            {stages.find((st) => st.id === project?.stage_id)
+              ? (language === 'ur'
+                  ? stages.find((st) => st.id === project?.stage_id)!.name_ur
+                  : stages.find((st) => st.id === project?.stage_id)!.name_en)
+              : t('setStatusLabel')}
+          </AppText>
+        </Pressable>
+
+        <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} />
 
         {/* Completed projects lead with the settlement summary (the project's
             final story); on active projects it appears after investors below. */}
@@ -424,11 +447,31 @@ export function ProjectDetailScreen(): React.JSX.Element {
       </ScrollView>
 
       {/* Attach-investor sheet — the ONE shared investor drawer. */}
+      <SelectSheet
+        visible={stageSheet}
+        onClose={() => setStageSheet(false)}
+        title={t('setStatusLabel')}
+        searchable={false}
+        selectedId={project?.stage_id ?? '__none__'}
+        options={[
+          { id: '__none__', label: t('noStatus') },
+          ...stages.map((st) => ({ id: st.id, label: language === 'ur' ? st.name_ur : st.name_en })),
+        ]}
+        onSelect={(o) => {
+          setStageSheet(false);
+          void (async () => {
+            const ok = await runSave(() => setProjectStage(projectId, o.id === '__none__' ? null : o.id));
+            if (ok) await reload();
+          })();
+        }}
+      />
+
       <InvestorSheet
         visible={attachOpen}
         onClose={() => setAttachOpen(false)}
         existingInvestors={availableInvestors}
         saving={saving}
+        defaultProfitPct={defaultPct}
         onSubmit={onAttachInvestors}
       />
 
@@ -449,6 +492,16 @@ export function ProjectDetailScreen(): React.JSX.Element {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    stagePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: theme.colors.accentSoft,
+    },
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },

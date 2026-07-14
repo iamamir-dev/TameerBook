@@ -12,6 +12,7 @@ import {
   AppIcon,
   AppText,
   LedgerTable,
+  SelectSheet,
   type IconKey,
   type LedgerRow,
 } from '@/components/ui';
@@ -25,7 +26,10 @@ import {
   listLaborersWithTotals,
   listPlots,
   listRecentTransactions,
+  listStages,
   listTransferDeadlines,
+  SIZE_UNIT_LABEL_KEYS,
+  type StageRow,
   type AccountWithBalance,
   type CategoryRow,
   type PlotRow,
@@ -55,7 +59,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export function HomeScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
@@ -63,8 +67,11 @@ export function HomeScreen(): React.JSX.Element {
   const projects = useProjectsStore((s) => s.items);
   const refreshProjects = useProjectsStore((s) => s.refresh);
   const activeCompanyId = useCompanyStore((s) => s.activeCompanyId);
+  const companies = useCompanyStore((s) => s.companies);
+  const switchTo = useCompanyStore((s) => s.switchTo);
   const companyName =
     useCompanyStore((s) => s.companies.find((c) => c.id === activeCompanyId)?.name) ?? t('appName');
+  const [companySheet, setCompanySheet] = useState(false);
 
   // Which sections this Home shows (Settings → Home screen).
   const sections = useSettingsStore((s) => s.homeSections);
@@ -78,9 +85,10 @@ export function HomeScreen(): React.JSX.Element {
   const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
   const [ownedPlots, setOwnedPlots] = useState<PlotRow[]>([]);
   const [laborOwed, setLaborOwed] = useState(0);
+  const [stages, setStages] = useState<StageRow[]>([]);
 
   const loadData = useCallback(async () => {
-    const [tot, accs, ud, txns, cats, deadlines, companyAssets, plots, workers] = await Promise.all([
+    const [tot, accs, ud, txns, cats, deadlines, companyAssets, stageRows, plots, workers] = await Promise.all([
       getTotalBalance(),
       listAccountsWithBalance(),
       getUdhaarTotals(),
@@ -88,6 +96,7 @@ export function HomeScreen(): React.JSX.Element {
       listCategories(),
       listTransferDeadlines(),
       getCompanyAssets(),
+      Promise.all([listStages('PROJECT'), listStages('PLOT')]).then(([a, b]) => [...a, ...b]),
       // Optional sections only pay their query cost when switched on.
       sections.plots ? listPlots() : Promise.resolve<PlotRow[]>([]),
       sections.labor ? listLaborersWithTotals() : Promise.resolve([]),
@@ -99,6 +108,7 @@ export function HomeScreen(): React.JSX.Element {
     setRecent(txns);
     setCategories(cats);
     setDeadlineWarn(nearestTransferDeadline(deadlines));
+    setStages(stageRows);
     // Show every plot still held (OWNED first, then IN_PROJECT); sold ones
     // are history and stay off the dashboard.
     setOwnedPlots(
@@ -114,6 +124,14 @@ export function HomeScreen(): React.JSX.Element {
   }, [refreshProjects, loadData]);
 
   useFocusReload(load);
+
+  const stageName = useCallback(
+    (id: string | null): string | null => {
+      const st = stages.find((x) => x.id === id);
+      return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
+    },
+    [stages, language]
+  );
 
   const catLabel = useCategoryLabel();
   const catName = useCallback(
@@ -159,19 +177,27 @@ export function HomeScreen(): React.JSX.Element {
       >
         {/* Header  avatar + greeting on the left, bell on the right */}
         <View style={styles.header}>
-          <View style={styles.avatar}>
-            <AppText size="lg" weight="bold" color="onPrimary">
-              {companyName.charAt(0).toUpperCase()}
-            </AppText>
-          </View>
-          <View style={styles.headerText}>
-            <AppText size="sm" color="textSecondary">
-              {t('greeting')}
-            </AppText>
-            <AppText size="xl" weight="bold" numberOfLines={1}>
-              {companyName}
-            </AppText>
-          </View>
+          {/* Tapping the company opens the switcher (when there's >1 firm). */}
+          <Pressable
+            onPress={() => companies.length > 1 && setCompanySheet(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('switchCompany')}
+            style={styles.companyBlock}
+          >
+            <View style={styles.avatar}>
+              <AppText size="lg" weight="bold" color="onPrimary">
+                {companyName.charAt(0).toUpperCase()}
+              </AppText>
+            </View>
+            <View style={styles.headerText}>
+              <AppText size="sm" color="textSecondary">
+                {t('greeting')}
+              </AppText>
+              <AppText size="xl" weight="bold" numberOfLines={1}>
+                {companyName}
+              </AppText>
+            </View>
+          </Pressable>
           <Pressable
             onPress={() => navigation.navigate('Settings')}
             hitSlop={theme.touch.hitSlop}
@@ -345,12 +371,20 @@ export function HomeScreen(): React.JSX.Element {
                         {p.name}
                       </AppText>
                       <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                        {[p.society, formatRupees(p.deal_price)].filter(Boolean).join(' · ')}
+                        {[
+                          p.society,
+                          p.size_value
+                            ? `${p.size_value} ${t(SIZE_UNIT_LABEL_KEYS[p.size_unit ?? 'MARLA'])}`
+                            : null,
+                          formatRupees(p.deal_price),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </AppText>
                     </View>
                     <StageBadge
                       tone={p.status === 'OWNED' ? 'success' : 'primary'}
-                      label={t(p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
+                      label={stageName(p.stage_id) ?? t(p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
                     />
                   </Pressable>
                 ))
@@ -380,6 +414,7 @@ export function HomeScreen(): React.JSX.Element {
               <ProjectCard
                 key={summary.project.id}
                 summary={summary}
+                stageLabel={stageName(summary.project.stage_id)}
                 onPress={() => navigation.navigate('ProjectDetail', { projectId: summary.project.id })}
               />
             ))}
@@ -396,6 +431,19 @@ export function HomeScreen(): React.JSX.Element {
           </>
         ) : null}
       </ScrollView>
+
+      <SelectSheet
+        visible={companySheet}
+        onClose={() => setCompanySheet(false)}
+        title={t('switchCompany')}
+        searchable={false}
+        selectedId={activeCompanyId ?? undefined}
+        options={companies.map((c) => ({ id: c.id, label: c.name }))}
+        onSelect={(o) => {
+          setCompanySheet(false);
+          void switchTo(o.id);
+        }}
+      />
     </View>
   );
 }
@@ -466,9 +514,12 @@ function SectionTile({
 
 function ProjectCard({
   summary,
+  stageLabel,
   onPress,
 }: {
   summary: ProjectSummary;
+  /** User-set display status (Settings → Statuses); null = none. */
+  stageLabel: string | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -485,7 +536,7 @@ function ProjectCard({
       </AppText>
       <StageBadge
         tone={completed ? 'success' : 'accent'}
-        label={completed ? t('statusDone') : t('statusCurrent')}
+        label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))}
       />
 
       <View style={styles.progressTrackWrap}>
@@ -530,6 +581,12 @@ const makeStyles = (theme: Theme) =>
     },
     /* header */
     header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+    },
+    companyBlock: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,

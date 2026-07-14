@@ -139,6 +139,7 @@ export interface UdhaarMoveInput {
 export async function giveUdhaar(input: UdhaarMoveInput): Promise<void> {
   const u = await getUdhaar(input.udhaarId);
   if (!u) throw new Error(`giveUdhaar: udhaar ${input.udhaarId} not found`);
+  if (input.amount <= 0) throw new Error('giveUdhaar: amount must be positive');
 
   await addTransaction({
     direction: u.direction === 'GIVEN' ? 'OUT' : 'IN',

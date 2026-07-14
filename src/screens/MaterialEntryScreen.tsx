@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
+  AmountInput,
   AppButton,
   StickyFooter,
   AppHeader,
@@ -32,11 +33,13 @@ import {
   type AccountWithBalance,
   type CategoryRow,
   listAccountsWithBalance,
-  listCategories,
+  listSubcategories,
   listParties,
   type PartyRow,
 } from '@/db';
-import { useAccountOptions, useCategoryLabel, useSaveAction } from '@/hooks';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
+
+import { useAccountOptions, useCategoryLabel, useSaveAction, useToast } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
@@ -49,20 +52,6 @@ import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-/** Material item categories (by canonical name); "Misc" shows as Other. */
-const MATERIAL_ITEMS = [
-  'Cement',
-  'Sariya',
-  'Bricks',
-  'Sand/Crush',
-  'Tiles',
-  'Wood',
-  'Paint',
-  'Electric',
-  'Sanitary',
-  'Misc',
-];
 
 const ADD_PARTY_ID = '__add__';
 
@@ -104,16 +93,14 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [newPartyName, setNewPartyName] = useState('');
 
   const { saving, run: runSave } = useSaveAction();
+  const { toast, showToast } = useToast();
 
   const loadParties = useCallback(async () => setParties(await listParties()), []);
 
   useEffect(() => {
-    listCategories('EXPENSE')
-      .then((cats) => {
-        const byName = (n: string) => cats.find((c) => c.name_en === n);
-        setItems(MATERIAL_ITEMS.map(byName).filter((c): c is CategoryRow => !!c));
-      })
-      .catch(swallow('material:categories'));
+    // Materials are the sub-categories under the "Materials" heading (Settings
+    // → Categories) — the single managed source.
+    listSubcategories('Materials').then(setItems).catch(swallow('material:categories'));
     loadParties().catch(swallow('material:parties'));
     listAccountsWithBalance().then(setAccounts).catch(swallow('material:accounts'));
   }, [loadParties]);
@@ -134,7 +121,11 @@ export function MaterialEntryScreen(): React.JSX.Element {
     accountChoice ??
     (accounts.some((a) => a.id === lastAccountId) ? lastAccountId : accounts[0]?.id ?? null);
 
-  const total = (Number(qty) || 0) * (Number(rate) || 0);
+  // Total = qty × rate, OR typed directly (bills are often known as one figure
+  // without a per-unit rate). Editing qty/rate clears a manual override.
+  const [totalOverride, setTotalOverride] = useState(0);
+  const computedTotal = (Number(qty) || 0) * (Number(rate) || 0);
+  const total = totalOverride > 0 ? totalOverride : computedTotal;
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
   const catName = useCategoryLabel();
@@ -159,7 +150,9 @@ export function MaterialEntryScreen(): React.JSX.Element {
       return;
     }
     const ok = await runSave(async () => {
-      const desc = `${selectedItem ? itemLabel(selectedItem) : ''} ${qty}${unit ? ' ' + unit : ''} @ ${rate}`.trim();
+      const desc = `${selectedItem ? itemLabel(selectedItem) : ''} ${qty}${unit ? ' ' + unit : ''}${
+        Number(rate) > 0 ? ` @ ${rate}` : ''
+      }`.trim();
       const txn = await addTransaction({
         direction: 'OUT',
         amount: total,
@@ -179,7 +172,15 @@ export function MaterialEntryScreen(): React.JSX.Element {
       await refreshProjects();
     });
     if (!ok) return;
-    navigation.goBack();
+    // Rapid-log: stay open for the next item of the same bill — reset only the
+    // item fields; project, supplier and account are kept.
+    setItemId(null);
+    setQty('');
+    setUnit('');
+    setRate('');
+    setTotalOverride(0);
+    setReceiptUri(null);
+    showToast(t('savedToast'));
   };
 
   const onAddParty = async () => {
@@ -252,23 +253,39 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
           <View style={styles.row}>
             <View style={styles.flex}>
-              <FloatingLabelInput label={t('qtyLabel')} value={qty} onChangeText={setQty} keyboardType="number-pad" />
+              <FloatingLabelInput
+                label={t('qtyLabel')}
+                value={qty}
+                onChangeText={(v) => {
+                  setQty(v);
+                  setTotalOverride(0);
+                }}
+                keyboardType="number-pad"
+              />
             </View>
             <View style={styles.flex}>
               <FloatingLabelInput label={t('unitLabel')} value={unit} onChangeText={setUnit} />
             </View>
           </View>
-          <FloatingLabelInput label={t('rateLabel')} value={rate} onChangeText={setRate} keyboardType="number-pad" />
+          <FloatingLabelInput
+            label={t('rateLabel')}
+            value={rate}
+            onChangeText={(v) => {
+              setRate(v);
+              setTotalOverride(0); // qty × rate takes over again
+            }}
+            keyboardType="number-pad"
+          />
 
-          {/* Auto total */}
-          <View style={styles.totalRow}>
-            <AppText size="sm" color="textSecondary">
-              {t('totalLabel')}
-            </AppText>
-            <AppText size="xl" weight="bold" color="primary" tabular>
-              {formatRupees(total)}
-            </AppText>
-          </View>
+          {/* Total: auto from qty × rate, or typed directly (bill total). */}
+          <AmountInput
+            label={t('totalLabel')}
+            value={total}
+            onChange={setTotalOverride}
+            floating
+            surface={theme.colors.background}
+            error={total > 0 && !!selectedAccount && total > selectedAccount.balance ? t('insufficientFunds') : null}
+          />
 
           {/* Supplier */}
           <Pressable onPress={() => setPartySheet(true)} style={styles.chip} accessibilityRole="button">
@@ -344,7 +361,11 @@ export function MaterialEntryScreen(): React.JSX.Element {
         options={items.map((c) => ({ id: c.id, label: itemLabel(c), icon: 'material' as IconKey }))}
         selectedId={itemId ?? undefined}
         title={t('material')}
-        onSelect={(o) => setItemId(o.id)}
+        onSelect={(o) => {
+          setItemId(o.id);
+          const m = items.find((x) => x.id === o.id);
+          if (m?.default_unit) setUnit(m.default_unit);
+        }}
       />
       <SelectSheet
         visible={accountSheet}
@@ -379,6 +400,20 @@ export function MaterialEntryScreen(): React.JSX.Element {
         </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Saved toast (rapid-log stays on this screen) */}
+      {toast ? (
+        <Animated.View
+          entering={FadeInDown}
+          exiting={FadeOutDown}
+          style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}
+        >
+          <AppIcon name="checkCircle" size={20} color="onPrimary" />
+          <AppText size="sm" weight="bold" color="onPrimary">
+            {toast}
+          </AppText>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -389,6 +424,18 @@ const makeStyles = (theme: Theme) =>
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg, padding: theme.spacing.xl },
+    toast: {
+      position: 'absolute',
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.success,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.md,
+      ...theme.shadows.raised,
+    },
     chip: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -1,7 +1,7 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AttachProjectSheet } from '@/components/labor/AttachProjectSheet';
 import { AttendanceCalendarSheet } from '@/components/labor/AttendanceCalendarSheet';
@@ -10,7 +10,7 @@ import { KhataHero } from '@/components/labor/KhataHero';
 import { KhataHistoryList } from '@/components/labor/KhataHistoryList';
 import { ParticipationCard } from '@/components/labor/ParticipationCard';
 import { PayWorkerSheet } from '@/components/labor/PayWorkerSheet';
-import { AppButton, AppHeader, AppText, StickyFooter } from '@/components/ui';
+import { AppButton, AppHeader, AppText, ContactRow, StickyFooter } from '@/components/ui';
 import {
   getLaborerKhata,
   listAccountsWithBalance,
@@ -132,6 +132,15 @@ export function LaborerDetailScreen(): React.JSX.Element {
             balance={khata.totals.balance}
           />
 
+          <View style={styles.identityRow}>
+            {khata.laborer.photo_uri ? (
+              <Image source={{ uri: khata.laborer.photo_uri }} style={styles.workerAvatar} />
+            ) : null}
+            <View style={styles.flexGrow}>
+              <ContactRow phone={khata.laborer.phone} cnic={khata.laborer.cnic} />
+            </View>
+          </View>
+
           {/* One card per project participation — attendance, dihari and
               balance all manageable in place. */}
           {khata.participations.length > 0 ? (
@@ -203,6 +212,9 @@ export function LaborerDetailScreen(): React.JSX.Element {
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    identityRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+    flexGrow: { flex: 1 },
+    workerAvatar: { width: 56, height: 56, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },

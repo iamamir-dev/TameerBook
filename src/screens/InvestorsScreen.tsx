@@ -5,7 +5,7 @@ import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InvestorPersonSheet } from '@/components/InvestorPersonSheet';
-import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
+import { AppCard, AppHeader, AppIcon, AppText, EmptyState, PhoneChip, SearchBar } from '@/components/ui';
 import {
   deleteInvestor,
   isInvestorInUse,
@@ -30,6 +30,7 @@ export function InvestorsScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [investors, setInvestors] = useState<InvestorWithCapital[]>([]);
+  const [query, setQuery] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<InvestorWithCapital | null>(null);
   const [menuFor, setMenuFor] = useState<InvestorWithCapital | null>(null);
@@ -97,6 +98,7 @@ export function InvestorsScreen(): React.JSX.Element {
         // that the plain screen shell avoids an empty-state flash.
         loaded ? (
           <EmptyState
+            bottomInset={insets.bottom + FLOATING_BAR_CLEARANCE}
             icon="investors"
             title={t('noInvestorsYet')}
             message={t('noInvestorsDetail')}
@@ -110,7 +112,14 @@ export function InvestorsScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE }]}
         >
-          {investors.map((inv) => (
+          {investors.length > 5 ? <SearchBar value={query} onChange={setQuery} /> : null}
+          {investors
+            .filter((inv) => {
+              const q = query.trim().toLowerCase();
+              if (!q) return true;
+              return inv.name.toLowerCase().includes(q) || (inv.phone ?? '').includes(query.trim());
+            })
+            .map((inv) => (
             <AppCard
               key={inv.id}
               onPress={() => navigation.navigate('InvestorProfile', { investorId: inv.id })}
@@ -122,11 +131,7 @@ export function InvestorsScreen(): React.JSX.Element {
                   <AppText size="md" weight="bold" numberOfLines={1}>
                     {inv.name}
                   </AppText>
-                  {inv.phone ? (
-                    <AppText size="xs" color="textSecondary">
-                      {inv.phone}
-                    </AppText>
-                  ) : null}
+                  {inv.phone ? <PhoneChip phone={inv.phone} compact /> : null}
                 </View>
                 <View style={styles.capBox}>
                   <AppText size="xs" color="textSecondary">

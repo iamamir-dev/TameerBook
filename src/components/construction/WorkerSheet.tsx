@@ -53,6 +53,8 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
   const today = todayISO().slice(0, 10);
 
   const [attendance, setAttendance] = useState<LaborAttendanceRow[]>([]);
+  // Highlights the tapped choice instantly (before the DB write + reload lands).
+  const [optimisticStatus, setOptimisticStatus] = useState<AttendanceStatus | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [payDate, setPayDate] = useState(todayISO().slice(0, 10));
@@ -75,6 +77,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
     setPayAccountId(null);
     setPayDate(todayISO().slice(0, 10));
     setAttendance([]);
+    setOptimisticStatus(null);
     if (!workerId) return;
     listAttendance(workerId)
       .then((rows) => {
@@ -84,8 +87,8 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
   }, [workerId]);
 
   const todayStatus = useMemo(
-    () => attendance.find((a) => a.date === today)?.status ?? null,
-    [attendance, today]
+    () => optimisticStatus ?? attendance.find((a) => a.date === today)?.status ?? null,
+    [optimisticStatus, attendance, today]
   );
 
   const statusLabel = (s: AttendanceStatus): string =>
@@ -93,12 +96,16 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
 
   const onMarkAttendance = (status: AttendanceStatus): void => {
     if (!workerId || marking) return;
-    void runMark(async () => {
-      await markAttendance({ projectLaborerId: workerId, date: today, status });
-      const rows = await listAttendance(workerId);
-      if (currentWorkerIdRef.current === workerId) setAttendance(rows);
-      await onSaved();
-    });
+    setOptimisticStatus(status); // instant visual feedback
+    void (async () => {
+      const ok = await runMark(async () => {
+        await markAttendance({ projectLaborerId: workerId, date: today, status });
+        const rows = await listAttendance(workerId);
+        if (currentWorkerIdRef.current === workerId) setAttendance(rows);
+        await onSaved();
+      });
+      if (!ok) setOptimisticStatus(null); // revert if the write was blocked
+    })();
   };
 
   const onPayWorker = (): void => {
@@ -173,7 +180,21 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
           <AppText size="overline" weight="bold" color="textSecondary" uppercase>
             {t('payWorker')}
           </AppText>
-          <AmountInput value={payAmount} onChange={setPayAmount} floating surface={theme.colors.card} />
+          <AmountInput
+            value={payAmount}
+            onChange={setPayAmount}
+            floating
+            surface={theme.colors.card}
+            error={
+              payAmount <= 0
+                ? null
+                : payAmount > (worker?.balance.balance ?? 0)
+                  ? t('exceedsRemaining')
+                  : selectedPayAccount && payAmount > selectedPayAccount.balance
+                    ? t('insufficientFunds')
+                    : null
+            }
+          />
           <Pressable onPress={() => setPayAccountSheet(true)} style={styles.rowChip} accessibilityRole="button">
             <AppIcon name={selectedPayAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
             <AppText

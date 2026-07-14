@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 
-import { AppButton, AppCard, AppIcon, AppText } from '@/components/ui';
+import { AppButton, AppCard, AppIcon, AppText, PhoneChip } from '@/components/ui';
 import { getLaborerKhata, type LaborerKhata, type LaborerTotals } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useDataVersion } from '@/stores/useDataVersion';
@@ -34,6 +34,8 @@ interface WorkerAccordionProps {
   onToggle: () => void;
   /** Open the worker's full khata (the detail screen). */
   onSeeAll: () => void;
+  /** Pay this worker straight from the list (only when something is owed). */
+  onPay?: () => void;
 }
 
 /**
@@ -48,6 +50,7 @@ export function WorkerAccordion({
   expanded,
   onToggle,
   onSeeAll,
+  onPay,
 }: WorkerAccordionProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -96,9 +99,12 @@ export function WorkerAccordion({
           <AppText size="md" weight="bold" numberOfLines={1}>
             {worker.name}
           </AppText>
-          <AppText size="xs" color="textSecondary">
-            {`${worker.projects} ${t('projects')}`}
-          </AppText>
+          <View style={styles.subRow}>
+            <AppText size="xs" color="textSecondary" numberOfLines={1}>
+              {`${worker.projects} ${t('projects')}`}
+            </AppText>
+            {worker.phone ? <PhoneChip phone={worker.phone} compact /> : null}
+          </View>
         </View>
       </View>
 
@@ -115,7 +121,7 @@ export function WorkerAccordion({
         </View>
         <View style={styles.mathColDivider} />
         <View style={styles.mathCol}>
-          <AppText size="sm" weight="semibold" color="success" tabular numberOfLines={1} adjustsFontSizeToFit>
+          <AppText size="sm" weight="semibold" color="danger" tabular numberOfLines={1} adjustsFontSizeToFit>
             {formatRupees(worker.taken)}
           </AppText>
           <AppText size="xs" color="textSecondary" numberOfLines={1}>
@@ -170,12 +176,21 @@ export function WorkerAccordion({
               {khata.participations.length > 0 ? <View style={styles.divider} /> : null}
 
               <KhataHistoryList history={khata.history} />
-              <AppButton
-                label={t('seeAll')}
-                icon="forward"
-                variant="secondary"
-                onPress={onSeeAll}
-              />
+              <View style={styles.actions}>
+                {onPay ? (
+                  <View style={styles.flex}>
+                    <AppButton label={t('payWorker')} icon="rupee" onPress={onPay} />
+                  </View>
+                ) : null}
+                <View style={styles.flex}>
+                  <AppButton
+                    label={t('seeAll')}
+                    icon="forward"
+                    variant="secondary"
+                    onPress={onSeeAll}
+                  />
+                </View>
+              </View>
             </>
           ) : (
             <View style={styles.loading}>
@@ -205,6 +220,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.primarySoft,
     },
     title: { flex: 1, gap: 2 },
+    subRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' },
     mathColumns: {
       flexDirection: 'row',
       alignItems: 'stretch',
@@ -224,6 +240,8 @@ const makeStyles = (theme: Theme) =>
       marginVertical: theme.spacing.xs,
     },
     body: { gap: theme.spacing.md },
+    actions: { flexDirection: 'row', gap: theme.spacing.sm },
+    flex: { flex: 1 },
     projectRow: {
       flexDirection: 'row',
       alignItems: 'center',

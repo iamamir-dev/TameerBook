@@ -42,6 +42,7 @@ export function AddWorkerSheet({
   const [pickLaborerId, setPickLaborerId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newCnic, setNewCnic] = useState('');
   const [newWage, setNewWage] = useState(0);
 
   // Fresh form per open.
@@ -50,6 +51,7 @@ export function AddWorkerSheet({
     setPickLaborerId(null);
     setNewName('');
     setNewPhone('');
+    setNewCnic('');
     setNewWage(0);
   }, [visible]);
 
@@ -63,6 +65,7 @@ export function AddWorkerSheet({
         const created = await addLaborer({
           name: newName.trim(),
           phone: newPhone.trim() || null,
+          cnic: newCnic.trim() || null,
         });
         laborerId = created.id;
       }
@@ -117,6 +120,7 @@ export function AddWorkerSheet({
               onChangeText={setNewPhone}
               keyboardType="phone-pad"
             />
+            <FloatingLabelInput label={t('cnic')} value={newCnic} onChangeText={setNewCnic} hint={t('optional')} />
           </>
         ) : null}
 

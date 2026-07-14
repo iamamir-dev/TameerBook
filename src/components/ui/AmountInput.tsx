@@ -34,6 +34,8 @@ interface AmountInputProps {
    * container behind the field. Defaults to the screen background.
    */
   surface?: string;
+  /** Inline error: turns the field border red and shows this message below it. */
+  error?: string | null;
   style?: ViewStyle;
 }
 
@@ -52,6 +54,7 @@ export function AmountInput({
   autoFocus,
   floating,
   surface,
+  error,
   style,
 }: AmountInputProps): React.JSX.Element {
   const theme = useTheme();
@@ -75,6 +78,7 @@ export function AmountInput({
         label={label ?? t('amount')}
         displayValue={displayValue}
         helper={helper}
+        error={error}
         onChangeText={handleChangeText}
         autoFocus={autoFocus}
         surface={surface ?? theme.colors.background}
@@ -93,7 +97,7 @@ export function AmountInput({
         </AppText>
       ) : null}
 
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, error ? styles.inputRowError : null]}>
         <AppText size="xl" weight="bold" color="textSecondary">
           Rs
         </AppText>
@@ -111,7 +115,11 @@ export function AmountInput({
       </View>
 
       <View style={styles.helperRow}>
-        {helper ? (
+        {error ? (
+          <AppText size="sm" weight="semibold" color="danger">
+            {error}
+          </AppText>
+        ) : helper ? (
           <AppText size="md" weight="semibold" color="accent">
             {helper}
           </AppText>
@@ -130,6 +138,7 @@ function FloatingAmount({
   label,
   displayValue,
   helper,
+  error,
   onChangeText,
   autoFocus,
   surface,
@@ -140,6 +149,7 @@ function FloatingAmount({
   label: string;
   displayValue: string;
   helper: string;
+  error?: string | null;
   onChangeText: (t: string) => void;
   autoFocus?: boolean;
   surface: string;
@@ -167,7 +177,14 @@ function FloatingAmount({
 
   return (
     <View style={style}>
-      <View style={[styles.fBox, { backgroundColor: surface }, focused && styles.fBoxFocused]}>
+      <View
+        style={[
+          styles.fBox,
+          { backgroundColor: surface },
+          focused && styles.fBoxFocused,
+          error ? styles.fBoxError : null,
+        ]}
+      >
         <View style={styles.fRow}>
           {showPrefix ? (
             <AppText size="md" weight="bold" color="textSecondary">
@@ -197,7 +214,11 @@ function FloatingAmount({
           </Animated.Text>
         </View>
       </View>
-      {helper ? (
+      {error ? (
+        <AppText size="xs" weight="semibold" color="danger" style={styles.fHint}>
+          {error}
+        </AppText>
+      ) : helper ? (
         <AppText size="xs" weight="semibold" color="accent" style={styles.fHint}>
           {helper}
         </AppText>
@@ -249,6 +270,12 @@ const makeStyles = (theme: Theme) =>
     },
     fBoxFocused: {
       borderColor: theme.colors.accent,
+    },
+    fBoxError: {
+      borderColor: theme.colors.danger,
+    },
+    inputRowError: {
+      borderColor: theme.colors.danger,
     },
     /* fills the box; flexbox centers the label exactly like the input line */
     fLabelWrap: {

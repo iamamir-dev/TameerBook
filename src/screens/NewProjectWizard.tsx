@@ -1,6 +1,6 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +20,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   SelectSheet,
   type IconKey,
   type SelectOption,
@@ -30,6 +31,7 @@ import {
   listAccountsWithBalance,
   listInvestorsWithCapacity,
   listPlots,
+  nowISO,
   type AccountWithBalance,
   type InvestorCapacity,
   type PlotRow,
@@ -50,6 +52,8 @@ interface DraftInvestor {
   name: string;
   /** How much they invest in THIS project — their stake / ownership basis. */
   amount: number;
+  /** Musharakah profit share % for this investor. */
+  profitPct: number;
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -78,6 +82,7 @@ export function NewProjectWizard(): React.JSX.Element {
   const { saving, run: runSave } = useSaveAction();
 
   const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState(nowISO().slice(0, 10));
   const [plots, setPlots] = useState<PlotRow[]>([]);
   const [plotId, setPlotId] = useState<string | null>(null);
 
@@ -87,10 +92,23 @@ export function NewProjectWizard(): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [addOpen, setAddOpen] = useState(false);
 
-  // Reload free plots on focus  the user may return from "New Plot".
+  // Reload free plots on focus — the user may return from "New Plot". A plot
+  // that wasn't in the previous list is the one they just created: select it
+  // automatically so the wizard continues without a re-tap.
+  const knownPlotIds = useRef<Set<string> | null>(null);
   useFocusEffect(
     useCallback(() => {
-      listPlots('OWNED').then(setPlots).catch(swallow('newProject:plots'));
+      listPlots('OWNED')
+        .then((rows) => {
+          setPlots(rows);
+          const prev = knownPlotIds.current;
+          if (prev) {
+            const fresh = rows.find((p) => !prev.has(p.id));
+            if (fresh) setPlotId(fresh.id);
+          }
+          knownPlotIds.current = new Set(rows.map((p) => p.id));
+        })
+        .catch(swallow('newProject:plots'));
       listInvestorsWithCapacity().then(setAllInvestors).catch(swallow('newProject:investors'));
       listAccountsWithBalance().then(setAccounts).catch(swallow('newProject:accounts'));
     }, [])
@@ -117,9 +135,9 @@ export function NewProjectWizard(): React.JSX.Element {
       const have = new Set(list.map((i) => i.investorId));
       const additions = inclusions
         .filter(({ investorId }) => !have.has(investorId))
-        .map(({ investorId, amount }) => {
+        .map(({ investorId, amount, profitPct }) => {
           const inv = allInvestors.find((i) => i.id === investorId);
-          return { investorId, name: inv?.name ?? '', amount };
+          return { investorId, name: inv?.name ?? '', amount, profitPct };
         });
       return [...list, ...additions];
     });
@@ -128,14 +146,14 @@ export function NewProjectWizard(): React.JSX.Element {
 
   const onCreate = async () => {
     await runSave(async () => {
-      const project = await createProject({ name: name.trim(), plotId });
+      const project = await createProject({ name: name.trim(), plotId, startDate });
 
       // Each investor's entered amount is their stake (recorded as INITIAL
-      // capital so ownership % derives from those amounts). Profit % comes from
-      // Settings; the cash was handled when the investor was added.
+      // capital so ownership % derives from those amounts); their profit share %
+      // is whatever was set in the stake sheet (defaults to the Settings %).
       await attachInvestorsToProject(
         project.id,
-        investors.map(({ investorId, amount }) => ({ investorId, amount, profitPct: defaultPct }))
+        investors.map(({ investorId, amount, profitPct }) => ({ investorId, amount, profitPct }))
       );
 
       await refreshProjects();
@@ -184,6 +202,11 @@ export function NewProjectWizard(): React.JSX.Element {
             <>
               <FloatingLabelInput label={t('projectName')} value={name} onChangeText={setName} />
 
+              <AppText size="sm" weight="semibold" color="textSecondary">
+                {t('projectStartDate')}
+              </AppText>
+              <DateField value={startDate} onChange={setStartDate} />
+
               {/* Plot picker  optional but recommended */}
               <AppText size="sm" weight="semibold" color="textSecondary">
                 {t('selectPlot')}
@@ -197,7 +220,7 @@ export function NewProjectWizard(): React.JSX.Element {
                     label={t('newPlot')}
                     icon="add"
                     variant="secondary"
-                    onPress={() => navigation.navigate('NewPlot')}
+                    onPress={() => navigation.navigate('NewPlot', { returnAfterCreate: true })}
                   />
                 </>
               ) : (
@@ -329,6 +352,7 @@ export function NewProjectWizard(): React.JSX.Element {
         visible={addOpen}
         onClose={() => setAddOpen(false)}
         existingInvestors={availableInvestors}
+        defaultProfitPct={defaultPct}
         onSubmit={confirmAddInvestors}
       />
     </View>

@@ -5,6 +5,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StageBadge } from '@/components/StageBadge';
 import { AddExpenseSheet } from '@/components/construction/AddExpenseSheet';
 import { AddWorkerSheet } from '@/components/construction/AddWorkerSheet';
 import { CategoryBars } from '@/components/construction/CategoryBars';
@@ -42,23 +43,6 @@ import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'ConstructionDetail'>;
-
-/** Expense categories that belong to the construction phase. */
-const CONSTRUCTION_CATEGORY_NAMES = new Set([
-  'Cement',
-  'Sariya',
-  'Bricks',
-  'Sand/Crush',
-  'Tiles',
-  'Wood',
-  'Paint',
-  'Electric',
-  'Sanitary',
-  'Contractor',
-  'Utilities',
-  'Misc',
-  'Labor Dehari',
-]);
 
 /**
  * Construction-phase home for a project: the true build cost (cash spend +
@@ -121,10 +105,17 @@ export function ConstructionDetailScreen(): React.JSX.Element {
     [categories, catLabel]
   );
 
-  const constructionCats = useMemo(
-    () => categories.filter((c) => c.type === 'EXPENSE' && CONSTRUCTION_CATEGORY_NAMES.has(c.name_en)),
-    [categories]
-  );
+  // Construction-relevant EXPENSE categories: the Materials + Labor headings'
+  // sub-categories plus stand-alone leaves. Home/Plot/Sale subs stay on their
+  // own pages — Groceries or Registry never belong on a construction expense.
+  const constructionCats = useMemo(() => {
+    const parents = new Set(categories.map((c) => c.parent_id).filter(Boolean) as string[]);
+    const headId = (name: string) => categories.find((c) => !c.parent_id && c.name_en === name)?.id;
+    const allowed = new Set([headId('Materials'), headId('Labor'), null]);
+    return categories.filter(
+      (c) => c.type === 'EXPENSE' && !c.is_system && !parents.has(c.id) && allowed.has(c.parent_id)
+    );
+  }, [categories]);
 
   const availableLaborers = useMemo(
     () => allLaborers.filter((l) => !workers.some((w) => w.laborer.id === l.id)),
@@ -208,6 +199,20 @@ export function ConstructionDetailScreen(): React.JSX.Element {
                   <AppText size="xs" color="textSecondary">
                     {t('dailyWage')}: {formatRupees(w.projectLaborer.daily_wage)}
                   </AppText>
+                  <View style={styles.todayPill}>
+                    {w.todayStatus ? (
+                      <StageBadge
+                        tone={w.todayStatus === 'FULL' ? 'success' : w.todayStatus === 'HALF' ? 'gold' : 'danger'}
+                        label={t(
+                          w.todayStatus === 'FULL' ? 'attFull' : w.todayStatus === 'HALF' ? 'attHalf' : 'attAbsent'
+                        )}
+                      />
+                    ) : (
+                      <AppText size="xs" weight="semibold" color="textSecondary">
+                        {t('notMarkedToday')}
+                      </AppText>
+                    )}
+                  </View>
                 </View>
                 <View style={styles.workerBalance}>
                   <AppText size="xs" color="textSecondary">
@@ -277,4 +282,5 @@ const makeStyles = (theme: Theme) =>
     workerTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     workerBalance: { alignItems: 'flex-end' },
     workerStats: { marginTop: theme.spacing.xs },
+    todayPill: { flexDirection: 'row', marginTop: theme.spacing.xs },
   });

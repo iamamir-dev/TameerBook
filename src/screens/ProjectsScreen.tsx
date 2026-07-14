@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppHeader, AppIcon, AppText, EmptyState } from '@/components/ui';
 import type { ProjectSummary } from '@/db';
+import { listStages, type StageRow } from '@/db';
 import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
@@ -26,7 +27,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export function ProjectsScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
@@ -35,6 +36,15 @@ export function ProjectsScreen(): React.JSX.Element {
   const refresh = useProjectsStore((s) => s.refresh);
 
   useFocusReload(refresh);
+
+  const [stages, setStages] = React.useState<StageRow[]>([]);
+  React.useEffect(() => {
+    listStages('PROJECT').then(setStages).catch(() => undefined);
+  }, [items]);
+  const stageName = (id: string | null) => {
+    const st = stages.find((x) => x.id === id);
+    return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
+  };
 
   const active = items.filter((i) => i.project.status !== 'COMPLETED');
   const done = items.filter((i) => i.project.status === 'COMPLETED');
@@ -52,6 +62,7 @@ export function ProjectsScreen(): React.JSX.Element {
 
       {items.length === 0 ? (
         <EmptyState
+          bottomInset={insets.bottom + FLOATING_BAR_CLEARANCE}
           icon="projects"
           title={t('noProjectsYet')}
           message={t('noProjectsDetail')}
@@ -76,6 +87,7 @@ export function ProjectsScreen(): React.JSX.Element {
             <ProjectCard
               key={item.project.id}
               summary={item}
+              stageLabel={stageName(item.project.stage_id)}
               onPress={() =>
                 navigation.navigate('ProjectDetail', { projectId: item.project.id })
               }
@@ -90,6 +102,7 @@ export function ProjectsScreen(): React.JSX.Element {
             <ProjectCard
               key={item.project.id}
               summary={item}
+              stageLabel={stageName(item.project.stage_id)}
               onPress={() =>
                 navigation.navigate('ProjectDetail', { projectId: item.project.id })
               }
@@ -103,9 +116,12 @@ export function ProjectsScreen(): React.JSX.Element {
 
 function ProjectCard({
   summary,
+  stageLabel,
   onPress,
 }: {
   summary: ProjectSummary;
+  /** User-set display status from Settings → Statuses (null = none). */
+  stageLabel: string | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -127,7 +143,7 @@ function ProjectCard({
             {project.name}
           </AppText>
           <View style={styles.badgeWrap}>
-            <StageBadge tone={tone} label={completed ? t('statusDone') : t('statusCurrent')} />
+            <StageBadge tone={tone} label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))} />
           </View>
         </View>
         <AppIcon name="forward" size={20} color="textSecondary" />

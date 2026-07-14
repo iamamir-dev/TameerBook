@@ -7,8 +7,9 @@ import React, { useCallback, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InvestorPersonSheet } from '@/components/InvestorPersonSheet';
 import { StageBadge } from '@/components/StageBadge';
-import { AmountInput, AppButton, AppCard, AppHeader, AppIcon, AppText, SelectSheet, StickyFooter, type IconKey, type SelectOption } from '@/components/ui';
+import { AmountInput, AppButton, AppCard, AppHeader, AppIcon, AppText, ContactRow, DateField, SelectSheet, StickyFooter, type IconKey, type SelectOption } from '@/components/ui';
 import {
   addInvestorPayment,
   getInvestor,
@@ -64,6 +65,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [investor, setInvestor] = useState<InvestorRow | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [ledger, setLedger] = useState<InvestorLedgerEntry[]>([]);
   const [returns, setReturns] = useState<InvestorProjectReturn[]>([]);
   const [committed, setCommitted] = useState(0);
@@ -73,6 +75,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
   // Receive-payment sheet.
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
+  const [payDate, setPayDate] = useState(todayISO().slice(0, 10));
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
@@ -115,13 +118,14 @@ export function InvestorProfileScreen(): React.JSX.Element {
 
   const openReceive = () => {
     setPayAmount(0);
+    setPayDate(todayISO().slice(0, 10));
     setPayOpen(true);
   };
 
   const onReceivePayment = async () => {
     if (payAmount <= 0 || !payAccountId || savingPay) return;
     const ok = await runSave(async () => {
-      await addInvestorPayment({ investorId, amount: payAmount, date: todayISO().slice(0, 10), accountId: payAccountId });
+      await addInvestorPayment({ investorId, amount: payAmount, date: payDate, accountId: payAccountId });
     });
     if (!ok) return;
     setPayOpen(false);
@@ -170,7 +174,15 @@ export function InvestorProfileScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={investor?.name ?? t('investors')} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={investor?.name ?? t('investors')}
+        onBack={() => navigation.goBack()}
+        rightAction={
+          investor
+            ? { icon: 'edit', onPress: () => setEditOpen(true), accessibilityLabel: t('editInvestor') }
+            : undefined
+        }
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -191,6 +203,14 @@ export function InvestorProfileScreen(): React.JSX.Element {
             </AppText>
           ) : null}
         </View>
+
+        <ContactRow phone={investor?.phone} cnic={investor?.cnic} />
+
+        {investor?.bank_info ? (
+          <AppText size="sm" color="textSecondary">
+            {`${t('bankDetails')}: ${investor.bank_info}`}
+          </AppText>
+        ) : null}
 
         {/* Project history  invested + realized profit/loss, tap to open */}
         {returns.length > 0 ? (
@@ -315,7 +335,14 @@ export function InvestorProfileScreen(): React.JSX.Element {
                 {`${t('remaining')}: ${formatRupees(remaining)}`}
               </AppText>
             ) : null}
-            <AmountInput label={t('amount')} value={payAmount} onChange={setPayAmount} floating surface={theme.colors.card} />
+            <AmountInput
+              label={t('amount')}
+              value={payAmount}
+              onChange={setPayAmount}
+              floating
+              surface={theme.colors.card}
+              error={payAmount > 0 && payAmount > remaining ? t('exceedsRemaining') : null}
+            />
             <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
               <AppIcon name={payAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
               <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
@@ -323,12 +350,13 @@ export function InvestorProfileScreen(): React.JSX.Element {
               </AppText>
               <AppIcon name="forward" size={18} color="textSecondary" />
             </Pressable>
+            <DateField value={payDate} onChange={setPayDate} maxDate={todayISO().slice(0, 10)} />
             <AppButton
               label={t('save')}
               icon="check"
               onPress={onReceivePayment}
               loading={savingPay}
-              disabled={payAmount <= 0 || !payAccountId}
+              disabled={payAmount <= 0 || !payAccountId || payAmount > remaining}
             />
           </View>
         </KeyboardAvoidingView>
@@ -342,6 +370,16 @@ export function InvestorProfileScreen(): React.JSX.Element {
         title={t('selectAccount')}
         searchable={false}
         onSelect={(o) => setPayAccountId(o.id)}
+      />
+
+      <InvestorPersonSheet
+        visible={editOpen}
+        editing={investor}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => {
+          setEditOpen(false);
+          void reload();
+        }}
       />
     </View>
   );

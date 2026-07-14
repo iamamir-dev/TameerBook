@@ -25,6 +25,8 @@ interface AccountCardProps {
   onPress?: () => void;
   /** Compact horizontal-rail variant (fixed width) vs full-width row card. */
   compact?: boolean;
+  /** Optional user-chosen chip color (hex) — overrides the type tint. */
+  color?: string | null;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AccountCard({
   typeLabel,
   onPress,
   compact,
+  color,
 }: AccountCardProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
@@ -61,7 +64,7 @@ export function AccountCard({
       ]}
     >
       <View style={styles.head}>
-        <View style={[styles.iconChip, { backgroundColor: chipBg }]}>
+        <View style={[styles.iconChip, { backgroundColor: color ?? chipBg }]}>
           <AppIcon name={TYPE_ICON[type]} size={20} color={tone} />
         </View>
         <View style={styles.flex}>

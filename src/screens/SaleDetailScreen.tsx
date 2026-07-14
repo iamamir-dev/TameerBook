@@ -5,7 +5,7 @@ import {
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -16,6 +16,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  DateField,
   LedgerTable,
   SelectSheet,
   type LedgerRow,
@@ -26,20 +27,25 @@ import {
   getProject,
   getSaleSummary,
   listAccountsWithBalance,
+  listParties,
   listProjectPhaseTransactions,
   upsertSale,
   type AccountWithBalance,
+  type PartyRow,
   type ProjectRow,
   type SaleSummary,
   type TransactionRow,
 } from '@/db';
 import { PAY_TYPE_LABEL_KEYS, PAY_TYPES, type PayType } from '@/db/schema';
+import { ONCE_PAY_TYPES } from '@/db';
 import { useAccountOptions, useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+import { swallow } from '@/utils/log';
+import { captureReceipt } from '@/utils/photo';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -66,11 +72,21 @@ export function SaleDetailScreen(): React.JSX.Element {
   // New-deal form (when no sale exists yet).
   const [dealPrice, setDealPrice] = useState(0);
   const [dealBuyer, setDealBuyer] = useState('');
+  const [buyerPartyId, setBuyerPartyId] = useState<string | null>(null);
+  const [buyers, setBuyers] = useState<PartyRow[]>([]);
+  const [buyerSheet, setBuyerSheet] = useState(false);
 
   // Receipt sheet.
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [payType, setPayType] = useState<PayType | null>(null);
   const [receiptAmount, setReceiptAmount] = useState(0);
+  const [receiptDate, setReceiptDate] = useState(todayISO().slice(0, 10));
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
+
+  const onPickReceiptPhoto = async () => {
+    const uri = await captureReceipt().catch(swallow('sale:receiptPhoto'));
+    if (uri) setReceiptUri(uri);
+  };
 
   // Expense sheet.
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -89,16 +105,18 @@ export function SaleDetailScreen(): React.JSX.Element {
   const { saving, run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
-    const [sum, proj, rows, accs] = await Promise.all([
+    const [sum, proj, rows, accs, buyerRows] = await Promise.all([
       getSaleSummary(projectId),
       getProject(projectId),
       listProjectPhaseTransactions(projectId, 'SALE'),
       listAccountsWithBalance(),
+      listParties('BUYER'),
     ]);
     setSummary(sum);
     setProject(proj);
     setTxns(rows);
     setAccounts(accs);
+    setBuyers(buyerRows);
   }, [projectId]);
 
   const { reload } = useFocusReload(load);
@@ -135,7 +153,7 @@ export function SaleDetailScreen(): React.JSX.Element {
   const onCreateDeal = async () => {
     if (dealPrice <= 0) return;
     const ok = await runSave(async () => {
-      await upsertSale(projectId, { agreedPrice: dealPrice, buyerName: dealBuyer.trim() || null });
+      await upsertSale(projectId, { agreedPrice: dealPrice, buyerName: dealBuyer.trim() || null, buyerPartyId });
     });
     if (!ok) return;
     await reload();
@@ -147,15 +165,18 @@ export function SaleDetailScreen(): React.JSX.Element {
       await addSaleReceipt({
         saleId: sale.id,
         amount: receiptAmount,
-        date: todayISO(),
+        date: receiptDate,
         accountId,
         payType,
+        receiptUri,
       });
     });
     if (!ok) return;
     setReceiptOpen(false);
     setReceiptAmount(0);
     setPayType(null);
+    setReceiptDate(todayISO().slice(0, 10));
+    setReceiptUri(null);
     await reload();
   };
 
@@ -187,7 +208,7 @@ export function SaleDetailScreen(): React.JSX.Element {
   const onSaveEdit = async () => {
     if (editPrice <= 0) return;
     const ok = await runSave(async () => {
-      await upsertSale(projectId, { agreedPrice: editPrice, buyerName: editBuyer.trim() || null });
+      await upsertSale(projectId, { agreedPrice: editPrice, buyerName: editBuyer.trim() || null, buyerPartyId });
     });
     if (!ok) return;
     setEditOpen(false);
@@ -222,7 +243,23 @@ export function SaleDetailScreen(): React.JSX.Element {
                 {t('saleDeal')}
               </AppText>
               <AmountInput label={t('agreedPrice')} value={dealPrice} onChange={setDealPrice} />
-              <FloatingLabelInput label={t('buyerName')} value={dealBuyer} onChangeText={setDealBuyer} />
+              {buyers.length > 0 ? (
+                <Pressable onPress={() => setBuyerSheet(true)} style={styles.accountChip} accessibilityRole="button">
+                  <AppIcon name="investor" size={18} color="primary" />
+                  <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={buyerPartyId ? 'textPrimary' : 'textSecondary'}>
+                    {buyerPartyId ? dealBuyer : t('selectSavedParty')}
+                  </AppText>
+                  <AppIcon name="forward" size={18} color="textSecondary" />
+                </Pressable>
+              ) : null}
+              <FloatingLabelInput
+                label={t('buyerName')}
+                value={dealBuyer}
+                onChangeText={(v) => {
+                  setDealBuyer(v);
+                  setBuyerPartyId(null);
+                }}
+              />
               <AppButton
                 label={t('save')}
                 icon="check"
@@ -255,7 +292,7 @@ export function SaleDetailScreen(): React.JSX.Element {
               <View style={styles.heroMetrics}>
                 <MetricRow label={t('buyerReceipts')} value={formatRupees(summary?.receiptsTotal ?? 0)} tone="success" />
                 <MetricRow label={t('outstanding')} value={formatRupees(summary?.outstanding ?? 0)} />
-                <MetricRow label={t('saleCosts')} value={formatRupees(summary?.costs ?? 0)} />
+                <MetricRow label={t('saleCosts')} value={formatRupees(summary?.costs ?? 0)} tone="danger" />
               </View>
             </Pressable>
 
@@ -300,9 +337,14 @@ export function SaleDetailScreen(): React.JSX.Element {
             {t('addReceipt')}
           </AppText>
 
-          {/* Pay-type chips */}
+          {/* Pay-type chips — a one-time type (Token/Bayana) already received
+              on this sale is hidden so it can't be picked twice. */}
           <View style={styles.chipRow}>
-            {PAY_TYPES.map((pt) => {
+            {PAY_TYPES.filter(
+              (pt) =>
+                !ONCE_PAY_TYPES.includes(pt) ||
+                !(summary?.receipts ?? []).some((r) => r.pay_type === pt)
+            ).map((pt) => {
               const selected = payType === pt;
               return (
                 <Pressable
@@ -326,8 +368,23 @@ export function SaleDetailScreen(): React.JSX.Element {
             onChange={setReceiptAmount}
             floating
             surface={theme.colors.card}
+            error={
+              receiptAmount > 0 && receiptAmount > (summary?.outstanding ?? 0) ? t('exceedsRemaining') : null
+            }
           />
           {accountChip}
+          <DateField value={receiptDate} onChange={setReceiptDate} maxDate={todayISO().slice(0, 10)} />
+          {receiptUri ? (
+            <Pressable onPress={() => setReceiptUri(null)} style={styles.receiptRow} accessibilityRole="button">
+              <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
+              <AppText size="sm" weight="semibold" style={styles.flex}>
+                {t('photoReceipt')}
+              </AppText>
+              <AppIcon name="close" size={20} color="danger" />
+            </Pressable>
+          ) : (
+            <AppButton label={t('photoReceipt')} icon="camera" variant="secondary" onPress={onPickReceiptPhoto} />
+          )}
           <AppButton
             label={t('save')}
             icon="check"
@@ -412,6 +469,21 @@ export function SaleDetailScreen(): React.JSX.Element {
       </Modal>
 
       <SelectSheet
+        visible={buyerSheet}
+        onClose={() => setBuyerSheet(false)}
+        options={buyers.map((p) => ({ id: p.id, label: p.name }))}
+        title={t('selectSavedParty')}
+        onSelect={(o) => {
+          const p = buyers.find((x) => x.id === o.id);
+          if (p) {
+            setBuyerPartyId(p.id);
+            setDealBuyer(p.name);
+            setEditBuyer(p.name);
+          }
+        }}
+      />
+
+      <SelectSheet
         visible={accountSheet}
         onClose={() => setAccountSheet(false)}
         options={accountOptions}
@@ -433,7 +505,7 @@ function MetricRow({
 }: {
   label: string;
   value: string;
-  tone?: 'success';
+  tone?: 'success' | 'danger';
 }): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
@@ -453,6 +525,16 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    receiptRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.radius.md,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+    },
+    receiptThumb: { width: 44, height: 44, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },
     newDeal: { gap: theme.spacing.md },
     hero: {

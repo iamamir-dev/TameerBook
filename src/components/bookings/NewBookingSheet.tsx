@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AppButton, AppIcon, AppText, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
-import { createBooking, listProjects, type ProjectRow } from '@/db';
-import { useSaveAction } from '@/hooks';
+import { createBooking, listParties, listProjects, listSubcategories, type CategoryRow, type PartyRow, type ProjectRow } from '@/db';
+import { useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -37,13 +37,19 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
   const [unit, setUnit] = useState('');
   const [rate, setRate] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const [partyId, setPartyId] = useState<string | null>(null);
+  const [parties, setParties] = useState<PartyRow[]>([]);
+  const [supplierSheet, setSupplierSheet] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [projectSheet, setProjectSheet] = useState(false);
+  const [materials, setMaterials] = useState<CategoryRow[]>([]);
+  const [itemSheet, setItemSheet] = useState(false);
 
   const { saving, run: runSave } = useSaveAction();
+  const label = useCategoryLabel();
 
-  // Fresh form every open; projects fetched here so the list is current.
+  // Fresh form every open; projects + materials fetched here so lists are current.
   useEffect(() => {
     if (!visible) return;
     setItemName('');
@@ -55,6 +61,10 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
     listProjects()
       .then((rows) => setProjects(rows.filter((p) => p.status === 'ACTIVE')))
       .catch(swallow('bookings:projects'));
+    // Materials are the sub-categories under the "Materials" heading (Settings).
+    listSubcategories('Materials').then(setMaterials).catch(swallow('bookings:materials'));
+    listParties('SUPPLIER').then(setParties).catch(swallow('bookings:parties'));
+    setPartyId(null);
   }, [visible]);
 
   const qtyNum = Number(qty) || 0;
@@ -80,6 +90,7 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
           unit: unit.trim() || null,
           projectId,
           supplierName: supplierName.trim() || null,
+          partyId,
         });
         await onSaved();
       });
@@ -98,7 +109,19 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
               {t('newBooking')}
             </AppText>
 
-            <FloatingLabelInput label={t('itemName')} value={itemName} onChangeText={setItemName} />
+            {/* Material picked from the managed list (Settings → Categories →
+                Materials). Picking one auto-fills its default unit. */}
+            {materials.length > 0 ? (
+              <Pressable onPress={() => setItemSheet(true)} style={styles.rowChip} accessibilityRole="button">
+                <AppIcon name="material" size={18} color="primary" />
+                <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={itemName ? 'textPrimary' : 'textSecondary'}>
+                  {itemName || t('itemName')}
+                </AppText>
+                <AppIcon name="forward" size={18} color="textSecondary" />
+              </Pressable>
+            ) : (
+              <FloatingLabelInput label={t('itemName')} value={itemName} onChangeText={setItemName} />
+            )}
 
             <View style={styles.row}>
               <View style={styles.flex}>
@@ -107,6 +130,21 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
               <View style={styles.flex}>
                 <FloatingLabelInput label={t('unitLabel')} value={unit} onChangeText={setUnit} />
               </View>
+            </View>
+            {/* Common construction units — one tap instead of typing. */}
+            <View style={styles.unitChips}>
+              {['bori', 'bag', 'ft', 'kg', 'truck', 'adad'].map((u) => (
+                <Pressable
+                  key={u}
+                  onPress={() => setUnit(u)}
+                  accessibilityRole="button"
+                  style={[styles.unitChip, unit === u && styles.unitChipActive]}
+                >
+                  <AppText size="xs" weight="semibold" color={unit === u ? 'onAccent' : 'textSecondary'}>
+                    {u}
+                  </AppText>
+                </Pressable>
+              ))}
             </View>
             <FloatingLabelInput label={t('rateLabel')} value={rate} onChangeText={setRate} keyboardType="number-pad" />
 
@@ -120,7 +158,23 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
               </AppText>
             </View>
 
-            <FloatingLabelInput label={t('supplier')} value={supplierName} onChangeText={setSupplierName} />
+            {parties.length > 0 ? (
+              <Pressable onPress={() => setSupplierSheet(true)} style={styles.rowChip} accessibilityRole="button">
+                <AppIcon name="investor" size={18} color="primary" />
+                <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={partyId ? 'textPrimary' : 'textSecondary'}>
+                  {partyId ? supplierName : t('selectSavedSupplier')}
+                </AppText>
+                <AppIcon name="forward" size={18} color="textSecondary" />
+              </Pressable>
+            ) : null}
+            <FloatingLabelInput
+              label={t('supplier')}
+              value={supplierName}
+              onChangeText={(v) => {
+                setSupplierName(v);
+                setPartyId(null); // typing a custom name unlinks the saved party
+              }}
+            />
 
             <Pressable onPress={() => setProjectSheet(true)} style={styles.rowChip} accessibilityRole="button">
               <AppIcon name="project" size={18} color="primary" />
@@ -150,6 +204,34 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
         searchable={false}
         onSelect={(o) => setProjectId(o.id === NO_PROJECT_ID ? null : o.id)}
       />
+
+      <SelectSheet
+        visible={supplierSheet}
+        onClose={() => setSupplierSheet(false)}
+        options={parties.map((p) => ({ id: p.id, label: p.name }))}
+        title={t('supplier')}
+        onSelect={(o) => {
+          const p = parties.find((x) => x.id === o.id);
+          if (p) {
+            setPartyId(p.id);
+            setSupplierName(p.name);
+          }
+        }}
+      />
+
+      <SelectSheet
+        visible={itemSheet}
+        onClose={() => setItemSheet(false)}
+        options={materials.map((m) => ({ id: m.id, label: label(m) }))}
+        title={t('itemName')}
+        onSelect={(o) => {
+          const m = materials.find((x) => x.id === o.id);
+          if (m) {
+            setItemName(label(m));
+            if (m.default_unit) setUnit(m.default_unit);
+          }
+        }}
+      />
     </>
   );
 }
@@ -158,6 +240,16 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
     row: { flexDirection: 'row', gap: theme.spacing.md },
+    unitChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
+    unitChip: {
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+    },
+    unitChipActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
     totalRow: {
       flexDirection: 'row',
       alignItems: 'center',

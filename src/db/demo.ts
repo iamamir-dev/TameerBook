@@ -45,6 +45,7 @@ export const TABLE_NAMES = [
   'sale_receipts',
   'material_bookings',
   'material_deliveries',
+  'stages',
 ] as const;
 
 /** Row count per table (for the DevTools dashboard). */

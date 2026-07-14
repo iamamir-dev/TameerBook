@@ -34,7 +34,7 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
   if (input.amount <= 0) throw new Error('addInvestment: amount must be positive');
   await assertProjectActive(input.projectId);
   const by = input.createdBy ?? DEFAULT_USER;
-  const catId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری');
+  const catId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری', true);
   const existingPi = await db.getFirstAsync<{ id: string }>(
     'SELECT id FROM project_investors WHERE project_id = ? AND investor_id = ? LIMIT 1',
     input.projectId,

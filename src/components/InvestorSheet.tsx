@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InvestorPersonSheet } from '@/components/InvestorPersonSheet';
@@ -23,6 +23,8 @@ export interface InvestorOption {
 export interface InvestorInclusion {
   investorId: string;
   amount: number;
+  /** Musharakah profit share % for this investor in this project. */
+  profitPct: number;
 }
 
 interface InvestorSheetProps {
@@ -30,6 +32,8 @@ interface InvestorSheetProps {
   onClose: () => void;
   existingInvestors: InvestorOption[];
   saving?: boolean;
+  /** Profit share % each newly-added investor starts on (from Settings). */
+  defaultProfitPct: number;
   /** The investors selected + how much each one puts into this project. */
   onSubmit: (inclusions: InvestorInclusion[]) => void;
 }
@@ -47,6 +51,7 @@ export function InvestorSheet({
   onClose,
   existingInvestors,
   saving = false,
+  defaultProfitPct,
   onSubmit,
 }: InvestorSheetProps): React.JSX.Element {
   const theme = useTheme();
@@ -121,7 +126,11 @@ export function InvestorSheet({
 
   const submit = () => {
     if (!canSubmit || saving) return;
-    onSubmit(chosen.map((p) => ({ investorId: p.id, amount: amounts[p.id] ?? 0 })));
+    // Profit share is one project-wide % (from Settings) applied to everyone —
+    // it's equal for all investors in a project.
+    onSubmit(
+      chosen.map((p) => ({ investorId: p.id, amount: amounts[p.id] ?? 0, profitPct: defaultProfitPct }))
+    );
   };
 
   return (
@@ -249,9 +258,12 @@ export function InvestorSheet({
         onClose={() => setPersonOpen(false)}
         onSaved={(inv) => {
           // A brand-new investor has staked nothing yet, so their whole pledge
-          // is their capacity; one saved without a pledge has none and stays
-          // hidden (V-5).
-          if (inv.committed_amount <= 0) return;
+          // is their capacity; one saved without a pledge has none and can't be
+          // added to a project — tell the user instead of silently dropping it.
+          if (inv.committed_amount <= 0) {
+            Alert.alert(t('setPledgeToAdd'));
+            return;
+          }
           const opt = { id: inv.id, name: inv.name, staked: 0, remaining: inv.committed_amount };
           setPeople((list) => (list.some((p) => p.id === inv.id) ? list : [...list, opt]));
           setSelected((prev) => new Set(prev).add(inv.id));

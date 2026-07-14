@@ -61,6 +61,7 @@ export function InvestorPersonSheet({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [cnic, setCnic] = useState('');
+  const [bankInfo, setBankInfo] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [committed, setCommitted] = useState(0);
   const [given, setGiven] = useState(0);
@@ -68,13 +69,20 @@ export function InvestorPersonSheet({
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
   const [accountSheet, setAccountSheet] = useState(false);
+  const [bankSheet, setBankSheet] = useState(false);
   const { saving, run: runSave } = useSaveAction();
+
+  const pickPhoto = async () => {
+    const uri = await captureReceipt().catch(swallow('investor:photo'));
+    if (uri) setPhotoUri(uri);
+  };
 
   useEffect(() => {
     if (!visible) return;
     setName(editing?.name ?? '');
     setPhone(editing?.phone ?? '');
     setCnic(editing?.cnic ?? '');
+    setBankInfo(editing?.bank_info ?? '');
     setPhotoUri(editing?.photo_uri ?? null);
     setCommitted(editing?.committed_amount ?? 0);
     // On edit, don't offer to re-post cash — "given" is fixed to what's recorded.
@@ -110,6 +118,7 @@ export function InvestorPersonSheet({
           name: clean,
           phone: phone || null,
           cnic: cnic || null,
+          bankInfo: bankInfo.trim() || null,
           photoUri,
           committedAmount: committed,
         });
@@ -118,6 +127,7 @@ export function InvestorPersonSheet({
           name: clean,
           phone: phone || null,
           cnic: cnic || null,
+          bank_info: bankInfo.trim() || null,
           photo_uri: photoUri,
           committed_amount: committed,
         };
@@ -126,6 +136,7 @@ export function InvestorPersonSheet({
           name: clean,
           phone: phone || null,
           cnic: cnic || null,
+          bankInfo: bankInfo.trim() || null,
           photoUri,
           committedAmount: committed,
         });
@@ -156,30 +167,50 @@ export function InvestorPersonSheet({
               {editing ? t('editInvestor') : t('addInvestor')}
             </AppText>
 
-            <View style={styles.photoRow}>
+            {/* Tap the photo itself to add/replace it — no separate button. */}
+            <Pressable
+              onPress={pickPhoto}
+              accessibilityRole="button"
+              accessibilityLabel={t('photo')}
+              style={styles.photoPicker}
+            >
               <Avatar uri={photoUri} name={name} styles={styles} />
-              <View style={styles.flex}>
-                <AppButton
-                  label={t('photo')}
-                  icon="camera"
-                  variant="secondary"
-                  onPress={async () => {
-                    const uri = await captureReceipt();
-                    if (uri) setPhotoUri(uri);
-                  }}
-                />
+              <View style={styles.cameraBadge}>
+                <AppIcon name="camera" size={16} color="onAccent" />
               </View>
-            </View>
+            </Pressable>
 
             <FloatingLabelInput label={t('personName')} value={name} onChangeText={setName} />
             <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
             <FloatingLabelInput label={t('cnic')} value={cnic} onChangeText={setCnic} />
 
+            {/* Bank = pick from the accounts already in the app (no typing). */}
+            <Pressable onPress={() => setBankSheet(true)} style={styles.accountChip} accessibilityRole="button">
+              <AppIcon name="bank" size={18} color="primary" />
+              <AppText
+                size="sm"
+                weight="semibold"
+                numberOfLines={1}
+                style={styles.flex}
+                color={bankInfo ? 'textPrimary' : 'textSecondary'}
+              >
+                {bankInfo || t('bankDetails')}
+              </AppText>
+              <AppIcon name="forward" size={18} color="textSecondary" />
+            </Pressable>
+
             {/* Money: total pledged + what's handed over now (into an account). */}
             <AmountInput label={t('committedAmount')} value={committed} onChange={setCommitted} floating surface={theme.colors.card} />
             {!editing ? (
               <>
-                <AmountInput label={t('receivedNow')} value={given} onChange={setGiven} floating surface={theme.colors.card} />
+                <AmountInput
+                  label={t('receivedNow')}
+                  value={given}
+                  onChange={setGiven}
+                  floating
+                  surface={theme.colors.card}
+                  error={given > 0 && committed > 0 && given > committed ? t('exceedsRemaining') : null}
+                />
                 {given > 0 ? (
                   <>
                     <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
@@ -211,6 +242,18 @@ export function InvestorPersonSheet({
         title={t('selectAccount')}
         searchable={false}
         onSelect={(o) => setAccountId(o.id)}
+      />
+
+      <SelectSheet
+        visible={bankSheet}
+        onClose={() => setBankSheet(false)}
+        options={accountOptions}
+        title={t('bankDetails')}
+        searchable={false}
+        onSelect={(o) => {
+          const acc = accounts.find((a) => a.id === o.id);
+          if (acc) setBankInfo(acc.name);
+        }}
       />
     </Modal>
   );
@@ -264,6 +307,20 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
     },
     photoRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+    photoPicker: { alignSelf: 'flex-start' },
+    cameraBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: theme.colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: theme.colors.card,
+    },
     avatar: { width: AV, height: AV, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     avatarFallback: {
       width: AV,

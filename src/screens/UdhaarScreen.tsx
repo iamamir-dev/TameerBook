@@ -32,8 +32,10 @@ import {
   getUdhaarTotals,
   giveUdhaar,
   listAccountsWithBalance,
+  listParties,
   listUdhaar,
   type AccountWithBalance,
+  type PartyRow,
   type UdhaarDirection,
   type UdhaarTotals,
   type UdhaarWithBalance,
@@ -68,10 +70,14 @@ export function UdhaarScreen(): React.JSX.Element {
   // New-udhaar sheet state
   const [newOpen, setNewOpen] = useState(false);
   const [personName, setPersonName] = useState('');
+  const [partyId, setPartyId] = useState<string | null>(null);
+  const [parties, setParties] = useState<PartyRow[]>([]);
+  const [partySheet, setPartySheet] = useState(false);
   const [direction, setDirection] = useState<UdhaarDirection>('GIVEN');
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
+  const [note, setNote] = useState('');
   const [accountSheet, setAccountSheet] = useState(false);
 
   const load = useCallback(async () => {
@@ -112,6 +118,9 @@ export function UdhaarScreen(): React.JSX.Element {
     setDirection('GIVEN');
     setAmount(0);
     setDate(todayISO().slice(0, 10));
+    setNote('');
+    setPartyId(null);
+    listParties().then(setParties).catch(swallow('udhaar:parties'));
     setNewOpen(true);
   };
 
@@ -127,13 +136,19 @@ export function UdhaarScreen(): React.JSX.Element {
     const ok = await runSave(async () => {
       let created: string | null = null;
       try {
-        const u = await createUdhaar({ personName: personName.trim(), direction });
+        const u = await createUdhaar({
+          personName: personName.trim(),
+          partyId,
+          direction,
+          note: note.trim() || null,
+        });
         created = u.id;
         await giveUdhaar({
           udhaarId: u.id,
           amount,
           date,
           accountId,
+          note: note.trim() || null,
         });
       } catch (e) {
         // Don't leave an empty udhaar behind when the first give is blocked.
@@ -230,7 +245,23 @@ export function UdhaarScreen(): React.JSX.Element {
               {t('newUdhaar')}
             </AppText>
 
-            <FloatingLabelInput label={t('personName')} value={personName} onChangeText={setPersonName} />
+            {parties.length > 0 ? (
+              <Pressable onPress={() => setPartySheet(true)} style={styles.rowChipParty} accessibilityRole="button">
+                <AppIcon name="investor" size={18} color="primary" />
+                <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={partyId ? 'textPrimary' : 'textSecondary'}>
+                  {partyId ? personName : t('selectSavedParty')}
+                </AppText>
+                <AppIcon name="forward" size={18} color="textSecondary" />
+              </Pressable>
+            ) : null}
+            <FloatingLabelInput
+              label={t('personName')}
+              value={personName}
+              onChangeText={(v) => {
+                setPersonName(v);
+                setPartyId(null);
+              }}
+            />
 
             {/* Direction  did we lend or borrow? */}
             <View style={styles.dirRow}>
@@ -252,7 +283,17 @@ export function UdhaarScreen(): React.JSX.Element {
               })}
             </View>
 
-            <AmountInput floating surface={theme.colors.card} value={amount} onChange={setAmount} />
+            <AmountInput
+              floating
+              surface={theme.colors.card}
+              value={amount}
+              onChange={setAmount}
+              error={
+                direction === 'GIVEN' && amount > 0 && !!selectedAccount && amount > selectedAccount.balance
+                  ? t('insufficientFunds')
+                  : null
+              }
+            />
 
             {/* Account the money moves through */}
             <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
@@ -271,10 +312,26 @@ export function UdhaarScreen(): React.JSX.Element {
 
             <DateField value={date} onChange={setDate} />
 
+            <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
+
             <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SelectSheet
+        visible={partySheet}
+        onClose={() => setPartySheet(false)}
+        options={parties.map((p) => ({ id: p.id, label: p.name }))}
+        title={t('selectSavedParty')}
+        onSelect={(o) => {
+          const p = parties.find((x) => x.id === o.id);
+          if (p) {
+            setPartyId(p.id);
+            setPersonName(p.name);
+          }
+        }}
+      />
 
       <SelectSheet
         visible={accountSheet}
@@ -293,6 +350,17 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    rowChipParty: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
+    },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     totalsRow: { flexDirection: 'row', gap: theme.spacing.md },
     totalCard: { flex: 1, gap: theme.spacing.xs },

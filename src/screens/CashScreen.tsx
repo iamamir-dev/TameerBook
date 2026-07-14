@@ -10,6 +10,7 @@ import {
   AppHeader,
   AppIcon,
   AppText,
+  HubShortcuts,
   LedgerTable,
   type LedgerRow,
 } from '@/components/ui';
@@ -145,6 +146,8 @@ export function CashScreen(): React.JSX.Element {
         title={assetsMode ? t('totalAssets') : t('cashFlowTitle')}
         onBack={() => navigation.goBack()}
       />
+
+      <HubShortcuts current="Cash" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[

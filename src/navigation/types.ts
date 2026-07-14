@@ -35,10 +35,13 @@ export type RootStackParamList = {
   Transfer: { fromAccountId?: string } | undefined;
   // Reports hub (reached from Settings)
   Reports: undefined;
+  Categories: undefined;
+  Statuses: undefined;
   Allocation: undefined;
   // Plots
   /** `forProjectId` set → the created plot is auto-included in that project. */
-  NewPlot: { forProjectId?: string } | undefined;
+  NewPlot: { forProjectId?: string; returnAfterCreate?: boolean } | undefined;
+  EditPlot: { plotId: string };
   PlotDetail: { plotId: string };
   // Projects
   NewProject: undefined;

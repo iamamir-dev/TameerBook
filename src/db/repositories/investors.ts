@@ -28,6 +28,8 @@ export interface NewInvestor {
 }
 
 export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
+  const name = input.name.trim();
+  if (!name) throw new Error('addInvestor: name is required');
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
@@ -37,7 +39,7 @@ export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
     requireCompanyId(),
-    input.name,
+    name,
     input.cnic ?? null,
     input.phone ?? null,
     input.photoUri ?? null,
@@ -126,7 +128,7 @@ export async function addInvestorPayment(input: InvestorPaymentInput): Promise<v
     throw new LimitExceededError(remaining, input.amount);
   }
 
-  const categoryId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری');
+  const categoryId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری', true);
   const txn = await addTransaction({
     direction: 'IN',
     amount: input.amount,
@@ -148,6 +150,7 @@ export interface UpdateInvestor {
   phone?: string | null;
   cnic?: string | null;
   photoUri?: string | null;
+  bankInfo?: string | null;
   committedAmount?: number;
   givenAmount?: number;
 }
@@ -158,11 +161,12 @@ export async function updateInvestor(id: string, patch: UpdateInvestor): Promise
   const inv = await getInvestor(id);
   if (!inv) throw new Error(`updateInvestor: investor ${id} not found`);
   await db.runAsync(
-    'UPDATE investors SET name = ?, phone = ?, cnic = ?, photo_uri = ?, committed_amount = ?, given_amount = ? WHERE id = ?',
+    'UPDATE investors SET name = ?, phone = ?, cnic = ?, photo_uri = ?, bank_info = ?, committed_amount = ?, given_amount = ? WHERE id = ?',
     patch.name?.trim() || inv.name,
     patch.phone !== undefined ? patch.phone : inv.phone,
     patch.cnic !== undefined ? patch.cnic : inv.cnic,
     patch.photoUri !== undefined ? patch.photoUri : inv.photo_uri,
+    patch.bankInfo !== undefined ? patch.bankInfo : inv.bank_info,
     patch.committedAmount !== undefined ? Math.max(0, patch.committedAmount) : inv.committed_amount,
     patch.givenAmount !== undefined ? Math.max(0, patch.givenAmount) : inv.given_amount,
     id
@@ -375,8 +379,22 @@ export async function getProjectInvestor(
   );
 }
 
+/** Thrown when a profit share % is set outside the 0–100 range (V-22). */
+export class ProfitPctRangeError extends Error {
+  constructor() {
+    super('PROFIT_PCT_RANGE');
+    this.name = 'ProfitPctRangeError';
+  }
+}
+export function isProfitPctRange(e: unknown): e is ProfitPctRangeError {
+  return e instanceof Error && e.message === 'PROFIT_PCT_RANGE';
+}
+
 /** Update a participation's profit share % (the one editable Musharakah field). */
 export async function setProjectInvestorProfitPct(id: string, profitPct: number): Promise<void> {
+  if (!Number.isFinite(profitPct) || profitPct < 0 || profitPct > 100) {
+    throw new ProfitPctRangeError();
+  }
   const db = await getDatabase();
   await db.runAsync('UPDATE project_investors SET profit_pct = ? WHERE id = ?', profitPct, id);
 }

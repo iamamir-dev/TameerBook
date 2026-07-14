@@ -4,10 +4,18 @@ import { Alert } from 'react-native';
 import {
   isAttendanceConflict,
   isDuplicateAccount,
+  isCategoryInUse,
   isInsufficientFunds,
+  isInvestorAlreadyExited,
   isLimitExceeded,
+  isOneTimePayment,
   isPlotUnavailable,
+  isProfitPctRange,
+  isStageInUse,
   isProjectClosed,
+  isWageNotSet,
+  isWorkerInactive,
+  PAY_TYPE_LABEL_KEYS,
 } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useDataVersion } from '@/stores/useDataVersion';
@@ -50,6 +58,14 @@ export function useSaveAction(): SaveAction {
           Alert.alert(t('attendanceConflict'), e.conflictingProjectName || undefined);
         else if (isProjectClosed(e)) Alert.alert(t('projectClosedNote'));
         else if (isPlotUnavailable(e)) Alert.alert(t('plotTaken'));
+        else if (isOneTimePayment(e))
+          Alert.alert(t('payTypeOnce'), `${t(PAY_TYPE_LABEL_KEYS[e.payType])}`);
+        else if (isWageNotSet(e)) Alert.alert(t('setWageFirst'));
+        else if (isWorkerInactive(e)) Alert.alert(t('workerInactive'));
+        else if (isInvestorAlreadyExited(e)) Alert.alert(t('investorAlreadyExited'));
+        else if (isProfitPctRange(e)) Alert.alert(t('profitPctRange'));
+        else if (isCategoryInUse(e)) Alert.alert(t('categoryInUse'));
+        else if (isStageInUse(e)) Alert.alert(t('stageInUse'));
         else {
           reportError('screen:save', e);
           Alert.alert(t('errorTitle'), t('errorBody'));

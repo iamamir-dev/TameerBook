@@ -150,7 +150,12 @@ export function TransferScreen(): React.JSX.Element {
           </Pressable>
 
           {/* Amount */}
-          <AmountInput value={amount} onChange={setAmount} autoFocus />
+          <AmountInput
+            value={amount}
+            onChange={setAmount}
+            autoFocus
+            error={amount > 0 && !!fromAccount && amount > fromAccount.balance ? t('insufficientFunds') : null}
+          />
 
           {/* Note (optional) */}
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />

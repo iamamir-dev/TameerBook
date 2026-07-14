@@ -25,7 +25,8 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
-  const { booking, qtyReceived, paid, payRemaining } = summary;
+  const { booking, qtyReceived, paid, payRemaining, projectName } = summary;
+  const subtitle = [booking.supplier_name, projectName].filter(Boolean).join(' · ');
   const closed = booking.status === 'CLOSED';
   const tone: ColorKey = closed ? 'success' : 'accent';
   const percent = booking.qty > 0 ? (qtyReceived / booking.qty) * 100 : 0;
@@ -41,9 +42,9 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
           <AppText size="md" weight="bold" numberOfLines={1}>
             {booking.item_name}
           </AppText>
-          {booking.supplier_name ? (
+          {subtitle ? (
             <AppText size="xs" color="textSecondary" numberOfLines={1}>
-              {booking.supplier_name}
+              {subtitle}
             </AppText>
           ) : null}
         </View>

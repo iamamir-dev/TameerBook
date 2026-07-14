@@ -174,6 +174,10 @@ export function SettingsScreen(): React.JSX.Element {
       <AppHeader title={t('settings')} onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* "Go to…" — navigation entries, separated from preferences below. */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('goToSection')}
+        </AppText>
         <AppCard compact>
           {/* Company  the active workspace; switch or create another */}
           <SettingRow
@@ -204,6 +208,28 @@ export function SettingsScreen(): React.JSX.Element {
 
           <Divider />
 
+          {/* Categories & materials manager */}
+          <SettingRow
+            icon="ledger"
+            label={t('manageCategories')}
+            onPress={() => navigation.navigate('Categories')}
+          />
+
+          <Divider />
+
+          {/* Display statuses for projects & plots */}
+          <SettingRow
+            icon="tag"
+            label={t('statusesTitle')}
+            onPress={() => navigation.navigate('Statuses')}
+          />
+        </AppCard>
+
+        {/* Preferences — language, theme, type, version. */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('preferencesSection')}
+        </AppText>
+        <AppCard compact>
           {/* Language  opens the big-row picker sheet */}
           <SettingRow
             icon="language"
@@ -227,7 +253,7 @@ export function SettingsScreen(): React.JSX.Element {
 
           {/* Font family  re-themes every screen instantly */}
           <SettingRow
-            icon="language"
+            icon="font"
             label={t('fontFamilyLabel')}
             value={FONT_OPTIONS[fontFamily].label}
             onPress={() => setFontSheetOpen(true)}
@@ -237,7 +263,7 @@ export function SettingsScreen(): React.JSX.Element {
 
           {/* Text size  scales every size token app-wide */}
           <SettingRow
-            icon="language"
+            icon="textSize"
             label={t('fontSizeLabel')}
             value={t(FONT_SIZE_LABEL[fontScale])}
             onPress={() => setSizeSheetOpen(true)}

@@ -16,8 +16,11 @@ import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AmountInput, AppButton, AppIcon, AppText, type IconKey } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
+import type { Language } from '@/i18n/types';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { ColorPalette, Theme } from '@/theme/theme';
+import { reloadApp, syncLayoutDirection } from '@/utils/rtl';
 
 type Phase = 'guide' | 'setup';
 
@@ -48,6 +51,17 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
   const theme = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
+
+  // Switch language during onboarding so an Urdu-first user isn't stuck in
+  // English. Flipping to/from Urdu changes layout direction (RTL), which needs
+  // a reload to apply — the reload just drops back into onboarding, translated.
+  const onPickLanguage = (lang: Language) => {
+    if (lang === language) return;
+    setLanguage(lang);
+    if (syncLayoutDirection(lang)) void reloadApp();
+  };
   const styles = makeStyles(theme);
   const { width } = useWindowDimensions();
 
@@ -202,6 +216,25 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {/* Persistent Skip (hidden on the last slide, where the CTA takes over) */}
       <View style={styles.topBar}>
+        {/* Language toggle so an Urdu-first user can read onboarding in Urdu. */}
+        <View style={styles.langToggle}>
+          {(['en', 'ur'] as Language[]).map((lang) => {
+            const active = language === lang;
+            return (
+              <Pressable
+                key={lang}
+                onPress={() => onPickLanguage(lang)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={[styles.langChip, active && styles.langChipActive]}
+              >
+                <AppText size="xs" weight="bold" color={active ? 'onAccent' : 'textSecondary'}>
+                  {lang === 'en' ? 'English' : 'اردو'}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
         {page < lastPage ? (
           <Pressable
             onPress={() => setPhase('setup')}
@@ -309,7 +342,7 @@ const makeStyles = (theme: Theme) =>
     topBar: {
       height: theme.touch.minTarget,
       flexDirection: 'row',
-      justifyContent: 'flex-end',
+      justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: theme.spacing.lg,
     },
@@ -318,6 +351,19 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.md,
       justifyContent: 'center',
     },
+    langToggle: {
+      flexDirection: 'row',
+      gap: theme.spacing.xs,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.pill,
+      padding: 3,
+    },
+    langChip: {
+      paddingVertical: 6,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.pill,
+    },
+    langChipActive: { backgroundColor: theme.colors.accent },
 
     /* guide carousel */
     slide: {
