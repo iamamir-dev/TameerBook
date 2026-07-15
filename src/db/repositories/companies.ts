@@ -61,6 +61,8 @@ export interface NewCompany {
   phone?: string | null;
   /** Opening cash the company starts with (seeds the default Cash account). */
   openingCash?: number;
+  /** Company logo image (file uri). */
+  logoUri?: string | null;
   createdBy?: string;
 }
 
@@ -78,14 +80,15 @@ export async function createCompany(input: NewCompany): Promise<CompanyRow> {
   const by = input.createdBy ?? DEFAULT_USER;
 
   await db.runAsync(
-    `INSERT INTO companies (id, created_at, created_by, name, owner_name, phone)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO companies (id, created_at, created_by, name, owner_name, phone, logo_uri)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     id,
     createdAt,
     by,
     name,
     input.ownerName?.trim() || null,
-    input.phone?.trim() || null
+    input.phone?.trim() || null,
+    input.logoUri ?? null
   );
 
   // Every company starts with a Cash-in-Hand account so entries always have
@@ -117,16 +120,17 @@ export async function listCompanies(): Promise<CompanyRow[]> {
 
 export async function updateCompany(
   id: string,
-  patch: { name?: string; ownerName?: string | null; phone?: string | null }
+  patch: { name?: string; ownerName?: string | null; phone?: string | null; logoUri?: string | null }
 ): Promise<void> {
   const db = await getDatabase();
   const c = await getCompany(id);
   if (!c) throw new Error(`updateCompany: company ${id} not found`);
   await db.runAsync(
-    'UPDATE companies SET name = ?, owner_name = ?, phone = ? WHERE id = ?',
+    'UPDATE companies SET name = ?, owner_name = ?, phone = ?, logo_uri = ? WHERE id = ?',
     patch.name?.trim() || c.name,
     patch.ownerName !== undefined ? patch.ownerName : c.owner_name,
     patch.phone !== undefined ? patch.phone : c.phone,
+    patch.logoUri !== undefined ? patch.logoUri : c.logo_uri,
     id
   );
 }

@@ -63,6 +63,7 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
+import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
 import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -291,7 +292,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
         title={project.name}
         onBack={() => navigation.goBack()}
         rightAction={{
-          icon: 'ledger',
+          icon: 'history',
           onPress: () => navigation.navigate('Transactions', { projectId }),
           accessibilityLabel: t('transactions'),
         }}
@@ -312,20 +313,22 @@ export function ProjectDetailScreen(): React.JSX.Element {
         ) : null}
 
         {/* Total cost hero with the color-coded phase columns */}
-        <Pressable
-          onPress={() => !completed && setStageSheet(true)}
-          accessibilityRole="button"
-          style={styles.stagePill}
-        >
-          <AppIcon name="tag" size={14} color="accent" />
-          <AppText size="xs" weight="bold" color="accent">
-            {stages.find((st) => st.id === project?.stage_id)
-              ? (language === 'ur'
-                  ? stages.find((st) => st.id === project?.stage_id)!.name_ur
-                  : stages.find((st) => st.id === project?.stage_id)!.name_en)
-              : t('setStatusLabel')}
-          </AppText>
-        </Pressable>
+        {(() => {
+          const st = stages.find((x) => x.id === project?.stage_id) ?? null;
+          const tone: ColorKey = st ? stageTone(st) : 'accent';
+          return (
+            <Pressable
+              onPress={() => !completed && setStageSheet(true)}
+              accessibilityRole="button"
+              style={[styles.stagePill, { backgroundColor: softToneColor(theme, tone) }]}
+            >
+              <AppIcon name="tag" size={14} color={tone} />
+              <AppText size="xs" weight="bold" color={tone}>
+                {st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel')}
+              </AppText>
+            </Pressable>
+          );
+        })()}
 
         <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} />
 
@@ -455,7 +458,11 @@ export function ProjectDetailScreen(): React.JSX.Element {
         selectedId={project?.stage_id ?? '__none__'}
         options={[
           { id: '__none__', label: t('noStatus') },
-          ...stages.map((st) => ({ id: st.id, label: language === 'ur' ? st.name_ur : st.name_en })),
+          ...stages.map((st) => ({
+            id: st.id,
+            label: language === 'ur' ? st.name_ur : st.name_en,
+            dotColor: theme.colors[stageTone(st)],
+          })),
         ]}
         onSelect={(o) => {
           setStageSheet(false);

@@ -10,6 +10,7 @@ import { AddExpenseSheet } from '@/components/construction/AddExpenseSheet';
 import { AddWorkerSheet } from '@/components/construction/AddWorkerSheet';
 import { CategoryBars } from '@/components/construction/CategoryBars';
 import { WorkerSheet } from '@/components/construction/WorkerSheet';
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AppButton,
   AppCard,
@@ -59,6 +60,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<ConstructionSummary | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
@@ -133,6 +135,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         amount: txn.amount,
         direction: txn.direction === 'IN' ? 'in' : 'out',
         typeLabel: catNameById(txn.category_id) || undefined,
+        onPress: () => setTxnDetail(txn),
       })),
     [txns, catNameById, t]
   );
@@ -162,7 +165,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         <CategoryBars byCategory={summary?.byCategory ?? []} laborAccrued={summary?.laborAccrued ?? 0} />
 
         {!completed ? (
-          <AppButton label={t('addExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
+          <AppButton label={t('addConstructionExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
         ) : null}
 
         {/* Labor on THIS project only. The worker's full khata (all projects
@@ -191,42 +194,66 @@ export function ConstructionDetailScreen(): React.JSX.Element {
             // On a completed project the card is informational only — the
             // pay/attendance sheet never opens.
             <AppCard key={w.projectLaborer.id} compact onPress={completed ? undefined : () => setWorker(w)}>
+              {/* Header — name + wage on the left, today's status on the right. */}
               <View style={styles.workerTop}>
                 <View style={styles.flex}>
                   <AppText size="md" weight="bold" numberOfLines={1}>
                     {w.laborer.name}
                   </AppText>
                   <AppText size="xs" color="textSecondary">
-                    {t('dailyWage')}: {formatRupees(w.projectLaborer.daily_wage)}
+                    {`${t('dailyWage')}: ${formatRupees(w.projectLaborer.daily_wage)} · ${w.balance.daysFull + w.balance.daysHalf} ${t('daysLabel')}`}
                   </AppText>
-                  <View style={styles.todayPill}>
-                    {w.todayStatus ? (
-                      <StageBadge
-                        tone={w.todayStatus === 'FULL' ? 'success' : w.todayStatus === 'HALF' ? 'gold' : 'danger'}
-                        label={t(
-                          w.todayStatus === 'FULL' ? 'attFull' : w.todayStatus === 'HALF' ? 'attHalf' : 'attAbsent'
-                        )}
-                      />
-                    ) : (
-                      <AppText size="xs" weight="semibold" color="textSecondary">
-                        {t('notMarkedToday')}
-                      </AppText>
-                    )}
-                  </View>
                 </View>
-                <View style={styles.workerBalance}>
-                  <AppText size="xs" color="textSecondary">
-                    {t('wageBalance')}
+                {w.todayStatus ? (
+                  <StageBadge
+                    tone={w.todayStatus === 'FULL' ? 'success' : w.todayStatus === 'HALF' ? 'gold' : 'danger'}
+                    label={t(
+                      w.todayStatus === 'FULL' ? 'attFull' : w.todayStatus === 'HALF' ? 'attHalf' : 'attAbsent'
+                    )}
+                  />
+                ) : (
+                  <AppText size="xs" weight="semibold" color="textSecondary">
+                    {t('notMarkedToday')}
                   </AppText>
-                  <AppText size="md" weight="bold" color={w.balance.balance > 0 ? 'danger' : 'success'} tabular>
+                )}
+              </View>
+
+              {/* One stretched math line — earned | taken | balance. */}
+              <View style={styles.workerColumns}>
+                <View style={styles.workerCol}>
+                  <AppText size="sm" weight="semibold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(w.balance.accrued)}
+                  </AppText>
+                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                    {t('earnedLabel')}
+                  </AppText>
+                </View>
+                <View style={styles.workerColDivider} />
+                <View style={styles.workerCol}>
+                  <AppText size="sm" weight="semibold" color="danger" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(w.balance.paid)}
+                  </AppText>
+                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                    {t('takenLabel')}
+                  </AppText>
+                </View>
+                <View style={styles.workerColDivider} />
+                <View style={styles.workerCol}>
+                  <AppText
+                    size="sm"
+                    weight="bold"
+                    color={w.balance.balance > 0 ? 'danger' : 'success'}
+                    tabular
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
                     {formatRupees(w.balance.balance)}
+                  </AppText>
+                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                    {t('wageBalance')}
                   </AppText>
                 </View>
               </View>
-              <AppText size="xs" color="textSecondary" style={styles.workerStats}>
-                {t('earnedLabel')} {formatRupees(w.balance.accrued)} · {t('takenLabel')}{' '}
-                {formatRupees(w.balance.paid)} · {w.balance.daysFull + w.balance.daysHalf} {t('daysLabel')}
-              </AppText>
             </AppCard>
           ))
         )}
@@ -259,6 +286,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         availableLaborers={availableLaborers}
         onSaved={reload}
       />
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }
@@ -279,6 +307,16 @@ const makeStyles = (theme: Theme) =>
     },
     emptyText: { paddingVertical: theme.spacing.md },
     /* worker cards */
+    workerColumns: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      marginTop: theme.spacing.sm,
+      borderTopWidth: 0.5,
+      borderTopColor: theme.colors.border,
+      paddingTop: theme.spacing.sm,
+    },
+    workerCol: { flex: 1, alignItems: 'center', gap: 2 },
+    workerColDivider: { width: 0.5, backgroundColor: theme.colors.border, marginVertical: 2 },
     workerTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     workerBalance: { alignItems: 'flex-end' },
     workerStats: { marginTop: theme.spacing.xs },

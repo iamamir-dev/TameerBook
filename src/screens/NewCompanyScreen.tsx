@@ -1,13 +1,15 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AmountInput, AppButton, AppHeader, AppText, StickyFooter } from '@/components/ui';
+import { AmountInput, AppButton, AppHeader, AppIcon, AppText, StickyFooter } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
+import { swallow } from '@/utils/log';
+import { captureReceipt } from '@/utils/photo';
 import type { RootStackParamList } from '@/navigation/types';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useTheme } from '@/theme';
@@ -28,6 +30,12 @@ export function NewCompanyScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [name, setName] = useState('');
+  const [logoUri, setLogoUri] = useState<string | null>(null);
+
+  const pickLogo = async () => {
+    const uri = await captureReceipt().catch(swallow('newCompany:logo'));
+    if (uri) setLogoUri(uri);
+  };
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
   const [openingCash, setOpeningCash] = useState(0);
@@ -38,6 +46,7 @@ export function NewCompanyScreen(): React.JSX.Element {
     setSaving(true);
     try {
       const company = await createCompany({
+        logoUri,
         name,
         ownerName: ownerName.trim() || null,
         phone: phone.trim() || null,
@@ -64,6 +73,20 @@ export function NewCompanyScreen(): React.JSX.Element {
           <AppText size="sm" color="textSecondary">
             {t('companySetupBody')}
           </AppText>
+          {/* Company logo — tap to add/replace (optional). */}
+          <Pressable onPress={pickLogo} accessibilityRole="button" accessibilityLabel={t('photo')} style={stylesLogo.picker}>
+            {logoUri ? (
+              <Image source={{ uri: logoUri }} style={stylesLogo.logo} />
+            ) : (
+              <View style={stylesLogo.fallback}>
+                <AppIcon name="projects" size={26} color="primary" />
+              </View>
+            )}
+            <View style={stylesLogo.badge}>
+              <AppIcon name="camera" size={14} color="onAccent" />
+            </View>
+          </Pressable>
+
           <FloatingLabelInput label={t('companyName')} value={name} onChangeText={setName} />
           <FloatingLabelInput label={t('ownerName')} value={ownerName} onChangeText={setOwnerName} />
           <FloatingLabelInput
@@ -102,3 +125,28 @@ const makeStyles = (theme: Theme) =>
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
   });
+
+/** Shared look for the tappable company-logo picker (both create forms). */
+const stylesLogo = StyleSheet.create({
+  picker: { alignSelf: 'center' },
+  logo: { width: 72, height: 72, borderRadius: 20 },
+  fallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: 'rgba(127,127,127,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2E7D32',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

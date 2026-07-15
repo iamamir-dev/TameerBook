@@ -62,6 +62,8 @@ export interface StageRow {
   name_en: string;
   name_ur: string;
   sort_order: number;
+  /** Theme tone key ('primary' | 'accent' | 'gold' | 'success' | 'danger'); null = auto by position. */
+  color: string | null;
 }
 
 /** Seeded once (and after a wipe); the user manages the rest in Settings. */
@@ -171,6 +173,8 @@ export interface CompanyRow extends Base {
   name: string;
   owner_name: string | null;
   phone: string | null;
+  /** Company logo image (file uri); null = letter avatar. */
+  logo_uri: string | null;
 }
 
 /** A place money lives. Balance is DERIVED: opening + Σ(IN) − Σ(OUT). */
@@ -997,6 +1001,16 @@ ALTER TABLE projects ADD COLUMN stage_id TEXT;
 ALTER TABLE plots ADD COLUMN stage_id TEXT;
 `;
 
+/** v20 — user-pickable color per display status. */
+export const SCHEMA_V20_STAGE_COLORS = `
+ALTER TABLE stages ADD COLUMN color TEXT;
+`;
+
+/** v21 — company logo. */
+export const SCHEMA_V21_COMPANY_LOGO = `
+ALTER TABLE companies ADD COLUMN logo_uri TEXT;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1011,6 +1025,8 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 17, sql: SCHEMA_V17_HOME_EXPENSE_SUBS },
   { version: 18, sql: SCHEMA_V18_CATEGORY_HEADINGS },
   { version: 19, sql: SCHEMA_V19_STAGES },
+  { version: 20, sql: SCHEMA_V20_STAGE_COLORS },
+  { version: 21, sql: SCHEMA_V21_COMPANY_LOGO },
 ];
 
 /* -------------------------------------------------------------------------- */

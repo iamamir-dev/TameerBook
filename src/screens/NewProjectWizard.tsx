@@ -119,7 +119,8 @@ export function NewProjectWizard(): React.JSX.Element {
   const goBack = () => (step === 0 ? navigation.goBack() : setStep((s) => s - 1));
   const goNext = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
 
-  const canProceed = step !== 0 || name.trim().length > 0;
+  // A project is always built ON a plot — step 0 needs name AND a plot.
+  const canProceed = step !== 0 || (name.trim().length > 0 && !!plotId);
 
   // Investors not yet staged (so the sheet doesn't offer duplicates).
   const stagedIds = new Set(investors.map((i) => i.investorId));

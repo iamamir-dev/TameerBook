@@ -23,6 +23,8 @@ export { ContactRow } from './ContactRow';
 export { SortableList } from './SortableList';
 export { HubShortcuts } from './HubShortcuts';
 export { SearchBar } from './SearchBar';
+export { ActionsDrawer, AddActionButton, type DrawerAction } from './ActionsDrawer';
+export { AddPhotoTile } from './AddPhotoTile';
 export { AppHeader } from './AppHeader';
 export { StickyFooter } from './StickyFooter';
 export { SelectSheet, type SelectOption } from './SelectSheet';

@@ -15,6 +15,7 @@ import {
   Calendar,
   Camera,
   ChartColumn,
+  History,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -75,6 +76,7 @@ export const ICONS = {
   balance: Wallet,
   bank: Landmark,
   rupee: IndianRupee,
+  history: History, // past entries / transactions
   receipt: Receipt,
   ledger: ReceiptText,
   plot: LandPlot,

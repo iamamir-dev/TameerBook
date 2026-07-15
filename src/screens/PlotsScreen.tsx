@@ -14,7 +14,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { formatRupees } from '@/utils/money';
-import { softToneColor, type ColorKey } from '@/utils/tones';
+import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -96,6 +96,10 @@ export function PlotsScreen(): React.JSX.Element {
                 const st = stages.find((x) => x.id === item.plot.stage_id);
                 return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
               })()}
+              stageBadgeTone={(() => {
+                const st = stages.find((x) => x.id === item.plot.stage_id);
+                return st ? stageTone(st) : null;
+              })()}
               onPress={() => navigation.navigate('PlotDetail', { plotId: item.plot.id })}
             />
           ))}
@@ -109,17 +113,20 @@ export function PlotsScreen(): React.JSX.Element {
 function PlotCard({
   summary,
   stageLabel,
+  stageBadgeTone,
   onPress,
 }: {
   summary: PlotSummary;
   /** User-set display status (Settings → Statuses); null = none. */
   stageLabel: string | null;
+  /** The status's own color; null = default lifecycle tone. */
+  stageBadgeTone: ColorKey | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
-  const { plot, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
+  const { plot, projectName, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
   const tone = STATUS_TONE[plot.status];
   const subtitle = [plot.society, plot.block, plot.plot_no].filter(Boolean).join(' · ');
   const sizeText = plot.size_value
@@ -142,7 +149,13 @@ function PlotCard({
             </AppText>
           ) : null}
           <View style={styles.badgeWrap}>
-            <StageBadge tone={tone} label={stageLabel ?? t(STATUS_LABEL[plot.status])} />
+            <StageBadge
+              tone={stageLabel && stageBadgeTone ? stageBadgeTone : tone}
+              label={
+                stageLabel ??
+                (plot.status === 'IN_PROJECT' && projectName ? projectName : t(STATUS_LABEL[plot.status]))
+              }
+            />
             {sizeText ? (
               <View style={styles.sizePill}>
                 <AppIcon name="plot" size={12} color="gold" />

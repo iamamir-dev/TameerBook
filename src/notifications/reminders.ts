@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { getDatabase, getUdhaarTotals, listTransferDeadlines } from '@/db';
+import { getActiveCompanyId, getDatabase, getUdhaarTotals, listTransferDeadlines } from '@/db';
 import { t } from '@/i18n';
 import type { ReminderPrefs } from '@/stores/useSettingsStore';
 
@@ -45,6 +45,9 @@ async function ensurePermission(): Promise<boolean> {
  * task (unavailable in Expo Go), so it's a plain daily nudge.
  */
 export async function rescheduleReminders(prefs: ReminderPrefs): Promise<void> {
+  // Fresh install: no company yet → nothing to remind about, and the
+  // company-scoped queries below would throw NO_ACTIVE_COMPANY.
+  if (!getActiveCompanyId()) return;
   initNotificationHandler();
   const granted = await ensurePermission();
   await Notifications.cancelAllScheduledNotificationsAsync();

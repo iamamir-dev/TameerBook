@@ -6,17 +6,18 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AppButton,
   AppCard,
   AppHeader,
-  AppListRow,
   AppText,
+  LedgerTable,
   SelectSheet,
-  type EntryDirection,
+  type LedgerRow,
   type SelectOption,
 } from '@/components/ui';
 import {
@@ -24,8 +25,11 @@ import {
   type CategoryRow,
   listAccounts,
   listCategories,
+  listAllCompanyTransactions,
   listDocumentsForType,
+  listProjects,
   listTransactions,
+  type ProjectRow,
   type TransactionRow,
   voidTransaction,
 } from '@/db';
@@ -40,20 +44,37 @@ import { formatPakistaniGrouping } from '@/utils/money';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type TxnRoute = RouteProp<RootStackParamList, 'Transactions'>;
 
-type Filter = 'all' | 'in' | 'out' | 'month' | 'category';
-const FILTERS: { key: Filter; labelKey: TranslationKey }[] = [
-  { key: 'all', labelKey: 'filterAll' },
-  { key: 'in', labelKey: 'filterIn' },
-  { key: 'out', labelKey: 'filterOut' },
-  { key: 'month', labelKey: 'thisMonth' },
-  { key: 'category', labelKey: 'category' },
-];
+/** One combinable filter chip — active shows its value, tap again clears. */
+function FilterChip({
+  label,
+  active,
+  onPress,
+  styles,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[styles.chip, active && styles.chipActive]}
+    >
+      <AppText size="sm" weight="bold" color={active ? 'onPrimary' : 'textSecondary'} numberOfLines={1}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
 
 export function TransactionsScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t, language } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const { projectId } = useRoute<TxnRoute>().params;
+  const params = useRoute<TxnRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const { saving, run: runSave } = useSaveAction();
@@ -61,26 +82,37 @@ export function TransactionsScreen(): React.JSX.Element {
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [receipts, setReceipts] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<Filter>('all');
+  // Independent filter dimensions (each combinable, each clearable).
+  const [direction, setDirection] = useState<'all' | 'in' | 'out'>('all');
+  const [monthOnly, setMonthOnly] = useState(false);
   const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
+  // Context filters arrive pre-applied from the caller (account page, project
+  // page…) — shown as active chips the user can clear like any other filter.
+  const [filterAccountId, setFilterAccountId] = useState<string | null>(params?.accountId ?? null);
+  const [filterProjectId, setFilterProjectId] = useState<string | null>(params?.projectId ?? null);
   const [catSheet, setCatSheet] = useState(false);
+  const [accSheet, setAccSheet] = useState(false);
+  const [projSheet, setProjSheet] = useState(false);
   const [selected, setSelected] = useState<TransactionRow | null>(null);
 
   const load = useCallback(async () => {
-    const [rows, cats, accts, docs] = await Promise.all([
-      listTransactions(projectId),
+    const [rows, cats, accts, projs, docs] = await Promise.all([
+      listAllCompanyTransactions(),
       listCategories(),
       listAccounts(),
+      listProjects(),
       listDocumentsForType('transaction'),
     ]);
     setTxns(rows);
     setCategories(cats);
     setAccounts(accts);
+    setProjects(projs);
     const map: Record<string, string> = {};
     for (const d of docs) map[d.entity_id] = d.file_uri;
     setReceipts(map);
-  }, [projectId]);
+  }, []);
 
   useFocusReload(load);
 
@@ -102,20 +134,46 @@ export function TransactionsScreen(): React.JSX.Element {
   );
 
   const ym = todayISO().slice(0, 7);
-  const filtered = useMemo(() => {
-    switch (filter) {
-      case 'in':
-        return txns.filter((x) => x.direction === 'IN');
-      case 'out':
-        return txns.filter((x) => x.direction === 'OUT');
-      case 'month':
-        return txns.filter((x) => x.date.startsWith(ym));
-      case 'category':
-        return filterCategoryId ? txns.filter((x) => x.category_id === filterCategoryId) : txns;
-      default:
-        return txns;
+  // ALL active dimensions apply together (repo rows are already date DESC).
+  const filtered = useMemo(
+    () =>
+      txns.filter(
+        (x) =>
+          (direction === 'all' || x.direction === (direction === 'in' ? 'IN' : 'OUT')) &&
+          (!monthOnly || x.date.startsWith(ym)) &&
+          (!filterCategoryId || x.category_id === filterCategoryId) &&
+          (!filterAccountId || x.account_id === filterAccountId) &&
+          (!filterProjectId || x.project_id === filterProjectId)
+      ),
+    [txns, direction, monthOnly, filterCategoryId, filterAccountId, filterProjectId, ym]
+  );
+
+  // Group by day, newest first — "Today", "Yesterday", then dates.
+  const grouped = useMemo(() => {
+    const groups: { date: string; rows: TransactionRow[] }[] = [];
+    for (const txn of filtered) {
+      const day = txn.date.slice(0, 10);
+      const last = groups[groups.length - 1];
+      if (last && last.date === day) last.rows.push(txn);
+      else groups.push({ date: day, rows: [txn] });
     }
-  }, [txns, filter, filterCategoryId, ym]);
+    return groups;
+  }, [filtered]);
+
+  const dayLabel = useCallback(
+    (day: string) => {
+      const today = todayISO().slice(0, 10);
+      if (day === today) return t('today');
+      if (day === dayjs(today).subtract(1, 'day').format('YYYY-MM-DD')) return t('yesterday');
+      return dayjs(day).format('DD MMM YYYY');
+    },
+    [t]
+  );
+
+  const projectName = useCallback(
+    (id: string | null) => (id ? projects.find((p) => p.id === id)?.name ?? '' : ''),
+    [projects]
+  );
 
   const catOptions: SelectOption[] = useMemo(
     () =>
@@ -162,32 +220,53 @@ export function TransactionsScreen(): React.JSX.Element {
     <View style={styles.screen}>
       <AppHeader title={t('transactions')} onBack={() => navigation.goBack()} />
 
-      {/* Filter chips */}
+      {/* Filter chips — each dimension is independent and combinable. An
+          active picker chip shows its value; tap again to clear it. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.filterBar}
         contentContainerStyle={styles.filters}
       >
-        {FILTERS.map((f) => {
-          const active = filter === f.key;
-          const label =
-            f.key === 'category' && filterCategoryId ? catName(filterCategoryId) : t(f.labelKey);
-          return (
+        <View style={styles.segment}>
+          {(['all', 'in', 'out'] as const).map((d) => (
             <Pressable
-              key={f.key}
-              onPress={() => (f.key === 'category' ? setCatSheet(true) : setFilter(f.key))}
-              hitSlop={theme.touch.hitSlop}
+              key={d}
+              onPress={() => setDirection(d)}
               accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[styles.chip, active && styles.chipActive]}
+              accessibilityState={{ selected: direction === d }}
+              style={[styles.segBtn, direction === d && styles.segBtnActive]}
             >
-              <AppText size="sm" weight="bold" color={active ? 'onPrimary' : 'textSecondary'}>
-                {label}
+              <AppText size="sm" weight="bold" color={direction === d ? 'onPrimary' : 'textSecondary'}>
+                {t(d === 'all' ? 'filterAll' : d === 'in' ? 'filterIn' : 'filterOut')}
               </AppText>
             </Pressable>
-          );
-        })}
+          ))}
+        </View>
+        <FilterChip
+          label={t('thisMonth')}
+          active={monthOnly}
+          onPress={() => setMonthOnly((v) => !v)}
+          styles={styles}
+        />
+        <FilterChip
+          label={filterAccountId ? accountName(filterAccountId) : t('selectAccount')}
+          active={!!filterAccountId}
+          onPress={() => (filterAccountId ? setFilterAccountId(null) : setAccSheet(true))}
+          styles={styles}
+        />
+        <FilterChip
+          label={filterProjectId ? projectName(filterProjectId) : t('selectProject')}
+          active={!!filterProjectId}
+          onPress={() => (filterProjectId ? setFilterProjectId(null) : setProjSheet(true))}
+          styles={styles}
+        />
+        <FilterChip
+          label={filterCategoryId ? catName(filterCategoryId) : t('category')}
+          active={!!filterCategoryId}
+          onPress={() => (filterCategoryId ? setFilterCategoryId(null) : setCatSheet(true))}
+          styles={styles}
+        />
       </ScrollView>
 
       <ScrollView
@@ -195,31 +274,39 @@ export function TransactionsScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
-        <AppCard compact>
-          {filtered.map((txn, i) => {
-            const cat = catName(txn.category_id);
-            const dir: EntryDirection = txn.direction === 'IN' ? 'in' : 'out';
-            return (
-              <View key={txn.id}>
-                {i > 0 ? <View style={styles.divider} /> : null}
-                <AppListRow
-                  title={cat || (txn.direction === 'IN' ? t('aamdani') : t('kharcha'))}
-                  subtitle={`${txn.description ? `${txn.description} · ` : ''}${dayjs(txn.date).format('DD MMM')}`}
-                  icon={txn.direction === 'IN' ? 'aamdani' : 'kharcha'}
-                  amount={`Rs ${formatPakistaniGrouping(txn.amount)}`}
-                  direction={dir}
-                  thumbnail={receipts[txn.id] ? { uri: receipts[txn.id] } : undefined}
-                  onPress={() => setSelected(txn)}
-                />
-              </View>
-            );
-          })}
-          {filtered.length === 0 ? (
+        {grouped.map((g) => {
+          // Same notebook ledger the Home feed uses — simple and familiar.
+          const rows: LedgerRow[] = g.rows.map((txn) => ({
+            id: txn.id,
+            title:
+              txn.description ||
+              catName(txn.category_id) ||
+              txn.counterparty_name ||
+              (txn.direction === 'IN' ? t('aamdani') : t('kharcha')),
+            date: txn.date,
+            amount: txn.amount,
+            direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
+            typeLabel: catName(txn.category_id) || undefined,
+            onPress: () => setSelected(txn),
+          }));
+          return (
+            <View key={g.date} style={styles.daySection}>
+              <AppText size="xs" weight="bold" color="textSecondary" uppercase style={styles.dayHeader}>
+                {dayLabel(g.date)}
+              </AppText>
+              <AppCard compact>
+                <LedgerTable rows={rows} />
+              </AppCard>
+            </View>
+          );
+        })}
+        {filtered.length === 0 ? (
+          <AppCard compact>
             <AppText size="sm" color="textSecondary" center style={styles.emptyText}>
               {t('emptyLedger')}
             </AppText>
-          ) : null}
-        </AppCard>
+          </AppCard>
+        ) : null}
       </ScrollView>
 
       {/* Category filter sheet */}
@@ -229,40 +316,34 @@ export function TransactionsScreen(): React.JSX.Element {
         options={catOptions}
         selectedId={filterCategoryId ?? undefined}
         title={t('category')}
-        onSelect={(o) => {
-          setFilterCategoryId(o.id);
-          setFilter('category');
-        }}
+        onSelect={(o) => setFilterCategoryId(o.id)}
       />
 
-      {/* Transaction detail + fix sheet */}
-      <Modal
-        visible={selected !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelected(null)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setSelected(null)} />
-        {selected ? (
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-            <View style={styles.grabber} />
-            <AppText size="xxl" weight="bold" tabular color={selected.direction === 'IN' ? 'success' : 'danger'}>
-              {selected.direction === 'IN' ? '+ ' : '− '}
-              {`Rs ${formatPakistaniGrouping(selected.amount)}`}
-            </AppText>
-            <AppText size="md" weight="semibold">
-              {catName(selected.category_id) || (selected.direction === 'IN' ? t('aamdani') : t('kharcha'))}
-            </AppText>
-            {selected.description ? (
-              <AppText size="sm" color="textSecondary">
-                {selected.description}
-              </AppText>
-            ) : null}
-            <AppText size="sm" color="textSecondary">
-              {dayjs(selected.date).format('DD MMM YYYY')}
-              {accountName(selected.account_id) ? ` · ${accountName(selected.account_id)}` : ''}
-            </AppText>
+      <SelectSheet
+        visible={accSheet}
+        onClose={() => setAccSheet(false)}
+        options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+        selectedId={filterAccountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setFilterAccountId(o.id)}
+      />
 
+      <SelectSheet
+        visible={projSheet}
+        onClose={() => setProjSheet(false)}
+        options={projects.map((p) => ({ id: p.id, label: p.name }))}
+        selectedId={filterProjectId ?? undefined}
+        title={t('selectProject')}
+        onSelect={(o) => setFilterProjectId(o.id)}
+      />
+
+      {/* Shared transaction detail sheet + the fix-mistake action */}
+      <TransactionDetailSheet
+        txn={selected}
+        onClose={() => setSelected(null)}
+        footer={
+          <>
             <View style={styles.fixExplain}>
               <AppText size="xs" color="textSecondary">
                 {t('fixMistakeExplain')}
@@ -276,9 +357,9 @@ export function TransactionsScreen(): React.JSX.Element {
                 <AppButton label={t('fixMistake')} icon="tools" variant="danger" loading={saving} onPress={onFix} />
               </View>
             </View>
-          </View>
-        ) : null}
-      </Modal>
+          </>
+        }
+      />
     </View>
   );
 }
@@ -304,9 +385,32 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
     },
     chipActive: { backgroundColor: theme.colors.primary },
+    segment: {
+      flexDirection: 'row',
+      padding: 3,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.card,
+    },
+    segBtn: {
+      paddingHorizontal: theme.spacing.md,
+      minHeight: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: theme.radius.pill,
+    },
+    segBtnActive: { backgroundColor: theme.colors.primary },
     content: { paddingHorizontal: theme.spacing.lg },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginLeft: 56 },
     emptyText: { paddingVertical: theme.spacing.xl },
+    daySection: { marginBottom: theme.spacing.md, gap: theme.spacing.xs },
+    dayHeader: { marginLeft: theme.spacing.xs },
+    receiptImage: {
+      width: '100%',
+      height: 200,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.track,
+      marginTop: theme.spacing.sm,
+    },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {
       position: 'absolute',

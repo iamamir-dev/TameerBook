@@ -7,8 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddDeliverySheet } from '@/components/bookings/AddDeliverySheet';
 import { PayBookingSheet } from '@/components/bookings/PayBookingSheet';
 import { StageBadge } from '@/components/StageBadge';
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
-  AppButton,
+  ActionsDrawer,
   AppCard,
   AppHeader,
   AppText,
@@ -51,11 +52,13 @@ export function BookingDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<BookingSummary | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [deliveries, setDeliveries] = useState<MaterialDeliveryRow[]>([]);
   const [payments, setPayments] = useState<TransactionRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
 
   const [deliverySheet, setDeliverySheet] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [paySheet, setPaySheet] = useState(false);
 
   const load = useCallback(async () => {
@@ -82,6 +85,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         amount: txn.amount,
         direction: 'out' as const,
         typeLabel: t('payBookingLabel'),
+        onPress: () => setTxnDetail(txn),
       })),
     [payments, t]
   );
@@ -104,7 +108,15 @@ export function BookingDetailScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={booking.item_name} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={booking.item_name}
+        onBack={() => navigation.goBack()}
+        rightAction={
+          showDelivery || showPay
+            ? { icon: 'add', onPress: () => setActionsOpen(true), accessibilityLabel: t('addDelivery') }
+            : undefined
+        }
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -146,26 +158,6 @@ export function BookingDetailScreen(): React.JSX.Element {
           </View>
         </AppCard>
 
-        {/* The two actions that move the balances */}
-        {showDelivery || showPay ? (
-          <View style={styles.actionsRow}>
-            {showDelivery ? (
-              <View style={styles.flex}>
-                <AppButton label={t('addDelivery')} icon="material" onPress={() => setDeliverySheet(true)} />
-              </View>
-            ) : null}
-            {showPay ? (
-              <View style={styles.flex}>
-                <AppButton
-                  label={t('payBookingLabel')}
-                  icon="moneyOut"
-                  variant={showDelivery ? 'secondary' : 'primary'}
-                  onPress={() => setPaySheet(true)}
-                />
-              </View>
-            ) : null}
-          </View>
-        ) : null}
 
         {/* Deliveries: material in */}
         {deliveries.length > 0 ? (
@@ -201,6 +193,20 @@ export function BookingDetailScreen(): React.JSX.Element {
         ) : null}
       </ScrollView>
 
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={booking.item_name}
+        actions={[
+          ...(showDelivery
+            ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => setDeliverySheet(true) }]
+            : []),
+          ...(showPay
+            ? [{ icon: 'moneyOut' as const, label: t('payBookingLabel'), onPress: () => setPaySheet(true) }]
+            : []),
+        ]}
+      />
+
       <AddDeliverySheet
         visible={deliverySheet}
         onClose={() => setDeliverySheet(false)}
@@ -219,6 +225,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         accounts={accounts}
         onSaved={reload}
       />
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }

@@ -16,6 +16,8 @@ import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AmountInput, AppButton, AppIcon, AppText, type IconKey } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
+import { swallow } from '@/utils/log';
+import { captureReceipt } from '@/utils/photo';
 import type { Language } from '@/i18n/types';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
@@ -72,6 +74,12 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
   /* --------------------------- setup form state -------------------------- */
   const [companyName, setCompanyName] = useState('');
   const [ownerName, setOwnerName] = useState('');
+  const [logoUri, setLogoUri] = useState<string | null>(null);
+
+  const pickLogo = async () => {
+    const uri = await captureReceipt().catch(swallow('onboarding:logo'));
+    if (uri) setLogoUri(uri);
+  };
   const [phone, setPhone] = useState('');
   const [openingCash, setOpeningCash] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -81,6 +89,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
     { icon: 'balance', tone: 'accent', toneSoft: 'accentSoft', title: t('obCashTitle'), body: t('obCashBody') },
     { icon: 'plot', tone: 'gold', toneSoft: 'goldSoft', title: t('obPlotsTitle'), body: t('obPlotsBody') },
     { icon: 'projects', tone: 'primary', toneSoft: 'primarySoft', title: t('obProjectsTitle'), body: t('obProjectsBody') },
+    { icon: 'dehari', tone: 'accent', toneSoft: 'accentSoft', title: t('obLaborTitle'), body: t('obLaborBody') },
+    { icon: 'investors', tone: 'gold', toneSoft: 'goldSoft', title: t('obInvestorsTitle'), body: t('obInvestorsBody') },
     { icon: 'reports', tone: 'success', toneSoft: 'successSoft', title: t('obReportsTitle'), body: t('obReportsBody') },
   ];
   const lastPage = slides.length - 1;
@@ -104,6 +114,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
     setSaving(true);
     try {
       await createCompany({
+        logoUri,
         name,
         ownerName: ownerName.trim() || null,
         phone: phone.trim() || null,
@@ -163,6 +174,21 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
                   {t('companySetupBody')}
                 </AppText>
               </View>
+
+
+              {/* Company logo — tap to add/replace (optional). */}
+              <Pressable onPress={pickLogo} accessibilityRole="button" accessibilityLabel={t('photo')} style={stylesLogo.picker}>
+                {logoUri ? (
+                  <Image source={{ uri: logoUri }} style={stylesLogo.logo} />
+                ) : (
+                  <View style={stylesLogo.fallback}>
+                    <AppIcon name="projects" size={26} color="primary" />
+                  </View>
+                )}
+                <View style={stylesLogo.badge}>
+                  <AppIcon name="camera" size={14} color="onAccent" />
+                </View>
+              </Pressable>
 
               {/* Required */}
               <FloatingLabelInput
@@ -475,3 +501,28 @@ const makeStyles = (theme: Theme) =>
       marginTop: theme.spacing.md,
     },
   });
+
+/** Shared look for the tappable company-logo picker (both create forms). */
+const stylesLogo = StyleSheet.create({
+  picker: { alignSelf: 'center' },
+  logo: { width: 72, height: 72, borderRadius: 20 },
+  fallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: 'rgba(127,127,127,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2E7D32',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

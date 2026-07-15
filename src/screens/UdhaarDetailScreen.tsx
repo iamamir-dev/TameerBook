@@ -12,7 +12,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
+  ActionsDrawer,
+  AddActionButton,
   AmountInput,
   AppButton,
   AppCard,
@@ -62,10 +65,12 @@ export function UdhaarDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [udhaar, setUdhaar] = useState<UdhaarWithBalance | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
 
   // Give/return sheet state
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [move, setMove] = useState<MoveKind | null>(null);
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -111,6 +116,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
     amount: txn.amount,
     direction: txn.direction === 'IN' ? 'in' : 'out',
     typeLabel: t(txn.direction === giveTxnDirection ? 'givenLabel' : 'returnedLabel'),
+    onPress: () => setTxnDetail(txn),
   }));
 
   const openMove = (kind: MoveKind) => {
@@ -176,30 +182,30 @@ export function UdhaarDetailScreen(): React.JSX.Element {
           </AppText>
         </AppCard>
 
-        {/* Actions */}
-        <View style={styles.actionsRow}>
-          <View style={styles.flex}>
-            <AppButton label={t('giveUdhaar')} icon="moneyOut" onPress={() => openMove('give')} />
-          </View>
-          <View style={styles.flex}>
-            <AppButton
-              label={t('returnUdhaar')}
-              icon="moneyIn"
-              variant="secondary"
-              disabled={balance <= 0}
-              onPress={() => openMove('return')}
-            />
-          </View>
+        {/* Ledger — the "+" opens the actions drawer. */}
+        <View style={[styles.headerRow, styles.sectionTitle]}>
+          <AppText size="lg" weight="bold" style={styles.flex}>
+            {t('transactions')}
+          </AppText>
+          <AddActionButton onPress={() => setActionsOpen(true)} accessibilityLabel={t('giveUdhaar')} />
         </View>
-
-        {/* Ledger */}
-        <AppText size="lg" weight="bold" style={styles.sectionTitle}>
-          {t('transactions')}
-        </AppText>
         <AppCard compact>
           <LedgerTable rows={ledgerRows} emptyText={t('noUdhaar')} />
         </AppCard>
       </ScrollView>
+
+      {/* Actions drawer */}
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={udhaar?.person_name ?? ''}
+        actions={[
+          { icon: 'moneyOut', label: t('giveUdhaar'), onPress: () => openMove('give') },
+          ...(balance > 0
+            ? [{ icon: 'moneyIn' as const, label: t('returnUdhaar'), onPress: () => openMove('return') }]
+            : []),
+        ]}
+      />
 
       {/* Give / return sheet */}
       <Modal visible={move !== null} transparent animationType="fade" onRequestClose={() => setMove(null)}>
@@ -266,6 +272,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
         searchable={false}
         onSelect={(o) => setAccountId(o.id)}
       />
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }
@@ -274,6 +281,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: { gap: theme.spacing.xs },
     actionsRow: { flexDirection: 'row', gap: theme.spacing.md },

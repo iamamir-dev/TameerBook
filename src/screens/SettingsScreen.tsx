@@ -184,7 +184,7 @@ export function SettingsScreen(): React.JSX.Element {
             icon="projects"
             label={t('companyTitle')}
             value={activeCompany?.name ?? ''}
-            onPress={() => setCompanySheetOpen(true)}
+            onPress={() => navigation.navigate('CompanyDetail')}
           />
 
           <Divider />

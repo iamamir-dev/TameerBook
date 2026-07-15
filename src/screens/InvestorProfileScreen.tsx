@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InvestorPersonSheet } from '@/components/InvestorPersonSheet';
 import { StageBadge } from '@/components/StageBadge';
-import { AmountInput, AppButton, AppCard, AppHeader, AppIcon, AppText, ContactRow, DateField, SelectSheet, StickyFooter, type IconKey, type SelectOption } from '@/components/ui';
+import { ActionsDrawer, AddActionButton, AmountInput, AppButton, AppCard, AppHeader, AppIcon, AppText, ContactRow, DateField, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
 import {
   addInvestorPayment,
   getInvestor,
@@ -74,6 +74,8 @@ export function InvestorProfileScreen(): React.JSX.Element {
 
   // Receive-payment sheet.
   const [payOpen, setPayOpen] = useState(false);
+  // Bottom drawer with the money actions (replaces the old stacked footer).
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
   const [payDate, setPayDate] = useState(todayISO().slice(0, 10));
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
@@ -259,10 +261,13 @@ export function InvestorProfileScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Capital timeline */}
-        <AppText size="lg" weight="bold">
-          {t('capitalTimeline')}
-        </AppText>
+        {/* Capital timeline — the "+" opens the actions drawer. */}
+        <View style={styles.sectionHeader}>
+          <AppText size="lg" weight="bold">
+            {t('capitalTimeline')}
+          </AppText>
+          <AddActionButton onPress={() => setActionsOpen(true)} accessibilityLabel={t('receivePayment')} />
+        </View>
         <AppCard compact>
           {ledger.map((e, i) => {
             const positive = POSITIVE.has(e.entry_type);
@@ -300,26 +305,30 @@ export function InvestorProfileScreen(): React.JSX.Element {
         </AppCard>
       </ScrollView>
 
-      {/* Primary actions  pinned to the bottom, always in reach */}
-      <StickyFooter>
-        <AppButton label={t('receivePayment')} icon="add" onPress={openReceive} />
-        <AppButton
-          label={t('addInvestment')}
-          icon="add"
-          variant="secondary"
-          onPress={() => navigation.navigate('Investment', { investorId })}
-        />
-        <View style={styles.actions}>
-          <View style={styles.flex}>
-            <AppButton label={t('statement')} icon="statement" variant="secondary" onPress={onShareStatement} loading={sharing} />
-          </View>
-          {canExit ? (
-            <View style={styles.flex}>
-              <AppButton label={t('exitTitle')} icon="forward" variant="secondary" onPress={() => navigation.navigate('ExitWizard', { investorId })} />
-            </View>
-          ) : null}
-        </View>
-      </StickyFooter>
+      {/* Actions drawer — receive / invest / statement / exit in one sheet. */}
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={investor?.name ?? ''}
+        actions={[
+          { icon: 'moneyIn', label: t('receivePayment'), onPress: openReceive },
+          {
+            icon: 'investor',
+            label: t('addInvestment'),
+            onPress: () => navigation.navigate('Investment', { investorId }),
+          },
+          { icon: 'statement', label: t('statement'), loading: sharing, onPress: onShareStatement },
+          ...(canExit
+            ? [
+              {
+                icon: 'forward' as const,
+                label: t('exitTitle'),
+                onPress: () => navigation.navigate('ExitWizard', { investorId }),
+              },
+            ]
+            : []),
+        ]}
+      />
 
       {/* Receive-payment sheet */}
       <Modal visible={payOpen} transparent animationType="slide" onRequestClose={() => setPayOpen(false)}>
@@ -391,6 +400,37 @@ const makeStyles = (theme: Theme) =>
     flex: { flex: 1 },
     scroll: { flex: 1 },
     actions: { flexDirection: 'row', gap: theme.spacing.md },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    addFab: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...theme.shadows.card,
+    },
+    pressedDim: { opacity: 0.7 },
+    actionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.sm,
+      borderRadius: theme.radius.md,
+    },
+    actionIconChip: {
+      width: 40,
+      height: 40,
+      borderRadius: theme.radius.chip,
+      backgroundColor: theme.colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: {
       backgroundColor: theme.colors.heroBg,

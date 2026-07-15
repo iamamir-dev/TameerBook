@@ -122,9 +122,11 @@ export function InvestorsScreen(): React.JSX.Element {
             .map((inv) => (
             <AppCard
               key={inv.id}
+              style={styles.card}
               onPress={() => navigation.navigate('InvestorProfile', { investorId: inv.id })}
               onLongPress={() => setMenuFor(inv)}
             >
+              {/* Header — avatar, name + phone, chevron (same shape as plots). */}
               <View style={styles.row}>
                 <Avatar uri={inv.photo_uri} name={inv.name} styles={styles} />
                 <View style={styles.info}>
@@ -133,18 +135,40 @@ export function InvestorsScreen(): React.JSX.Element {
                   </AppText>
                   {inv.phone ? <PhoneChip phone={inv.phone} compact /> : null}
                 </View>
-                <View style={styles.capBox}>
-                  <AppText size="xs" color="textSecondary">
+                <AppIcon name="forward" size={20} color="textSecondary" />
+              </View>
+
+              {/* Notebook math — pledge / paid-in / remaining, like the plot card. */}
+              <View style={styles.mathBlock}>
+                <View style={styles.mathRow}>
+                  <AppText size="sm" color="textSecondary">
+                    {t('committedAmount')}
+                  </AppText>
+                  <AppText size="sm" weight="semibold" tabular>
+                    {formatRupees(inv.committed_amount)}
+                  </AppText>
+                </View>
+                <View style={styles.mathRow}>
+                  <AppText size="sm" color="textSecondary">
                     {t('paidInCapital')}
                   </AppText>
-                  <AppText size="md" weight="bold" color="gold" tabular>
+                  <AppText size="sm" weight="semibold" color="success" tabular>
                     {formatRupees(inv.received)}
                   </AppText>
-                  {inv.committed_amount > inv.received ? (
-                    <AppText size="xs" color="textSecondary" tabular>
-                      {`${t('committedAmount')} ${formatRupees(inv.committed_amount)}`}
-                    </AppText>
-                  ) : null}
+                </View>
+                <View style={styles.mathDivider} />
+                <View style={styles.mathRow}>
+                  <AppText size="sm" weight="bold">
+                    {t('remaining')}
+                  </AppText>
+                  <AppText
+                    size="md"
+                    weight="bold"
+                    color={inv.committed_amount - inv.received > 0 ? 'gold' : 'success'}
+                    tabular
+                  >
+                    {formatRupees(Math.max(0, inv.committed_amount - inv.received))}
+                  </AppText>
                 </View>
               </View>
             </AppCard>
@@ -230,6 +254,19 @@ const makeStyles = (theme: Theme) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     info: { flex: 1, gap: 2 },
     capBox: { alignItems: 'flex-end' },
+    card: { gap: theme.spacing.md },
+    mathBlock: { gap: theme.spacing.xs },
+    mathRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: theme.spacing.md,
+    },
+    mathDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      marginVertical: theme.spacing.xs,
+    },
     avatar: { width: AV, height: AV, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     avatarFallback: {
       width: AV,

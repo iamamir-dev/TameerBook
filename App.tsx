@@ -123,7 +123,13 @@ function ThemedApp(): React.JSX.Element {
         }
       })
       .then(() => useCompanyStore.getState().hydrate())
-      .then(() => rescheduleReminders(useSettingsStore.getState().reminders))
+      // Reminders are a NON-critical subsystem: skip without a company (fresh
+      // install boots straight to onboarding) and never fail the boot for them.
+      .then(() =>
+        useCompanyStore.getState().activeCompanyId
+          ? rescheduleReminders(useSettingsStore.getState().reminders).catch(swallow('App:reminders'))
+          : undefined
+      )
       // A boot failure used to be swallowed, leaving the splash up forever.
       // Now it's logged and the user gets a retry screen instead.
       .catch((e) => {
@@ -176,8 +182,13 @@ function ThemedApp(): React.JSX.Element {
       ) : needsOnboarding ? (
         <OnboardingScreen
           onDone={() => {
-            // createCompany already activated it  just re-hydrate the store.
-            useCompanyStore.getState().hydrate().catch(swallow('App:onboarding-hydrate'));
+            // createCompany already activated it — re-hydrate, then schedule
+            // the reminders boot skipped while no company existed.
+            void useCompanyStore
+              .getState()
+              .hydrate()
+              .then(() => rescheduleReminders(useSettingsStore.getState().reminders))
+              .catch(swallow('App:onboarding-hydrate'));
           }}
         />
       ) : (

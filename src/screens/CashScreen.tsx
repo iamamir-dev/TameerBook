@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AccountCard,
   AppCard,
@@ -77,6 +78,7 @@ export function CashScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [total, setTotal] = useState(0);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [assets, setAssets] = useState<CompanyAssets | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
@@ -138,6 +140,7 @@ export function CashScreen(): React.JSX.Element {
     amount: txn.amount,
     direction: txn.direction === 'IN' ? 'in' : 'out',
     typeLabel: catName(txn.category_id) || undefined,
+    onPress: () => setTxnDetail(txn),
   }));
 
   return (
@@ -291,7 +294,7 @@ export function CashScreen(): React.JSX.Element {
         ) : null}
 
         {/* Full recent activity */}
-        <SectionHeader title={t('recentActivity')} />
+        <SectionHeader title={t('recentActivity')} action={t('seeAll')} onAction={() => navigation.navigate('Transactions')} />
         <AppCard compact>
           <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
         </AppCard>
@@ -310,6 +313,7 @@ export function CashScreen(): React.JSX.Element {
       >
         <AppIcon name="add" size={26} color="onAccent" strokeWidth={2.4} />
       </Pressable>
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }

@@ -16,7 +16,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { SellPlotSheet, type SellPlotSheetMode } from '@/components/plot/SellPlotSheet';
 import { StageBadge } from '@/components/StageBadge';
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
+  ActionsDrawer,
+  AddPhotoTile,
+  AddActionButton,
   AmountInput,
   AppButton,
   AppCard,
@@ -67,7 +71,7 @@ import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt, pickDocumentImage } from '@/utils/photo';
-import type { ColorKey } from '@/utils/tones';
+import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PlotRoute = RouteProp<RootStackParamList, 'PlotDetail'>;
@@ -86,6 +90,7 @@ export function PlotDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<PlotSummary | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [linkedProject, setLinkedProject] = useState<ProjectRow | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -114,6 +119,8 @@ export function PlotDetailScreen(): React.JSX.Element {
 
   // Standalone plot sale (set price / receive buyer money)
   const [sellSheet, setSellSheet] = useState<SellPlotSheetMode | null>(null);
+  // All money actions live in one bottom drawer (opened from the ledger "+").
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   // Pickers
   const [accountSheetFor, setAccountSheetFor] = useState<'pay' | 'exp' | null>(null);
@@ -195,6 +202,7 @@ export function PlotDetailScreen(): React.JSX.Element {
           amount: txn.amount,
           direction: 'out' as const,
           typeLabel: payLabel ?? (cat ? catName(cat) : undefined),
+          onPress: () => setTxnDetail(txn),
         };
       }),
     [txns, catById, catName, t]
@@ -313,73 +321,63 @@ export function PlotDetailScreen(): React.JSX.Element {
               {location}
             </AppText>
           ) : null}
-          <Pressable
-            onPress={() => !readOnly && setStageSheet(true)}
-            accessibilityRole="button"
-            style={styles.stagePill}
-          >
-            <AppIcon name="tag" size={14} color="accent" />
-            <AppText size="xs" weight="bold" color="accent">
-              {(() => {
-                const st = stages.find((x) => x.id === plot.stage_id);
-                return st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel');
-              })()}
-            </AppText>
-          </Pressable>
+          {(() => {
+            const st = stages.find((x) => x.id === plot.stage_id);
+            const tone: ColorKey = st ? stageTone(st) : 'accent';
+            return (
+              <Pressable
+                onPress={() => !readOnly && setStageSheet(true)}
+                accessibilityRole="button"
+                style={[styles.stagePill, { backgroundColor: softToneColor(theme, tone) }]}
+              >
+                <AppIcon name="tag" size={14} color={tone} />
+                <AppText size="xs" weight="bold" color={tone}>
+                  {st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel')}
+                </AppText>
+              </Pressable>
+            );
+          })()}
           <View style={styles.divider} />
           <SummaryRow label={t('dealPrice')} value={formatRupees(dealPrice)} />
           <SummaryRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="danger" />
           <SummaryRow label={t('remaining')} value={formatRupees(remaining)} />
           <SummaryRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} valueColor="danger" />
-          {plot.seller_name || plot.seller_phone ? (
+
+          {/* Linked project — a row inside the hero, not its own card. */}
+          {plot.project_id ? (
             <>
               <View style={styles.divider} />
-              <AppText size="overline" weight="bold" color="textSecondary" uppercase>
-                {t('seller')}
-              </AppText>
-              {plot.seller_name ? (
-                <AppText size="sm" weight="semibold" numberOfLines={1}>
-                  {plot.seller_name}
+              <Pressable
+                onPress={() => navigation.navigate('ProjectDetail', { projectId: plot.project_id! })}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.linkRow, pressed && styles.pressedDim]}
+              >
+                <AppIcon name="project" size={20} color="primary" />
+                <AppText size="sm" weight="bold" style={styles.flex} numberOfLines={1}>
+                  {linkedProject?.name ?? t('plotInProject')}
                 </AppText>
-              ) : null}
-              <ContactRow phone={plot.seller_phone} />
+                <AppIcon name="forward" size={18} color="textSecondary" />
+              </Pressable>
             </>
           ) : null}
         </AppCard>
 
-        {/* Primary actions (hidden once the plot is sold / its project closed) */}
-        {!readOnly ? (
-          <View style={styles.actionsRow}>
-            <View style={styles.flex}>
-              <AppButton
-                label={t('sellerPayment')}
-                icon="rupee"
-                onPress={() => {
-                  setPayType(availablePayTypes[0] ?? 'INSTALLMENT');
-                  setPaySheet(true);
-                }}
-              />
-            </View>
-            <View style={styles.flex}>
-              <AppButton
-                label={t('addExpense')}
-                icon="kharcha"
-                variant="secondary"
-                onPress={() => setExpSheet(true)}
-              />
-            </View>
-          </View>
+        {/* Seller — its own compact card so the hero stays pure money math. */}
+        {plot.seller_name || plot.seller_phone ? (
+          <AppCard compact>
+            <AppText size="overline" weight="bold" color="textSecondary" uppercase>
+              {t('seller')}
+            </AppText>
+            {plot.seller_name ? (
+              <AppText size="sm" weight="semibold" numberOfLines={1}>
+                {plot.seller_name}
+              </AppText>
+            ) : null}
+            <ContactRow phone={plot.seller_phone} />
+          </AppCard>
         ) : null}
 
-        {/* Standalone sale — a plot NOT in a project can be flipped directly. */}
-        {!plot.project_id && salePrice <= 0 && !readOnly ? (
-          <AppButton
-            label={t('sellPlot')}
-            icon="tag"
-            variant="secondary"
-            onPress={() => setSellSheet('price')}
-          />
-        ) : null}
+        {/* Standalone sale summary (actions live in the ledger "+" drawer). */}
         {!plot.project_id && salePrice > 0 ? (
           <AppCard style={styles.hero}>
             <View style={styles.saleHeader}>
@@ -412,62 +410,62 @@ export function PlotDetailScreen(): React.JSX.Element {
           </AppCard>
         ) : null}
 
-        {/* Linked project */}
-        {plot.project_id ? (
-          <AppCard
-            compact
-            onPress={() => navigation.navigate('ProjectDetail', { projectId: plot.project_id! })}
-          >
-            <View style={styles.linkRow}>
-              <AppIcon name="project" size={20} color="primary" />
-              <AppText size="sm" weight="bold" style={styles.flex} numberOfLines={1}>
-                {t('plotInProject')}
-              </AppText>
-              <AppIcon name="forward" size={18} color="textSecondary" />
-            </View>
-          </AppCard>
-        ) : null}
-
-        {/* Documents */}
+        {/* Ledger — the "+" opens the actions drawer. */}
         <View style={styles.sectionHeader}>
           <AppText size="lg" weight="bold" style={styles.flex}>
-            {t('tabDocs')}
+            {t('transactions')}
           </AppText>
           {!readOnly ? (
-            <Pressable onPress={onAddDocument} accessibilityRole="button" style={styles.addChip}>
-              <AppIcon name="add" size={16} color="primary" />
-              <AppText size="xs" weight="bold" color="primary">
-                {t('addDocument')}
-              </AppText>
-            </Pressable>
+            <AddActionButton onPress={() => setActionsOpen(true)} accessibilityLabel={t('addPayment')} />
           ) : null}
         </View>
-        {docs.length === 0 ? (
-          <AppText size="sm" color="textSecondary">
-            {t('noDocs')}
-          </AppText>
-        ) : (
-          <View style={styles.docGrid}>
-            {docs.map((d) => (
-              <Pressable
-                key={d.id}
-                onPress={() => setViewer(d.file_uri)}
-                accessibilityRole="button"
-              >
-                <Image source={{ uri: d.file_uri }} style={styles.docThumb} />
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        {/* Ledger */}
-        <AppText size="lg" weight="bold">
-          {t('transactions')}
-        </AppText>
         <AppCard compact>
           <LedgerTable rows={ledgerRows} emptyText={t('addFirstEntry')} />
         </AppCard>
+
+        {/* Documents — the dashed tile IS the add button (same UI as photos). */}
+        <AppText size="lg" weight="bold">
+          {t('tabDocs')}
+        </AppText>
+        <View style={styles.docGrid}>
+          {docs.map((d) => (
+            <Pressable
+              key={d.id}
+              onPress={() => setViewer(d.file_uri)}
+              accessibilityRole="button"
+            >
+              <Image source={{ uri: d.file_uri }} style={styles.docThumb} />
+            </Pressable>
+          ))}
+          {!readOnly ? (
+            <AddPhotoTile label={t('addDocument')} onPress={onAddDocument} style={styles.docAdd} />
+          ) : null}
+        </View>
       </ScrollView>
+
+      {/* Actions drawer — pay seller / expense / sell / receipt in one sheet. */}
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={plot.name}
+        actions={[
+          {
+            icon: 'rupee' as const,
+            label: t('sellerPayment'),
+            onPress: () => {
+              setPayType(availablePayTypes[0] ?? 'INSTALLMENT');
+              setPaySheet(true);
+            },
+          },
+          { icon: 'kharcha' as const, label: t('addExpense'), onPress: () => setExpSheet(true) },
+          ...(!plot.project_id && salePrice <= 0
+            ? [{ icon: 'tag' as const, label: t('sellPlot'), onPress: () => setSellSheet('price') }]
+            : []),
+          ...(!plot.project_id && salePrice > 0 && !sold
+            ? [{ icon: 'moneyIn' as const, label: t('addReceipt'), onPress: () => setSellSheet('receipt') }]
+            : []),
+        ]}
+      />
 
       {/* Seller-payment sheet */}
       <Modal visible={paySheet} transparent animationType="fade" onRequestClose={() => setPaySheet(false)}>
@@ -688,7 +686,11 @@ export function PlotDetailScreen(): React.JSX.Element {
         selectedId={summary?.plot.stage_id ?? '__none__'}
         options={[
           { id: '__none__', label: t('noStatus') },
-          ...stages.map((st) => ({ id: st.id, label: language === 'ur' ? st.name_ur : st.name_en })),
+          ...stages.map((st) => ({
+            id: st.id,
+            label: language === 'ur' ? st.name_ur : st.name_en,
+            dotColor: theme.colors[stageTone(st)],
+          })),
         ]}
         onSelect={(o) => {
           setStageSheet(false);
@@ -720,6 +722,7 @@ export function PlotDetailScreen(): React.JSX.Element {
           </Pressable>
         </View>
       </Modal>
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }
@@ -806,6 +809,8 @@ const makeStyles = (theme: Theme) =>
       minHeight: theme.touch.minTarget,
     },
     docGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+    docAdd: { width: 84, height: 84 },
+    pressedDim: { opacity: 0.7 },
     docThumb: {
       width: 84,
       height: 84,

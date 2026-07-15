@@ -9,7 +9,10 @@ import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, St
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
+  ActionsDrawer,
+  AddActionButton,
   AmountInput,
   AppButton,
   AppCard,
@@ -65,6 +68,7 @@ export function SaleDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [summary, setSummary] = useState<SaleSummary | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
@@ -78,6 +82,7 @@ export function SaleDetailScreen(): React.JSX.Element {
 
   // Receipt sheet.
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [payType, setPayType] = useState<PayType | null>(null);
   const [receiptAmount, setReceiptAmount] = useState(0);
   const [receiptDate, setReceiptDate] = useState(todayISO().slice(0, 10));
@@ -146,6 +151,7 @@ export function SaleDetailScreen(): React.JSX.Element {
         amount: txn.amount,
         direction: txn.direction === 'IN' ? 'in' : 'out',
         typeLabel: txn.pay_type ? t(PAY_TYPE_LABEL_KEYS[txn.pay_type]) : undefined,
+        onPress: () => setTxnDetail(txn),
       })),
     [txns, t]
   );
@@ -296,33 +302,33 @@ export function SaleDetailScreen(): React.JSX.Element {
               </View>
             </Pressable>
 
-            {/* Actions (hidden once the project completes) */}
-            {!completed ? (
-              <View style={styles.actionRow}>
-                <View style={styles.flex}>
-                  <AppButton label={t('addReceipt')} icon="moneyIn" onPress={() => setReceiptOpen(true)} />
-                </View>
-                <View style={styles.flex}>
-                  <AppButton
-                    label={t('addExpense')}
-                    icon="moneyOut"
-                    variant="secondary"
-                    onPress={() => setExpenseOpen(true)}
-                  />
-                </View>
-              </View>
-            ) : null}
           </>
         )}
 
-        {/* SALE ledger */}
-        <AppText size="lg" weight="bold" style={styles.sectionTitle}>
-          {t('transactions')}
-        </AppText>
+        {/* SALE ledger — the "+" opens the actions drawer. */}
+        <View style={[styles.sectionHeaderRow, styles.sectionTitle]}>
+          <AppText size="lg" weight="bold" style={styles.flex}>
+            {t('transactions')}
+          </AppText>
+          {sale && !completed ? (
+            <AddActionButton onPress={() => setActionsOpen(true)} accessibilityLabel={t('addReceipt')} />
+          ) : null}
+        </View>
         <AppCard compact>
           <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
         </AppCard>
       </ScrollView>
+
+      {/* Actions drawer */}
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={project?.name ?? ''}
+        actions={[
+          { icon: 'moneyIn', label: t('addReceipt'), onPress: () => setReceiptOpen(true) },
+          { icon: 'moneyOut', label: t('addExpense'), onPress: () => setExpenseOpen(true) },
+        ]}
+      />
 
       {/* Add-receipt sheet */}
       <Modal visible={receiptOpen} transparent animationType="slide" onRequestClose={() => setReceiptOpen(false)}>
@@ -492,6 +498,7 @@ export function SaleDetailScreen(): React.JSX.Element {
         searchable={false}
         onSelect={(o) => setAccountId(o.id)}
       />
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }
@@ -525,6 +532,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     receiptRow: {
       flexDirection: 'row',
       alignItems: 'center',

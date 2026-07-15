@@ -268,6 +268,16 @@ export async function listProjectPhaseTransactions(
   );
 }
 
+/** EVERY live transaction of the company (global Transactions page). */
+export async function listAllCompanyTransactions(): Promise<TransactionRow[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<TransactionRow>(
+    `SELECT * FROM transactions WHERE is_void = 0 AND company_id = ?
+     ORDER BY date DESC, created_at DESC`,
+    requireCompanyId()
+  );
+}
+
 /** The most recent live transactions across everything (dashboard feed). */
 export async function listRecentTransactions(limit = 20): Promise<TransactionRow[]> {
   const db = await getDatabase();

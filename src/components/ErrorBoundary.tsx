@@ -47,6 +47,8 @@ export function ErrorFallback({ onRetry, detail }: FallbackProps): React.JSX.Ele
 
 interface BoundaryState {
   hasError: boolean;
+  /** The caught error's message — surfaced on the recovery screen. */
+  message: string | null;
 }
 
 /**
@@ -54,10 +56,13 @@ interface BoundaryState {
  * instead of crashing the whole app. "Try again" re-mounts the subtree.
  */
 export class ErrorBoundary extends React.Component<React.PropsWithChildren, BoundaryState> {
-  state: BoundaryState = { hasError: false };
+  state: BoundaryState = { hasError: false, message: null };
 
-  static getDerivedStateFromError(): BoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): BoundaryState {
+    // Keep the message: release builds have no console, so the recovery
+    // screen is the only place the actual reason can surface.
+    const message = error instanceof Error ? error.message : String(error);
+    return { hasError: true, message };
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo): void {
@@ -65,10 +70,10 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Boun
     reportError('ErrorBoundary:componentStack', info.componentStack);
   }
 
-  private retry = () => this.setState({ hasError: false });
+  private retry = () => this.setState({ hasError: false, message: null });
 
   render(): React.ReactNode {
-    if (this.state.hasError) return <ErrorFallback onRetry={this.retry} />;
+    if (this.state.hasError) return <ErrorFallback onRetry={this.retry} detail={this.state.message} />;
     return this.props.children;
   }
 }

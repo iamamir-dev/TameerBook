@@ -205,6 +205,9 @@ export interface TranslationKeys {
   netSoFar: string;
   selectSavedSupplier: string;
   selectSavedParty: string;
+  netWorthLabel: string;
+  addConstructionExpense: string;
+  yesterday: string;
   statusesTitle: string;
   addStatus: string;
   setStatusLabel: string;
@@ -655,6 +658,10 @@ export interface TranslationKeys {
   obPlotsBody: string;
   obProjectsTitle: string;
   obProjectsBody: string;
+  obLaborTitle: string;
+  obLaborBody: string;
+  obInvestorsTitle: string;
+  obInvestorsBody: string;
   obReportsTitle: string;
   obReportsBody: string;
 }

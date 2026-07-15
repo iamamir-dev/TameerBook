@@ -13,6 +13,8 @@ interface HeaderAction {
   icon: IconKey | GlyphName;
   onPress: () => void;
   accessibilityLabel: string;
+  /** Optional short text → renders a labeled pill instead of a bare icon. */
+  label?: string;
 }
 
 interface AppHeaderProps {
@@ -75,9 +77,17 @@ export function AppHeader({
             hitSlop={theme.touch.hitSlop}
             accessibilityRole="button"
             accessibilityLabel={rightAction.accessibilityLabel}
-            style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              rightAction.label ? styles.labelChip : styles.chip,
+              pressed && styles.pressed,
+            ]}
           >
-            <AppIcon name={rightAction.icon} size={22} color="textPrimary" />
+            <AppIcon name={rightAction.icon} size={rightAction.label ? 18 : 22} color="textPrimary" />
+            {rightAction.label ? (
+              <AppText size="xs" weight="bold">
+                {rightAction.label}
+              </AppText>
+            ) : null}
           </Pressable>
         ) : (
           <View style={styles.spacer} />
@@ -109,6 +119,16 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
       alignItems: 'center',
       justifyContent: 'center',
+      ...theme.shadows.card,
+    },
+    labelChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.xs,
+      height: CHIP - 8,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: (CHIP - 8) / 2,
+      backgroundColor: theme.colors.card,
       ...theme.shadows.card,
     },
     spacer: {

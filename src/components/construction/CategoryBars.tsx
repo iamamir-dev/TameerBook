@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppCard, AppText } from '@/components/ui';
@@ -24,11 +24,6 @@ export function CategoryBars({ byCategory, laborAccrued }: CategoryBarsProps): R
   const { t, language } = useTranslation();
   const styles = makeStyles(theme);
 
-  const maxBar = useMemo(
-    () => Math.max(laborAccrued, ...byCategory.map((c) => c.total), 1),
-    [byCategory, laborAccrued]
-  );
-
   if (byCategory.length === 0 && laborAccrued <= 0) return null;
 
   return (
@@ -36,28 +31,22 @@ export function CategoryBars({ byCategory, laborAccrued }: CategoryBarsProps): R
       <AppText size="md" weight="bold" style={styles.cardTitle}>
         {t('topCategories')}
       </AppText>
-      {byCategory.map((c) => (
-        <View key={c.categoryId} style={styles.barRow}>
-          <AppText size="xs" numberOfLines={1} style={styles.barLabel}>
+      {byCategory.map((c, i) => (
+        <View key={c.categoryId} style={[styles.listRow, i > 0 && styles.ruled]}>
+          <AppText size="sm" color="textSecondary" numberOfLines={1} style={styles.listLabel}>
             {language === 'ur' ? c.nameUr : c.nameEn}
           </AppText>
-          <View style={styles.barTrack}>
-            <View style={[styles.barFill, { width: `${(c.total / maxBar) * 100}%` }]} />
-          </View>
-          <AppText size="xs" weight="bold" tabular style={styles.barVal}>
+          <AppText size="sm" weight="bold" tabular>
             {formatRupees(c.total)}
           </AppText>
         </View>
       ))}
       {laborAccrued > 0 ? (
-        <View style={styles.barRow}>
-          <AppText size="xs" numberOfLines={1} style={styles.barLabel}>
+        <View style={[styles.listRow, byCategory.length > 0 && styles.ruled]}>
+          <AppText size="sm" color="textSecondary" numberOfLines={1} style={styles.listLabel}>
             {t('laborTitle')}
           </AppText>
-          <View style={styles.barTrack}>
-            <View style={[styles.barFill, { width: `${(laborAccrued / maxBar) * 100}%` }]} />
-          </View>
-          <AppText size="xs" weight="bold" tabular style={styles.barVal}>
+          <AppText size="sm" weight="bold" tabular>
             {formatRupees(laborAccrued)}
           </AppText>
         </View>
@@ -69,6 +58,15 @@ export function CategoryBars({ byCategory, laborAccrued }: CategoryBarsProps): R
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     cardTitle: { marginBottom: theme.spacing.sm },
+    listRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+    },
+    ruled: { borderTopWidth: 0.5, borderTopColor: theme.colors.border },
+    listLabel: { flex: 1 },
     /* category bars (matches ReportScreen's expense bars) */
     barRow: {
       flexDirection: 'row',

@@ -23,6 +23,8 @@ export interface SelectOption {
   label: string;
   subtitle?: string;
   icon?: IconKey | GlyphName;
+  /** Small colored dot before the label (e.g. a status's color). */
+  dotColor?: string;
 }
 
 interface SelectSheetProps {
@@ -137,6 +139,9 @@ export function SelectSheet({
                       pressed && styles.rowPressed,
                     ]}
                   >
+                    {option.dotColor ? (
+                      <View style={[styles.dot, { backgroundColor: option.dotColor }]} />
+                    ) : null}
                     {option.icon ? (
                       <View style={styles.rowChip}>
                         <AppIcon
@@ -243,6 +248,7 @@ const makeStyles = (theme: Theme) =>
     rowPressed: {
       opacity: 0.7,
     },
+    dot: { width: 14, height: 14, borderRadius: 7 },
     rowChip: {
       width: 44,
       height: 44,

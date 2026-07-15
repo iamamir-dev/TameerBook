@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppCard, AppIcon, AppText } from '@/components/ui';
+import { AddPhotoTile, AppCard, AppIcon, AppText } from '@/components/ui';
 import type { DocumentRow } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -85,18 +85,7 @@ export function ProjectGalleryCard({
             ))}
 
             {!readOnly ? (
-              <Pressable
-                onPress={onCapture}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={t('todayPhotos')}
-                style={[styles.cell, styles.addTile, busy && styles.addBusy]}
-              >
-                <AppIcon name="camera" size={24} color="primary" />
-                <AppText size="xs" weight="semibold" color="textSecondary" center>
-                  {t('todayPhotos')}
-                </AppText>
-              </Pressable>
+              <AddPhotoTile label={t('todayPhotos')} onPress={onCapture} busy={busy} style={styles.cell} />
             ) : null}
           </View>
         )}
@@ -136,7 +125,9 @@ const makeStyles = (theme: Theme) =>
     },
     emptyPad: { paddingVertical: theme.spacing.lg },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-    cell: { width: '31.5%', flexGrow: 1, aspectRatio: 1 },
+    // Fixed square tiles (like the Docs grid) — the card always hugs its
+    // content; a lone add-tile is just one small square, never a stretched box.
+    cell: { width: 96, height: 96 },
     thumb: {
       width: '100%',
       height: '100%',
@@ -150,17 +141,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    addTile: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing.xs,
-      borderRadius: theme.radius.md,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-      borderStyle: 'dashed',
-      backgroundColor: theme.colors.background,
-    },
-    addBusy: { opacity: 0.5 },
     viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
     viewerImage: { width: '100%', height: '80%' },
     close: {

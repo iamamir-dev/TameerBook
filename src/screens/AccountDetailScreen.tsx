@@ -8,6 +8,7 @@ import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AppButton,
   AppCard,
@@ -48,6 +49,7 @@ export function AccountDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const [account, setAccount] = useState<AccountRow | null>(null);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [balance, setBalance] = useState(0);
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -88,11 +90,20 @@ export function AccountDetailScreen(): React.JSX.Element {
     amount: txn.amount,
     direction: txn.direction === 'IN' ? 'in' : 'out',
     typeLabel: catName(txn.category_id) || undefined,
+    onPress: () => setTxnDetail(txn),
   }));
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={account?.name ?? ''} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={account?.name ?? ''}
+        onBack={() => navigation.goBack()}
+        rightAction={{
+          icon: 'history',
+          onPress: () => navigation.navigate('Transactions', { accountId }),
+          accessibilityLabel: t('transactions'),
+        }}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -129,6 +140,7 @@ export function AccountDetailScreen(): React.JSX.Element {
           <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
         </AppCard>
       </ScrollView>
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }

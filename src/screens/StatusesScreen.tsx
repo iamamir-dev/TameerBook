@@ -20,6 +20,7 @@ import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { STAGE_TONES, stageTone, type ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -39,6 +40,7 @@ export function StatusesScreen(): React.JSX.Element {
   const [rows, setRows] = useState<StageRow[]>([]);
   const [editor, setEditor] = useState<{ stage: StageRow | null } | null>(null);
   const [name, setName] = useState('');
+  const [color, setColor] = useState<ColorKey | null>(null);
   const { saving, run } = useSaveAction();
 
   const label = (s: StageRow) => (language === 'ur' ? s.name_ur : s.name_en);
@@ -53,8 +55,8 @@ export function StatusesScreen(): React.JSX.Element {
     if (!editor || !name.trim() || saving) return;
     void (async () => {
       const ok = await run(async () => {
-        if (editor.stage) await updateStage(editor.stage.id, name);
-        else await addStage(module, name).then(() => undefined);
+        if (editor.stage) await updateStage(editor.stage.id, name, color);
+        else await addStage(module, name, color).then(() => undefined);
       });
       if (ok) {
         setEditor(null);
@@ -121,6 +123,8 @@ export function StatusesScreen(): React.JSX.Element {
               renderItem={(stage) => (
                 <View style={styles.row}>
                   <AppIcon name="reorder" size={14} color="textSecondary" />
+                  {/* The status's color — the same one its badge wears on cards. */}
+                  <View style={[styles.colorDot, { backgroundColor: theme.colors[stageTone(stage)] }]} />
                   <AppText size="sm" style={styles.flex} numberOfLines={1}>
                     {label(stage)}
                   </AppText>
@@ -128,6 +132,7 @@ export function StatusesScreen(): React.JSX.Element {
                     <Pressable
                       onPress={() => {
                         setName(stage.name_en);
+                        setColor(stageTone(stage));
                         setEditor({ stage });
                       }}
                       hitSlop={theme.touch.hitSlop}
@@ -151,6 +156,8 @@ export function StatusesScreen(): React.JSX.Element {
           variant="secondary"
           onPress={() => {
             setName('');
+            // New status defaults to the next color in the cycle.
+            setColor(stageTone({ sort_order: rows.length }));
             setEditor({ stage: null });
           }}
         />
@@ -165,6 +172,22 @@ export function StatusesScreen(): React.JSX.Element {
               {editor?.stage ? t('edit') : t('addStatus')}
             </AppText>
             <FloatingLabelInput label={t('name')} value={name} onChangeText={setName} />
+            {/* Pick the status's color — the same tone it will wear on cards. */}
+            <View style={styles.colorRow}>
+              {STAGE_TONES.map((tone) => (
+                <Pressable
+                  key={tone}
+                  onPress={() => setColor(tone)}
+                  accessibilityRole="button"
+                  accessibilityLabel={tone}
+                  style={[
+                    styles.colorPick,
+                    { backgroundColor: theme.colors[tone] },
+                    color === tone && styles.colorPickActive,
+                  ]}
+                />
+              ))}
+            </View>
             <AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!name.trim()} />
           </View>
         </KeyboardAvoidingView>
@@ -190,6 +213,10 @@ const makeStyles = (theme: Theme) =>
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
     card: { gap: theme.spacing.sm },
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    colorDot: { width: 12, height: 12, borderRadius: 6 },
+    colorRow: { flexDirection: 'row', gap: theme.spacing.md, alignItems: 'center' },
+    colorPick: { width: 34, height: 34, borderRadius: 17 },
+    colorPickActive: { borderWidth: 3, borderColor: theme.colors.textPrimary },
     actions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {

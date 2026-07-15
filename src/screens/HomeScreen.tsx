@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AccountCard,
   AppCard,
@@ -48,7 +49,7 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
-import { softToneColor, type ColorKey } from '@/utils/tones';
+import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -72,6 +73,7 @@ export function HomeScreen(): React.JSX.Element {
   const companyName =
     useCompanyStore((s) => s.companies.find((c) => c.id === activeCompanyId)?.name) ?? t('appName');
   const [companySheet, setCompanySheet] = useState(false);
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
 
   // Which sections this Home shows (Settings → Home screen).
   const sections = useSettingsStore((s) => s.homeSections);
@@ -125,12 +127,13 @@ export function HomeScreen(): React.JSX.Element {
 
   useFocusReload(load);
 
+  const stageOf = useCallback((id: string | null) => stages.find((x) => x.id === id) ?? null, [stages]);
   const stageName = useCallback(
     (id: string | null): string | null => {
-      const st = stages.find((x) => x.id === id);
+      const st = stageOf(id);
       return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
     },
-    [stages, language]
+    [stageOf, language]
   );
 
   const catLabel = useCategoryLabel();
@@ -156,6 +159,7 @@ export function HomeScreen(): React.JSX.Element {
         amount: txn.amount,
         direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
         typeLabel: catName(txn.category_id) || undefined,
+        onPress: () => setTxnDetail(txn),
       })),
     [recent, catName, t]
   );
@@ -383,7 +387,7 @@ export function HomeScreen(): React.JSX.Element {
                       </AppText>
                     </View>
                     <StageBadge
-                      tone={p.status === 'OWNED' ? 'success' : 'primary'}
+                      tone={(() => { const st = stageOf(p.stage_id); return st ? stageTone(st) : p.status === 'OWNED' ? 'success' : 'primary'; })()}
                       label={stageName(p.stage_id) ?? t(p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
                     />
                   </Pressable>
@@ -415,6 +419,7 @@ export function HomeScreen(): React.JSX.Element {
                 key={summary.project.id}
                 summary={summary}
                 stageLabel={stageName(summary.project.stage_id)}
+                stageBadgeTone={(() => { const st = stageOf(summary.project.stage_id); return st ? stageTone(st) : null; })()}
                 onPress={() => navigation.navigate('ProjectDetail', { projectId: summary.project.id })}
               />
             ))}
@@ -424,7 +429,7 @@ export function HomeScreen(): React.JSX.Element {
         {/* Recent activity  notebook-style ledger */}
         {sections.activity ? (
           <>
-            <SectionHeader title={t('recentActivity')} />
+            <SectionHeader title={t('recentActivity')} action={t('seeAll')} onAction={() => navigation.navigate('Transactions')} />
             <AppCard compact>
               <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
             </AppCard>
@@ -444,6 +449,7 @@ export function HomeScreen(): React.JSX.Element {
           void switchTo(o.id);
         }}
       />
+      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
   );
 }
@@ -505,7 +511,7 @@ function SectionTile({
       <View style={[styles.sectionIcon, { backgroundColor: softToneColor(theme, tone) }]}>
         <AppIcon name={icon} size={22} color={tone} />
       </View>
-      <AppText size="xs" weight="semibold" center numberOfLines={1}>
+      <AppText size="xs" weight="semibold" center numberOfLines={2}>
         {label}
       </AppText>
     </Pressable>
@@ -515,11 +521,14 @@ function SectionTile({
 function ProjectCard({
   summary,
   stageLabel,
+  stageBadgeTone,
   onPress,
 }: {
   summary: ProjectSummary;
   /** User-set display status (Settings → Statuses); null = none. */
   stageLabel: string | null;
+  /** The status's own color; null = default tone. */
+  stageBadgeTone: ColorKey | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -535,7 +544,7 @@ function ProjectCard({
         {project.name}
       </AppText>
       <StageBadge
-        tone={completed ? 'success' : 'accent'}
+        tone={stageLabel && stageBadgeTone ? stageBadgeTone : completed ? 'success' : 'accent'}
         label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))}
       />
 

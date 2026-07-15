@@ -27,29 +27,36 @@ export async function listStages(module: StageModule): Promise<StageRow[]> {
   );
 }
 
-export async function addStage(module: StageModule, name: string): Promise<StageRow> {
+export async function addStage(module: StageModule, name: string, color?: string | null): Promise<StageRow> {
   const clean = name.trim();
   if (!clean) throw new Error('addStage: name is required');
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
-    `INSERT INTO stages (id, created_at, created_by, module, name_en, name_ur, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, 999)`,
+    `INSERT INTO stages (id, created_at, created_by, module, name_en, name_ur, sort_order, color)
+     VALUES (?, ?, ?, ?, ?, ?, 999, ?)`,
     id,
     nowISO(),
     DEFAULT_USER,
     module,
     clean,
-    clean
+    clean,
+    color ?? null
   );
   return (await db.getFirstAsync<StageRow>('SELECT * FROM stages WHERE id = ?', id))!;
 }
 
-export async function updateStage(id: string, name: string): Promise<void> {
+export async function updateStage(id: string, name: string, color?: string | null): Promise<void> {
   const clean = name.trim();
   if (!clean) throw new Error('updateStage: name is required');
   const db = await getDatabase();
-  await db.runAsync('UPDATE stages SET name_en = ?, name_ur = ? WHERE id = ?', clean, clean, id);
+  await db.runAsync(
+    'UPDATE stages SET name_en = ?, name_ur = ?, color = ? WHERE id = ?',
+    clean,
+    clean,
+    color ?? null,
+    id
+  );
 }
 
 export async function deleteStage(id: string): Promise<void> {

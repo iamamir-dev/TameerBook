@@ -37,6 +37,7 @@ export type RootStackParamList = {
   Reports: undefined;
   Categories: undefined;
   Statuses: undefined;
+  CompanyDetail: undefined;
   Allocation: undefined;
   // Plots
   /** `forProjectId` set → the created plot is auto-included in that project. */
@@ -48,7 +49,8 @@ export type RootStackParamList = {
   ProjectDetail: { projectId: string };
   ConstructionDetail: { projectId: string };
   SaleDetail: { projectId: string };
-  Transactions: { projectId: string };
+  /** Optional context filters — pre-applied (and clearable) on arrival. */
+  Transactions: { projectId?: string; accountId?: string } | undefined;
   PhotoDiary: { projectId: string };
   Settlement: { projectId: string };
   // Money entry

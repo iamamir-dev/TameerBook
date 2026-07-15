@@ -16,7 +16,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { softToneColor, type ColorKey } from '@/utils/tones';
+import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -41,8 +41,9 @@ export function ProjectsScreen(): React.JSX.Element {
   React.useEffect(() => {
     listStages('PROJECT').then(setStages).catch(() => undefined);
   }, [items]);
+  const stageOf = (id: string | null) => stages.find((x) => x.id === id) ?? null;
   const stageName = (id: string | null) => {
-    const st = stages.find((x) => x.id === id);
+    const st = stageOf(id);
     return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
   };
 
@@ -88,6 +89,7 @@ export function ProjectsScreen(): React.JSX.Element {
               key={item.project.id}
               summary={item}
               stageLabel={stageName(item.project.stage_id)}
+              stageBadgeTone={(() => { const st = stageOf(item.project.stage_id); return st ? stageTone(st) : null; })()}
               onPress={() =>
                 navigation.navigate('ProjectDetail', { projectId: item.project.id })
               }
@@ -103,6 +105,7 @@ export function ProjectsScreen(): React.JSX.Element {
               key={item.project.id}
               summary={item}
               stageLabel={stageName(item.project.stage_id)}
+              stageBadgeTone={(() => { const st = stageOf(item.project.stage_id); return st ? stageTone(st) : null; })()}
               onPress={() =>
                 navigation.navigate('ProjectDetail', { projectId: item.project.id })
               }
@@ -117,11 +120,14 @@ export function ProjectsScreen(): React.JSX.Element {
 function ProjectCard({
   summary,
   stageLabel,
+  stageBadgeTone,
   onPress,
 }: {
   summary: ProjectSummary;
   /** User-set display status from Settings → Statuses (null = none). */
   stageLabel: string | null;
+  /** The status's own color (cycled in Settings order); null = default tone. */
+  stageBadgeTone: ColorKey | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -143,7 +149,7 @@ function ProjectCard({
             {project.name}
           </AppText>
           <View style={styles.badgeWrap}>
-            <StageBadge tone={tone} label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))} />
+            <StageBadge tone={stageLabel && stageBadgeTone ? stageBadgeTone : tone} label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))} />
           </View>
         </View>
         <AppIcon name="forward" size={20} color="textSecondary" />

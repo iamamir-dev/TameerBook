@@ -127,7 +127,7 @@ const makeStyles = (theme: Theme) =>
     empty: { paddingVertical: theme.spacing.xxxl },
     group: { gap: theme.spacing.sm },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-    cell: { width: '32%', flexGrow: 1, aspectRatio: 1 },
+    cell: { width: '32%', aspectRatio: 1 },
     thumb: { width: '100%', height: '100%', borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
     viewerImage: { width: '100%', height: '80%' },

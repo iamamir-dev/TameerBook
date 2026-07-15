@@ -311,6 +311,8 @@ export async function addPlotExpense(input: PlotExpenseInput): Promise<void> {
 
 export interface PlotSummary {
   plot: PlotRow;
+  /** Name of the project this plot is included in (null when standalone). */
+  projectName: string | null;
   dealPrice: number;
   /** Σ "Plot Payment" instalments to the seller. */
   paidToSeller: number;
@@ -350,6 +352,10 @@ export async function getPlotSummary(plotId: string): Promise<PlotSummary> {
      WHERE t.plot_id = ? AND t.direction = 'OUT' AND t.is_void = 0`,
     plotId
   );
+  const projectName = plot.project_id
+    ? (await db.getFirstAsync<{ name: string }>('SELECT name FROM projects WHERE id = ?', plot.project_id))?.name ?? null
+    : null;
+
   const sold = await db.getFirstAsync<{ s: number }>(
     `SELECT COALESCE(SUM(t.amount), 0) AS s
      FROM transactions t JOIN categories c ON c.id = t.category_id
@@ -364,6 +370,7 @@ export async function getPlotSummary(plotId: string): Promise<PlotSummary> {
   const saleReceived = sold?.s ?? 0;
   return {
     plot,
+    projectName,
     dealPrice: plot.deal_price,
     paidToSeller,
     remaining: Math.max(0, plot.deal_price - paidToSeller),
