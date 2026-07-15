@@ -11,6 +11,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.tameerbook.app",
       "adaptiveIcon": {
         "backgroundColor": "#F4F0E7",
         "foregroundImage": "./assets/android-icon-foreground.png",
