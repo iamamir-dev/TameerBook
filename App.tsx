@@ -101,6 +101,7 @@ function ThemedApp(): React.JSX.Element {
   const [booted, setBooted] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const [bootError, setBootError] = useState(false);
+  const [bootErrorDetail, setBootErrorDetail] = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
   const companyReady = useCompanyStore((s) => s.ready);
   const activeCompanyId = useCompanyStore((s) => s.activeCompanyId);
@@ -127,6 +128,10 @@ function ThemedApp(): React.JSX.Element {
       // Now it's logged and the user gets a retry screen instead.
       .catch((e) => {
         reportError('App:boot', e);
+        // Surface the reason on the retry screen — release builds have no
+        // console, so without this a boot crash is an opaque "try again".
+        const msg = e instanceof Error ? (e.stack || e.message) : String(e);
+        setBootErrorDetail(msg);
         setBootError(true);
       })
       .finally(() => {
@@ -158,8 +163,10 @@ function ThemedApp(): React.JSX.Element {
       <StatusBar style={showSplash || theme.darkMode ? 'light' : 'dark'} />
       {bootError && booted ? (
         <ErrorFallback
+          detail={bootErrorDetail}
           onRetry={() => {
             setBootError(false);
+            setBootErrorDetail(null);
             setBooted(false);
             setBootAttempt((n) => n + 1);
           }}

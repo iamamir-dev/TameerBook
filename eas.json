@@ -11,20 +11,12 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_UNSTABLE_TREE_SHAKING": "1",
-        "EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH": "1"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_UNSTABLE_TREE_SHAKING": "1",
-        "EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH": "1"
       }
     }
   },

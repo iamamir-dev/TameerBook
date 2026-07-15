@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppIcon, AppText } from '@/components/ui';
 import { useTranslation } from '@/i18n';
@@ -8,10 +8,12 @@ import { reportError } from '@/utils/log';
 
 interface FallbackProps {
   onRetry: () => void;
+  /** Optional error text — shown so release builds aren't an opaque "try again". */
+  detail?: string | null;
 }
 
 /** The recovery screen shown in place of a crashed subtree (also used for boot failures). */
-export function ErrorFallback({ onRetry }: FallbackProps): React.JSX.Element {
+export function ErrorFallback({ onRetry, detail }: FallbackProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   return (
@@ -23,6 +25,13 @@ export function ErrorFallback({ onRetry }: FallbackProps): React.JSX.Element {
       <AppText size="sm" color="textSecondary" center>
         {t('errorBody')}
       </AppText>
+      {detail ? (
+        <ScrollView style={styles.detailBox} contentContainerStyle={styles.detailContent}>
+          <AppText size="xs" color="danger">
+            {detail}
+          </AppText>
+        </ScrollView>
+      ) : null}
       <Pressable
         onPress={onRetry}
         accessibilityRole="button"
@@ -78,5 +87,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
+  },
+  detailBox: {
+    maxHeight: 220,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
+  },
+  detailContent: {
+    padding: 10,
   },
 });
