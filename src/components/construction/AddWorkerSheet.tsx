@@ -118,9 +118,9 @@ export function AddWorkerSheet({
               label={t('phone')}
               value={newPhone}
               onChangeText={setNewPhone}
-              keyboardType="phone-pad"
+              mask="phone"
             />
-            <FloatingLabelInput label={t('cnic')} value={newCnic} onChangeText={setNewCnic} hint={t('optional')} />
+            <FloatingLabelInput label={t('cnic')} value={newCnic} onChangeText={setNewCnic} hint={t('optional')} mask="cnic" />
           </>
         ) : null}
 

@@ -70,7 +70,7 @@ export function NewCompanyScreen(): React.JSX.Element {
             label={t('phone')}
             value={phone}
             onChangeText={setPhone}
-            keyboardType="phone-pad"
+            mask="phone"
             hint={t('hintPhone')}
           />
           <AmountInput

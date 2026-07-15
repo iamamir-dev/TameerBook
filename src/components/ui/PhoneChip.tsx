@@ -5,6 +5,7 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
+import { formatPhone } from '@/utils/mask';
 
 import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
@@ -26,17 +27,18 @@ export function PhoneChip({ phone, compact = false }: PhoneChipProps): React.JSX
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
+  const phoneText = formatPhone(phone);
   const tel = `tel:${phone.replace(/[^\d+]/g, '')}`;
   const dial = useCallback(() => {
     Linking.openURL(tel).catch(swallow('PhoneChip:dial'));
   }, [tel]);
 
   const confirmDial = useCallback(() => {
-    Alert.alert(phone, undefined, [
+    Alert.alert(phoneText, undefined, [
       { text: t('cancel'), style: 'cancel' },
       { text: t('call'), onPress: dial },
     ]);
-  }, [phone, dial, t]);
+  }, [phoneText, dial, t]);
 
   return (
     <Pressable
@@ -44,7 +46,7 @@ export function PhoneChip({ phone, compact = false }: PhoneChipProps): React.JSX
       onLongPress={confirmDial}
       hitSlop={theme.touch.hitSlop}
       accessibilityRole="button"
-      accessibilityLabel={`${t('call')} ${phone}`}
+      accessibilityLabel={`${t('call')} ${phoneText}`}
       style={({ pressed }) => [
         compact ? styles.compact : styles.row,
         pressed && styles.pressed,
@@ -52,7 +54,7 @@ export function PhoneChip({ phone, compact = false }: PhoneChipProps): React.JSX
     >
       <AppIcon name="phone" size={compact ? 14 : 18} color="primary" />
       <AppText size={compact ? 'xs' : 'sm'} weight="semibold" color="primary" numberOfLines={1}>
-        {phone}
+        {phoneText}
       </AppText>
     </Pressable>
   );

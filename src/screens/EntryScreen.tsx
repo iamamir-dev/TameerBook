@@ -58,6 +58,7 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
+import { formatPhone } from '@/utils/mask';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 
@@ -190,7 +191,7 @@ export function EntryScreen(): React.JSX.Element {
   const partyOptions: SelectOption[] = useMemo(
     () => [
       { id: ADD_PARTY_ID, label: t('addNew'), icon: 'add' },
-      ...parties.map((p) => ({ id: p.id, label: p.name, subtitle: p.phone ?? undefined, icon: 'investor' as IconKey })),
+      ...parties.map((p) => ({ id: p.id, label: p.name, subtitle: p.phone ? formatPhone(p.phone) : undefined, icon: 'investor' as IconKey })),
     ],
     [parties, t]
   );

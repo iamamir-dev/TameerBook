@@ -181,7 +181,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
                 label={t('phone')}
                 value={phone}
                 onChangeText={setPhone}
-                keyboardType="phone-pad"
+                mask="phone"
                 hint={t('hintPhone')}
               />
               <AmountInput

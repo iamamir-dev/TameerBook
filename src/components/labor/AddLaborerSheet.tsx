@@ -87,8 +87,8 @@ export function AddLaborerSheet({ visible, onClose, onSaved }: Props): React.JSX
             </View>
           </Pressable>
           <FloatingLabelInput label={t('workerName')} value={name} onChangeText={setName} />
-          <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <FloatingLabelInput label={t('cnic')} value={cnic} onChangeText={setCnic} hint={t('optional')} />
+          <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} mask="phone" />
+          <FloatingLabelInput label={t('cnic')} value={cnic} onChangeText={setCnic} hint={t('optional')} mask="cnic" />
           <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!name.trim()} />
         </View>
       </KeyboardAvoidingView>

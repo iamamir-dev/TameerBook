@@ -11,6 +11,7 @@ import Animated, {
 import { AppText } from '@/components/ui';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { applyMask, type MaskType } from '@/utils/mask';
 
 interface FloatingLabelInputProps {
   label: string;
@@ -19,6 +20,11 @@ interface FloatingLabelInputProps {
   keyboardType?: KeyboardTypeOptions;
   /** Optional helper / guidance line shown under the field. */
   hint?: string;
+  /**
+   * Auto-format as the user types (e.g. CNIC `#####-#######-#`, phone
+   * `####-#######`). Forces a numeric keypad and stores the formatted string.
+   */
+  mask?: MaskType;
 }
 
 /**
@@ -39,7 +45,10 @@ export function FloatingLabelInput({
   onChangeText,
   keyboardType,
   hint,
+  mask,
 }: FloatingLabelInputProps): React.JSX.Element {
+  // A masked field re-formats every keystroke and always types on a numpad.
+  const handleChange = (text: string) => onChangeText(mask ? applyMask(mask, text) : text);
   const theme = useTheme();
   const styles = makeStyles(theme);
   const [focused, setFocused] = useState(false);
@@ -67,8 +76,8 @@ export function FloatingLabelInput({
       <View style={[styles.box, focused && styles.boxFocused]}>
         <TextInput
           value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
+          onChangeText={handleChange}
+          keyboardType={mask ? 'number-pad' : keyboardType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={styles.input}

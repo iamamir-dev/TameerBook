@@ -159,7 +159,7 @@ export function NewPlotScreen(): React.JSX.Element {
             label={t('sellerPhone')}
             value={sellerPhone}
             onChangeText={setSellerPhone}
-            keyboardType="phone-pad"
+            mask="phone"
             hint={t('hintPhone')}
           />
 

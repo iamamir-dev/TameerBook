@@ -5,6 +5,7 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
+import { formatCnic, formatPhone } from '@/utils/mask';
 
 import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
@@ -26,13 +27,17 @@ export function ContactRow({ phone, cnic }: ContactRowProps): React.JSX.Element 
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
+  // Show the number/CNIC in their canonical formats even if stored unformatted.
+  const phoneText = phone ? formatPhone(phone) : null;
+  const cnicText = cnic ? formatCnic(cnic) : null;
+
   const tel = phone ? `tel:${phone.replace(/[^\d+]/g, '')}` : null;
   const dial = useCallback(() => {
     if (tel) Linking.openURL(tel).catch(swallow('ContactRow:dial'));
   }, [tel]);
   const confirmDial = useCallback(() => {
     if (!phone) return;
-    Alert.alert(phone, undefined, [
+    Alert.alert(phoneText ?? phone, undefined, [
       { text: t('cancel'), style: 'cancel' },
       { text: t('call'), onPress: dial },
     ]);
@@ -45,15 +50,15 @@ export function ContactRow({ phone, cnic }: ContactRowProps): React.JSX.Element 
       <AppIcon name={phone ? 'phone' : 'investor'} size={18} color="primary" />
       <View style={styles.info}>
         {phone ? (
-          <Pressable onPress={dial} onLongPress={confirmDial} accessibilityRole="button" accessibilityLabel={`${t('call')} ${phone}`}>
+          <Pressable onPress={dial} onLongPress={confirmDial} accessibilityRole="button" accessibilityLabel={`${t('call')} ${phoneText}`}>
             <AppText size="sm" weight="bold" color="primary" numberOfLines={1}>
-              {phone}
+              {phoneText}
             </AppText>
           </Pressable>
         ) : null}
-        {cnic ? (
+        {cnicText ? (
           <AppText size="xs" color="textSecondary" numberOfLines={1}>
-            {`${t('cnic')}: ${cnic}`}
+            {`${t('cnic')}: ${cnicText}`}
           </AppText>
         ) : null}
       </View>

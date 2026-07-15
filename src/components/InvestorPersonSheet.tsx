@@ -181,8 +181,8 @@ export function InvestorPersonSheet({
             </Pressable>
 
             <FloatingLabelInput label={t('personName')} value={name} onChangeText={setName} />
-            <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            <FloatingLabelInput label={t('cnic')} value={cnic} onChangeText={setCnic} />
+            <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} mask="phone" />
+            <FloatingLabelInput label={t('cnic')} value={cnic} onChangeText={setCnic} mask="cnic" />
 
             {/* Bank = pick from the accounts already in the app (no typing). */}
             <Pressable onPress={() => setBankSheet(true)} style={styles.accountChip} accessibilityRole="button">
