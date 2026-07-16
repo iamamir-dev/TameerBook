@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
+import { Pressable,
   ActivityIndicator,
   LayoutAnimation,
   Platform,
@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 
-import { AppButton, AppCard, AppIcon, AppText, PhoneChip } from '@/components/ui';
+import { AppCard, AppIcon, AppText, PhoneChip } from '@/components/ui';
 import { getLaborerKhata, type LaborerKhata, type LaborerTotals } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useDataVersion } from '@/stores/useDataVersion';
@@ -106,6 +106,16 @@ export function WorkerAccordion({
             {worker.phone ? <PhoneChip phone={worker.phone} compact /> : null}
           </View>
         </View>
+        {/* Calendar chip → mark attendance (pay lives on the History row). */}
+        <Pressable
+          onPress={onSeeAll}
+          hitSlop={theme.touch.hitSlop}
+          accessibilityRole="button"
+          accessibilityLabel={t('markAttendance')}
+          style={({ pressed }) => [styles.calendarBtn, pressed && styles.pressedDim]}
+        >
+          <AppIcon name="today" size={18} color="accent" />
+        </Pressable>
       </View>
 
       {/* One stretched line — earned | taken | balance — like the cost card,
@@ -175,22 +185,27 @@ export function WorkerAccordion({
               ))}
               {khata.participations.length > 0 ? <View style={styles.divider} /> : null}
 
-              <KhataHistoryList history={khata.history} />
-              <View style={styles.actions}>
+              {/* History header carries the compact actions (no bottom buttons). */}
+              <View style={styles.historyHeader}>
+                <AppText size="md" weight="bold" style={styles.flex}>
+                  {t('historyTitle')}
+                </AppText>
                 {onPay ? (
-                  <View style={styles.flex}>
-                    <AppButton label={t('payWorker')} icon="rupee" onPress={onPay} />
-                  </View>
+                  <Pressable onPress={onPay} accessibilityRole="button" style={styles.pillBtn}>
+                    <AppIcon name="rupee" size={14} color="onAccent" />
+                    <AppText size="xs" weight="bold" color="onAccent">
+                      {t('payWorker')}
+                    </AppText>
+                  </Pressable>
                 ) : null}
-                <View style={styles.flex}>
-                  <AppButton
-                    label={t('seeAll')}
-                    icon="forward"
-                    variant="secondary"
-                    onPress={onSeeAll}
-                  />
-                </View>
+                <Pressable onPress={onSeeAll} accessibilityRole="button" style={styles.pillBtnSoft}>
+                  <AppText size="xs" weight="bold" color="accent">
+                    {t('seeAll')}
+                  </AppText>
+                  <AppIcon name="forward" size={14} color="accent" />
+                </Pressable>
               </View>
+              <KhataHistoryList history={khata.history} hideTitle />
             </>
           ) : (
             <View style={styles.loading}>
@@ -205,6 +220,34 @@ export function WorkerAccordion({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    historyHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    calendarBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressedDim: { opacity: 0.7 },
+    pillBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accent,
+    },
+    pillBtnSoft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      paddingVertical: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accentSoft,
+    },
     card: { gap: theme.spacing.sm },
     header: {
       flexDirection: 'row',

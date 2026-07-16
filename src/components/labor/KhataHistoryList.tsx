@@ -16,6 +16,8 @@ const ATT_LABEL: Record<AttendanceStatus, TranslationKey> = {
 };
 
 interface KhataHistoryListProps {
+  /** Hide the internal "History" heading (host renders its own header row). */
+  hideTitle?: boolean;
   /** Unified attendance + payment history across projects, newest first. */
   history: LaborerKhataEntry[];
 }
@@ -26,16 +28,18 @@ interface KhataHistoryListProps {
  * Accruals read as + (green), payments as − (red) — the two directions of a
  * khata.
  */
-export function KhataHistoryList({ history }: KhataHistoryListProps): React.JSX.Element {
+export function KhataHistoryList({ history, hideTitle }: KhataHistoryListProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
   return (
     <>
+{hideTitle ? null : (
       <AppText size="lg" weight="bold">
         {t('historyTitle')}
       </AppText>
+)}
       <AppCard compact>
         {history.length === 0 ? (
           <AppText size="sm" color="textSecondary" center style={styles.empty}>

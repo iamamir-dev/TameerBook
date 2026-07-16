@@ -427,19 +427,30 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     const sale = await upsertSale(project.id, { agreedPrice: 1500 });
     await addSaleReceipt({ saleId: sale.id, amount: 1500, date: D, accountId: acc.id });
 
+    // Default rule = by ownership (capital ratio 200/300/500 → 20/30/50%).
     const s = await computeSettlement(project.id);
     const rAmir = s.rows.find((r) => r.name === 'DBTEST Amir');
     const rAman = s.rows.find((r) => r.name === 'DBTEST Amanullah');
+    const rOwner = s.rows.find((r) => r.isOwner);
+
+    // The agreed-% rule must reproduce the same numbers when told 20/30/50.
+    const agreed = await computeSettlement(project.id, {
+      kind: 'agreedPct',
+      pctById: Object.fromEntries(
+        s.rows.map((r) => [r.projectInvestorId, r.isOwner ? 50 : r.name.endsWith('Amir') ? 20 : 30])
+      ),
+    });
 
     const checks: Check[] = [
       ['net +500', near(s.net, 500) && s.isProfit],
       ['Amir profit 100 (20%)', near(rAmir?.profitOrLoss ?? 0, 100)],
       ['Amanullah profit 150 (30%)', near(rAman?.profitOrLoss ?? 0, 150)],
-      ['owner residual 250', near(s.owner.profitOrLoss, 250)],
-      ['owner capital 500 (1000−500)', near(s.owner.capital, 500)],
-      ['donations 10/15/25', near(rAmir?.donation ?? 0, 10) && near(rAman?.donation ?? 0, 15) && near(s.owner.donation, 25)],
+      ['owner residual 250', near(rOwner?.profitOrLoss ?? 0, 250)],
+      ['owner capital 500 (1000−500)', near(rOwner?.capital ?? 0, 500)],
+      ['donations 10/15/25', near(rAmir?.donation ?? 0, 10) && near(rAman?.donation ?? 0, 15) && near(rOwner?.donation ?? 0, 25)],
       ['total donation 50', near(s.totalDonation, 50)],
       ['payouts 290 / 435', near(rAmir?.finalPayout ?? 0, 290) && near(rAman?.finalPayout ?? 0, 435)],
+      ['agreed-% reproduces legacy', near(agreed.rows.find((r) => r.name.endsWith('Amir'))?.profitOrLoss ?? 0, 100)],
     ];
 
     // Commit and verify ledger writes
@@ -451,8 +462,12 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
       project.id
     );
     checks.push(['DONATION entries written (25)', (donationRows?.c ?? 0) === 2 && near(donationRows?.s ?? 0, 25)]);
-    const proj = await db.getFirstAsync<{ status: string }>('SELECT status FROM projects WHERE id = ?', project.id);
+    const proj = await db.getFirstAsync<{ status: string; settle_rule: string | null; settled_at: string | null }>(
+      'SELECT status, settle_rule, settled_at FROM projects WHERE id = ?',
+      project.id
+    );
     checks.push(['project COMPLETED', proj?.status === 'COMPLETED']);
+    checks.push(['settle rule + settled_at stamped', proj?.settle_rule === 'ownership' && !!proj?.settled_at]);
     const plotRow = await db.getFirstAsync<{ status: string }>('SELECT status FROM plots WHERE id = ?', plot.id);
     checks.push(['plot SOLD on settlement', plotRow?.status === 'SOLD']);
 
@@ -736,8 +751,17 @@ async function testProjectCompletionGuards(): Promise<TestResult> {
           'PROJECT_CLOSED'
         ),
       ],
+      // v2: mark-completed-then-settle is ALLOWED once — the second settle is
+      // blocked by settled_at (double-settle would double-pay).
       [
-        'settling a closed project blocked',
+        'settle after mark-completed succeeds once',
+        await settleProject(p.id).then(
+          () => true,
+          () => false
+        ),
+      ],
+      [
+        'second settle blocked (settled_at)',
         await expectThrow(() => settleProject(p.id), 'PROJECT_CLOSED'),
       ],
     ];

@@ -75,7 +75,7 @@ export function PlotsScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + theme.spacing.xxxl },
+            { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE },
           ]}
         >
           {items.length > 5 ? <SearchBar value={query} onChange={setQuery} /> : null}

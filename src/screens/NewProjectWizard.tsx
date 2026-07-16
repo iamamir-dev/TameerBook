@@ -52,8 +52,6 @@ interface DraftInvestor {
   name: string;
   /** How much they invest in THIS project — their stake / ownership basis. */
   amount: number;
-  /** Musharakah profit share % for this investor. */
-  profitPct: number;
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -76,7 +74,6 @@ export function NewProjectWizard(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const refreshProjects = useProjectsStore((s) => s.refresh);
-  const defaultPct = useSettingsStore((s) => s.investorProfitPct);
 
   const [step, setStep] = useState(0);
   const { saving, run: runSave } = useSaveAction();
@@ -136,9 +133,9 @@ export function NewProjectWizard(): React.JSX.Element {
       const have = new Set(list.map((i) => i.investorId));
       const additions = inclusions
         .filter(({ investorId }) => !have.has(investorId))
-        .map(({ investorId, amount, profitPct }) => {
+        .map(({ investorId, amount }) => {
           const inv = allInvestors.find((i) => i.id === investorId);
-          return { investorId, name: inv?.name ?? '', amount, profitPct };
+          return { investorId, name: inv?.name ?? '', amount };
         });
       return [...list, ...additions];
     });
@@ -154,7 +151,7 @@ export function NewProjectWizard(): React.JSX.Element {
       // is whatever was set in the stake sheet (defaults to the Settings %).
       await attachInvestorsToProject(
         project.id,
-        investors.map(({ investorId, amount, profitPct }) => ({ investorId, amount, profitPct }))
+        investors.map(({ investorId, amount }) => ({ investorId, amount }))
       );
 
       await refreshProjects();
@@ -353,7 +350,6 @@ export function NewProjectWizard(): React.JSX.Element {
         visible={addOpen}
         onClose={() => setAddOpen(false)}
         existingInvestors={availableInvestors}
-        defaultProfitPct={defaultPct}
         onSubmit={confirmAddInvestors}
       />
     </View>

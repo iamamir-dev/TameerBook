@@ -84,7 +84,6 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const refreshProjects = useProjectsStore((s) => s.refresh);
-  const defaultPct = useSettingsStore((s) => s.investorProfitPct);
 
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [cost, setCost] = useState<ProjectCost | null>(null);
@@ -165,20 +164,24 @@ export function ProjectDetailScreen(): React.JSX.Element {
   }, [constr, catLabel, t]);
 
   const showSummary = (saleSum?.receiptsTotal ?? 0) > 0 || completed;
+  // Settleable while ACTIVE with the buyer fully paid — or after "Mark
+  // completed" as long as it was never settled (settled_at guards re-entry).
+  const completedUnsettled = !!project && project.status === 'COMPLETED' && project.settled_at == null;
   const canSettle =
-    !!project &&
-    project.status === 'ACTIVE' &&
-    !!saleSum?.sale &&
-    saleSum.outstanding <= 0 &&
-    saleSum.receiptsTotal > 0;
+    (!!project &&
+      project.status === 'ACTIVE' &&
+      !!saleSum?.sale &&
+      saleSum.outstanding <= 0 &&
+      saleSum.receiptsTotal > 0) ||
+    completedUnsettled;
 
   // Settle affordance (V-18): visible once a sale exists, hidden when
   // completed, disabled with the concrete reason until fully received.
   const settleAction: SettleActionProps | null =
-    !!saleSum?.sale && !completed
+    (!!saleSum?.sale && !completed) || completedUnsettled
       ? {
         enabled: canSettle,
-        outstanding: saleSum.outstanding,
+        outstanding: completedUnsettled ? 0 : saleSum?.outstanding ?? 0,
         onPress: () => navigation.navigate('Settlement', { projectId }),
       }
       : null;
@@ -207,7 +210,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
         projectId,
         inclusions
           .filter(({ investorId }) => allInvestors.some((i) => i.id === investorId))
-          .map(({ investorId, amount, profitPct }) => ({ investorId, amount, profitPct }))
+          .map(({ investorId, amount }) => ({ investorId, amount }))
       );
     });
     if (!ok) return;
@@ -478,7 +481,6 @@ export function ProjectDetailScreen(): React.JSX.Element {
         onClose={() => setAttachOpen(false)}
         existingInvestors={availableInvestors}
         saving={saving}
-        defaultProfitPct={defaultPct}
         onSubmit={onAttachInvestors}
       />
 

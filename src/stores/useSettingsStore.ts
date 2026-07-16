@@ -24,8 +24,6 @@ export interface ReminderPrefs {
 
 export type ReminderKey = keyof ReminderPrefs;
 
-/** Default investor profit share when none is set (Musharakah split). */
-export const DEFAULT_INVESTOR_PROFIT_PCT = 50;
 
 /** Default charity/donation % of each party's profit (shariah, agreed upfront). */
 export const DEFAULT_DONATION_PCT = 0;
@@ -82,7 +80,6 @@ interface SettingsState {
   quickOrder: string[];
   reminders: ReminderPrefs;
   /** Default % of profit given to investors (loss is always by capital ratio). */
-  investorProfitPct: number;
   /** % of each party's profit donated to charity at settlement. */
   donationPct: number;
   hydrate: () => Promise<void>;
@@ -95,7 +92,6 @@ interface SettingsState {
   setHomeSection: (key: HomeSectionKey, value: boolean) => void;
   setQuickOrder: (order: string[]) => void;
   setReminder: (key: ReminderKey, value: boolean) => void;
-  setInvestorProfitPct: (pct: number) => void;
   setDonationPct: (pct: number) => void;
 }
 
@@ -114,7 +110,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   homeSections: DEFAULT_HOME_SECTIONS,
   quickOrder: [...DEFAULT_QUICK_ORDER],
   reminders: { daily: true, deadline: true, udhaar: true, buyer: true },
-  investorProfitPct: DEFAULT_INVESTOR_PROFIT_PCT,
   donationPct: DEFAULT_DONATION_PCT,
 
   hydrate: async () => {
@@ -130,7 +125,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           /* ignore malformed */
         }
       }
-      if (s.investorProfitPct != null) patch.investorProfitPct = clampPct(Number(s.investorProfitPct));
       if (s.donationPct != null) patch.donationPct = clampPct(Number(s.donationPct));
       if (s.fontFamily && s.fontFamily in FONT_OPTIONS) patch.fontFamily = s.fontFamily as FontKey;
       if (s.fontScale && s.fontScale in FONT_SCALES) patch.fontScale = s.fontScale as FontScaleKey;
@@ -197,11 +191,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const reminders = { ...get().reminders, [key]: value };
     set({ reminders });
     persist('reminders', JSON.stringify(reminders));
-  },
-  setInvestorProfitPct: (pct) => {
-    const investorProfitPct = clampPct(pct);
-    set({ investorProfitPct });
-    persist('investorProfitPct', String(investorProfitPct));
   },
   setDonationPct: (pct) => {
     const donationPct = clampPct(pct);

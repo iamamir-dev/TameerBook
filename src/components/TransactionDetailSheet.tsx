@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppText } from '@/components/ui';
+import { AppIcon, AppText } from '@/components/ui';
 import {
   getAccount,
   getCategory,
@@ -27,8 +27,8 @@ interface Props {
 /**
  * THE transaction detail sheet, self-sufficient: give it a TransactionRow and
  * it resolves its own category/account/project names and attached receipt
- * photo. Every transaction list in the app opens this same sheet, so a tapped
- * entry always reads the same way everywhere.
+ * photo. Structured like a document — amount hero, a Details section of
+ * labeled rows, and the receipt photo (tap to view full-screen).
  */
 export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.JSX.Element {
   const theme = useTheme();
@@ -40,6 +40,7 @@ export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.J
   const [accName, setAccName] = useState('');
   const [projName, setProjName] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [viewer, setViewer] = useState(false);
 
   useEffect(() => {
     if (!txn) return;
@@ -47,6 +48,7 @@ export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.J
     setAccName('');
     setProjName('');
     setReceiptUri(null);
+    setViewer(false);
     void (async () => {
       const [cat, acc, proj, docs] = await Promise.all([
         txn.category_id ? getCategory(txn.category_id) : null,
@@ -67,6 +69,8 @@ export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.J
       {txn ? (
         <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
+
+          {/* Amount hero */}
           <AppText size="xxl" weight="bold" tabular color={txn.direction === 'IN' ? 'success' : 'danger'}>
             {txn.direction === 'IN' ? '+ ' : '− '}
             {`Rs ${formatPakistaniGrouping(txn.amount)}`}
@@ -74,29 +78,66 @@ export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.J
           <AppText size="md" weight="semibold">
             {catName || (txn.direction === 'IN' ? t('aamdani') : t('kharcha'))}
           </AppText>
-          {txn.description ? (
-            <AppText size="sm" color="textSecondary">
-              {txn.description}
-            </AppText>
-          ) : null}
-          {txn.counterparty_name ? (
-            <AppText size="sm" color="textSecondary">
-              {txn.counterparty_name}
-            </AppText>
-          ) : null}
-          <AppText size="sm" color="textSecondary">
-            {[dayjs(txn.date).format('DD MMM YYYY'), accName, projName].filter(Boolean).join(' · ')}
-          </AppText>
 
-          {/* Attached receipt/bill photo, when the entry has one. */}
+          {/* Details — labeled rows, like a document. */}
+          <AppText size="sm" weight="bold" color="accent" style={styles.sectionTitle}>
+            {t('detailsSection')}
+          </AppText>
+          <DetailRow label={t('date')} value={dayjs(txn.date).format('DD MMM YYYY')} />
+          {catName ? <DetailRow label={t('category')} value={catName} /> : null}
+          {accName ? <DetailRow label={t('accountLabel')} value={accName} /> : null}
+          {projName ? <DetailRow label={t('projectLabel')} value={projName} /> : null}
+          {txn.counterparty_name ? <DetailRow label={t('party')} value={txn.counterparty_name} /> : null}
+          {txn.description ? <DetailRow label={t('note')} value={txn.description} /> : null}
+
+          {/* Receipt photo — tap for the full-screen view. */}
           {receiptUri ? (
-            <Image source={{ uri: receiptUri }} style={styles.receipt} resizeMode="cover" />
+            <>
+              <AppText size="sm" weight="bold" color="accent" style={styles.sectionTitle}>
+                {t('photoReceipt')}
+              </AppText>
+              <Pressable onPress={() => setViewer(true)} accessibilityRole="imagebutton" accessibilityLabel={t('photoReceipt')}>
+                <Image source={{ uri: receiptUri }} style={styles.receipt} resizeMode="cover" />
+                <View style={styles.zoomBadge}>
+                  <AppIcon name="search" size={16} color="onHero" />
+                </View>
+              </Pressable>
+            </>
           ) : null}
 
           {footer}
         </View>
       ) : null}
+
+      {/* Full-screen receipt viewer */}
+      <Modal visible={viewer} transparent animationType="fade" onRequestClose={() => setViewer(false)}>
+        <View style={styles.viewer}>
+          {receiptUri ? <Image source={{ uri: receiptUri }} style={styles.viewerImage} resizeMode="contain" /> : null}
+          <Pressable
+            onPress={() => setViewer(false)}
+            accessibilityRole="button"
+            style={[styles.viewerClose, { top: insets.top + theme.spacing.md }]}
+          >
+            <AppIcon name="close" size={28} color="onHero" />
+          </Pressable>
+        </View>
+      </Modal>
     </Modal>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.row}>
+      <AppText size="sm" color="textSecondary" style={styles.rowLabel}>
+        {label}
+      </AppText>
+      <AppText size="sm" weight="semibold" style={styles.rowValue} numberOfLines={2}>
+        {value}
+      </AppText>
+    </View>
   );
 }
 
@@ -123,11 +164,44 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.track,
       marginBottom: theme.spacing.sm,
     },
+    sectionTitle: { marginTop: theme.spacing.sm },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
+    rowLabel: { width: 96 },
+    rowValue: { flex: 1, textAlign: 'right' },
     receipt: {
       width: '100%',
-      height: 200,
+      height: 180,
       borderRadius: theme.radius.md,
       backgroundColor: theme.colors.track,
-      marginTop: theme.spacing.sm,
+    },
+    zoomBadge: {
+      position: 'absolute',
+      right: theme.spacing.sm,
+      bottom: theme.spacing.sm,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+    viewerImage: { width: '100%', height: '85%' },
+    viewerClose: {
+      position: 'absolute',
+      right: theme.spacing.lg,
+      width: 48,
+      height: 48,
+      borderRadius: theme.radius.pill,
+      backgroundColor: 'rgba(255,255,255,0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });

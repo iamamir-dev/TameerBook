@@ -23,8 +23,6 @@ export interface InvestorOption {
 export interface InvestorInclusion {
   investorId: string;
   amount: number;
-  /** Musharakah profit share % for this investor in this project. */
-  profitPct: number;
 }
 
 interface InvestorSheetProps {
@@ -32,8 +30,6 @@ interface InvestorSheetProps {
   onClose: () => void;
   existingInvestors: InvestorOption[];
   saving?: boolean;
-  /** Profit share % each newly-added investor starts on (from Settings). */
-  defaultProfitPct: number;
   /** The investors selected + how much each one puts into this project. */
   onSubmit: (inclusions: InvestorInclusion[]) => void;
 }
@@ -51,7 +47,6 @@ export function InvestorSheet({
   onClose,
   existingInvestors,
   saving = false,
-  defaultProfitPct,
   onSubmit,
 }: InvestorSheetProps): React.JSX.Element {
   const theme = useTheme();
@@ -129,7 +124,7 @@ export function InvestorSheet({
     // Profit share is one project-wide % (from Settings) applied to everyone —
     // it's equal for all investors in a project.
     onSubmit(
-      chosen.map((p) => ({ investorId: p.id, amount: amounts[p.id] ?? 0, profitPct: defaultProfitPct }))
+      chosen.map((p) => ({ investorId: p.id, amount: amounts[p.id] ?? 0 }))
     );
   };
 

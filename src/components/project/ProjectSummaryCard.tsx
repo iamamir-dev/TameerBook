@@ -57,7 +57,7 @@ export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardPro
                 {inv.name}
               </AppText>
               <AppText size="xs" weight="semibold" color="textSecondary">
-                {`${t('profitShare')} ${inv.profitPct}%`}
+                {`${t('ownershipSection')} ${inv.ownershipPct.toFixed(1)}%`}
               </AppText>
             </View>
             <MiniRow label={t('investedLabel')} value={formatRupees(inv.invested)} />
@@ -74,9 +74,14 @@ export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardPro
         ))}
 
         <View style={[styles.partyBlock, styles.ruled]}>
-          <AppText size="sm" weight="bold">
-            {t('owner')}
-          </AppText>
+          <View style={styles.partyHeader}>
+            <AppText size="sm" weight="bold" style={styles.partyName}>
+              {t('owner')}
+            </AppText>
+            <AppText size="xs" weight="semibold" color="textSecondary">
+              {`${t('ownershipSection')} ${settlement.owner.ownershipPct.toFixed(1)}%`}
+            </AppText>
+          </View>
           <MiniRow label={t('ownerInvested')} value={formatRupees(settlement.owner.invested)} />
           <MiniRow
             label={t(settlement.owner.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')}

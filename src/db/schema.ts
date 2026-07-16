@@ -226,6 +226,12 @@ export interface ProjectRow extends Base {
   donation_pct: number | null;
   /** User-facing display status (Settings → Statuses); null = none. */
   stage_id: string | null;
+  /** Distribution rule kind chosen at settlement (null = not settled / legacy). */
+  settle_rule: string | null;
+  /** JSON of the rule's inputs + donation % used (for the receipt/summary). */
+  settle_params: string | null;
+  /** Set once settled — the double-settle guard. */
+  settled_at: string | null;
 }
 
 export interface PartyRow extends Base {
@@ -1011,6 +1017,19 @@ export const SCHEMA_V21_COMPANY_LOGO = `
 ALTER TABLE companies ADD COLUMN logo_uri TEXT;
 `;
 
+/** v22 — settlement rule chosen at settle time + double-settle marker. */
+export const SCHEMA_V22_SETTLE_RULE = `
+ALTER TABLE projects ADD COLUMN settle_rule TEXT;
+ALTER TABLE projects ADD COLUMN settle_params TEXT;
+ALTER TABLE projects ADD COLUMN settled_at TEXT;
+UPDATE projects SET settled_at = (
+  SELECT MAX(COALESCE(pi.exited_at, pi.created_at)) FROM project_investors pi
+  WHERE pi.project_id = projects.id AND pi.status = 'SETTLED')
+WHERE status = 'COMPLETED' AND EXISTS (
+  SELECT 1 FROM project_investors pi
+  WHERE pi.project_id = projects.id AND pi.status = 'SETTLED');
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1027,6 +1046,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 19, sql: SCHEMA_V19_STAGES },
   { version: 20, sql: SCHEMA_V20_STAGE_COLORS },
   { version: 21, sql: SCHEMA_V21_COMPANY_LOGO },
+  { version: 22, sql: SCHEMA_V22_SETTLE_RULE },
 ];
 
 /* -------------------------------------------------------------------------- */

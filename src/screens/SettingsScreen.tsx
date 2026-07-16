@@ -52,8 +52,6 @@ export function SettingsScreen(): React.JSX.Element {
   const setDarkMode = useSettingsStore((s) => s.setDarkMode);
   const reminders = useSettingsStore((s) => s.reminders);
   const setReminder = useSettingsStore((s) => s.setReminder);
-  const investorProfitPct = useSettingsStore((s) => s.investorProfitPct);
-  const setInvestorProfitPct = useSettingsStore((s) => s.setInvestorProfitPct);
   const donationPct = useSettingsStore((s) => s.donationPct);
   const setDonationPct = useSettingsStore((s) => s.setDonationPct);
 
@@ -325,52 +323,12 @@ export function SettingsScreen(): React.JSX.Element {
             </View>
           ))}
         </AppCard>
-        {/* Profit sharing  global default investor % (loss always by capital) */}
+        {/* Sadaqah — charity % of profit (profit split itself is decided in
+            the Settle Up wizard, per project). */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
-          {t('profitSharing')}
+          {t('donationPctLabel')}
         </AppText>
         <AppCard compact>
-          <View style={styles.row}>
-            <View style={styles.iconChip}>
-              <AppIcon name="investor" size={24} color="primary" />
-            </View>
-            <AppText size="md" weight="semibold" style={styles.rowLabel}>
-              {t('investorProfitShare')}
-            </AppText>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => setInvestorProfitPct(investorProfitPct - 5)}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="-5%"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">
-                  −
-                </AppText>
-              </Pressable>
-              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
-                {investorProfitPct}%
-              </AppText>
-              <Pressable
-                onPress={() => setInvestorProfitPct(investorProfitPct + 5)}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="+5%"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">
-                  +
-                </AppText>
-              </Pressable>
-            </View>
-          </View>
-          <AppText size="xs" color="textSecondary" style={styles.note}>
-            {t('profitShareNote')}
-          </AppText>
-
-          <Divider />
-
           {/* Donation %  charity share deducted from each profit */}
           <View style={styles.row}>
             <View style={styles.iconChip}>
