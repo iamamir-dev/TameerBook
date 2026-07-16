@@ -330,7 +330,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
           );
         })()}
 
-        <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} />
+        <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} salePrice={saleSum?.sale?.agreed_price ?? 0} />
 
         {/* Completed projects lead with the settlement summary (the project's
             final story); on active projects it appears after investors below. */}

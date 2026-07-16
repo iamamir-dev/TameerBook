@@ -12,6 +12,8 @@ interface Props {
   cost: ProjectCost;
   /** Buyer money received so far (sale receipts) — shows a Received/Net line. */
   received?: number;
+  /** Agreed sale price with the buyer (0 = no sale deal yet). */
+  salePrice?: number;
 }
 
 type Tone = 'gold' | 'accent' | 'success';
@@ -34,7 +36,7 @@ const SEGMENTS: {
  * construction green-accent, sale green) — separated by light hairlines.
  * Deliberately no progress bar and no tinted fills: color lives in the type.
  */
-export function ProjectCostCard({ cost, received = 0 }: Props): React.JSX.Element {
+export function ProjectCostCard({ cost, received = 0, salePrice = 0 }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -67,23 +69,41 @@ export function ProjectCostCard({ cost, received = 0 }: Props): React.JSX.Elemen
         ))}
       </View>
 
-      {/* "Did I make money?" at a glance — buyer money in vs total cost. */}
-      {received > 0 ? (
+      {/* The sale side — deal, received, profit — same column grid as above. */}
+      {salePrice > 0 || received > 0 ? (
         <>
           <View style={styles.rule} />
-          <View style={styles.netRow}>
-            <AppText size="sm" color="textSecondary">
-              {t('receivedLabel')}
-            </AppText>
-            <AppText size="sm" weight="bold" color="success" tabular>
-              {formatRupees(received)}
-            </AppText>
-            <AppText size="sm" color="textSecondary" style={styles.netLabel}>
-              {t('netSoFar')}
-            </AppText>
-            <AppText size="sm" weight="bold" color={net >= 0 ? 'success' : 'danger'} tabular>
-              {formatRupees(net)}
-            </AppText>
+          <View style={styles.columns}>
+            {salePrice > 0 ? (
+              <>
+                <View style={styles.col}>
+                  <AppText size="sm" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                    {formatRupees(salePrice)}
+                  </AppText>
+                  <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                    {t('saleDeal')}
+                  </AppText>
+                </View>
+                <View style={styles.colDivider} />
+              </>
+            ) : null}
+            <View style={styles.col}>
+              <AppText size="sm" weight="bold" color="success" tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(received)}
+              </AppText>
+              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                {t('receivedLabel')}
+              </AppText>
+            </View>
+            <View style={styles.colDivider} />
+            <View style={styles.col}>
+              <AppText size="sm" weight="bold" color={net >= 0 ? 'success' : 'danger'} tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(net)}
+              </AppText>
+              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                {t('netSoFar')}
+              </AppText>
+            </View>
           </View>
         </>
       ) : null}

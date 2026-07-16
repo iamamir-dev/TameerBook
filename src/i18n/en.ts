@@ -181,7 +181,7 @@ export const en: TranslationKeys = {
   bookingTile: 'Booking',
   alsoPaidNow: 'Also paid now',
   goToSection: 'Go to',
-  netSoFar: 'Net so far',
+  netSoFar: 'Profit so far',
   selectSavedSupplier: 'Pick a saved supplier',
   selectSavedParty: 'Pick a saved person',
   netWorthLabel: 'Net worth',
@@ -293,7 +293,7 @@ export const en: TranslationKeys = {
   afterLabel: 'After',
   exitReceipt: 'Exit Settlement Receipt',
 
-  outstanding: 'Outstanding',
+  outstanding: 'Still to pay',
   addReceipt: 'Add Receipt',
   sellerCosts: 'Seller Costs',
   feeDealerCommission: 'Dealer Commission',
@@ -493,7 +493,7 @@ export const en: TranslationKeys = {
   donationNote: 'A share of each profit is donated to charity (agreed with investors, per shariah).',
   totalDonation: 'Total donation',
   ownerInvested: 'Owner investment',
-  payoutLabel: 'Payout',
+  payoutLabel: 'Gets back',
 
   // v2  Sale detail
   saleDeal: 'Sale deal',

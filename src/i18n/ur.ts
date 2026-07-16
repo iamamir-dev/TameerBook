@@ -184,7 +184,7 @@ export const ur: TranslationKeys = {
   bookingTile: 'بکنگ',
   alsoPaidNow: 'ادائیگی بھی ابھی کی',
   goToSection: 'جائیں',
-  netSoFar: 'اب تک کا خالص',
+  netSoFar: 'اب تک کا منافع',
   selectSavedSupplier: 'محفوظ سپلائر چنیں',
   selectSavedParty: 'محفوظ فریق چنیں',
   netWorthLabel: 'کل مالیت',
@@ -296,7 +296,7 @@ export const ur: TranslationKeys = {
   afterLabel: 'بعد',
   exitReceipt: 'اخراج کی رسید',
 
-  outstanding: 'باقی',
+  outstanding: 'ادائیگی باقی',
   addReceipt: 'رسید شامل کریں',
   sellerCosts: 'بیچنے والے کے اخراجات',
   feeDealerCommission: 'ڈیلر کمیشن',
@@ -305,8 +305,8 @@ export const ur: TranslationKeys = {
   saleNdc: 'این ڈی سی',
 
   settleTitle: 'حساب کریں',
-  revenue: 'آمدنی',
-  totalExpenses: 'اخراجات',
+  revenue: 'فروخت سے وصولی',
+  totalExpenses: 'کل خرچ',
   netProfit: 'خالص منافع',
   owner: 'مالک (آپ)',
   netLoss: 'خالص نقصان',
@@ -496,7 +496,7 @@ export const ur: TranslationKeys = {
   donationNote: 'ہر منافع کا ایک حصہ خیرات میں جاتا ہے (سرمایہ کاروں سے طے شدہ، شریعت کے مطابق)۔',
   totalDonation: 'کل خیرات',
   ownerInvested: 'مالک کی سرمایہ کاری',
-  payoutLabel: 'ادائیگی',
+  payoutLabel: 'واپس ملیں گے',
 
   // v2  Sale detail
   saleDeal: 'بکری کی ڈیل',

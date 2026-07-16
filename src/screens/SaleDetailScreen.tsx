@@ -297,7 +297,7 @@ export function SaleDetailScreen(): React.JSX.Element {
               ) : null}
               <View style={styles.heroMetrics}>
                 <MetricRow label={t('buyerReceipts')} value={formatRupees(summary?.receiptsTotal ?? 0)} tone="success" />
-                <MetricRow label={t('outstanding')} value={formatRupees(summary?.outstanding ?? 0)} />
+                <MetricRow label={t('warnBuyerOwes')} value={formatRupees(summary?.outstanding ?? 0)} />
                 <MetricRow label={t('saleCosts')} value={formatRupees(summary?.costs ?? 0)} tone="danger" />
               </View>
             </Pressable>

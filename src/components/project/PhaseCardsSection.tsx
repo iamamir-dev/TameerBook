@@ -111,7 +111,7 @@ export function PhaseCardsSection({
         headlineLabel={t('saleDeal')}
         metrics={[
           { label: t('buyerReceipts'), value: formatRupees(saleSum.receiptsTotal), tone: 'success' },
-          { label: t('outstanding'), value: formatRupees(saleSum.outstanding) },
+          { label: t('warnBuyerOwes'), value: formatRupees(saleSum.outstanding) },
           { label: t('saleCosts'), value: formatRupees(saleSum.costs) },
         ]}
         onPress={onOpenSale}

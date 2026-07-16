@@ -133,46 +133,53 @@ export function SettlementScreen(): React.JSX.Element {
             {data.isProfit ? t('profitShare') : t('lossShare')}
           </AppText>
           <AppCard compact>
-            <View style={styles.tHead}>
-              <AppText size="xs" weight="bold" color="textSecondary" style={styles.flex}>{t('investors')}</AppText>
-              <AppText size="xs" weight="bold" color="textSecondary" style={styles.col}>{t('capitalBack')}</AppText>
-              <AppText size="xs" weight="bold" color="textSecondary" style={styles.col}>{data.isProfit ? t('profitShare') : t('lossShare')}</AppText>
-              {data.totalDonation > 0 ? (
-                <AppText size="xs" weight="bold" color="textSecondary" style={styles.col}>{t('donationLabel')}</AppText>
-              ) : null}
-              <AppText size="xs" weight="bold" color="textSecondary" style={styles.col}>{t('payoutLabel')}</AppText>
-            </View>
-            {data.rows.map((r) => (
-              <View key={r.projectInvestorId}>
+            {/* The distribution table — columns keep a comfortable fixed
+                width and the whole grid scrolls sideways instead of squeezing. */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View>
+                <View style={styles.tHead}>
+                  <AppText size="xs" weight="bold" color="textSecondary" style={styles.nameCol}>{t('investors')}</AppText>
+                  <AppText size="xs" weight="bold" color="textSecondary" style={styles.numCol}>{t('capitalBack')}</AppText>
+                  <AppText size="xs" weight="bold" color="textSecondary" style={styles.numCol}>{data.isProfit ? t('profitShare') : t('lossShare')}</AppText>
+                  {data.totalDonation > 0 ? (
+                    <AppText size="xs" weight="bold" color="textSecondary" style={styles.numCol}>{t('donationLabel')}</AppText>
+                  ) : null}
+                  <AppText size="xs" weight="bold" color="textSecondary" style={styles.numCol}>{t('payoutLabel')}</AppText>
+                </View>
+                {data.rows.map((r) => (
+                  <View key={r.projectInvestorId}>
+                    <View style={styles.tRow}>
+                      <AppText size="xs" weight="semibold" numberOfLines={1} style={styles.nameCol}>{r.name}</AppText>
+                      <AppText size="xs" color="textSecondary" tabular style={styles.numCol}>{formatRupees(r.capital)}</AppText>
+                      <AppText size="xs" color={r.profitOrLoss >= 0 ? 'success' : 'danger'} tabular style={styles.numCol}>
+                        {formatRupees(Math.abs(r.profitOrLoss))}
+                      </AppText>
+                      {data.totalDonation > 0 ? (
+                        <AppText size="xs" color="gold" tabular style={styles.numCol}>{formatRupees(r.donation)}</AppText>
+                      ) : null}
+                      <AppText size="xs" weight="bold" tabular style={styles.numCol}>{formatRupees(r.finalPayout)}</AppText>
+                    </View>
+                    <View style={styles.divider} />
+                  </View>
+                ))}
+                {/* Owner (residual) — informational, not paid out */}
                 <View style={styles.tRow}>
-                  <AppText size="xs" weight="semibold" numberOfLines={1} style={styles.flex}>{r.name}</AppText>
-                  <AppText size="xs" color="textSecondary" tabular style={styles.col}>{formatRupees(r.capital)}</AppText>
-                  <AppText size="xs" color={r.profitOrLoss >= 0 ? 'success' : 'danger'} tabular style={styles.col}>
-                    {formatRupees(r.profitOrLoss)}
+                  <View style={styles.nameCol}>
+                    <AppText size="xs" weight="semibold" numberOfLines={1}>{t('owner')}</AppText>
+                    <AppText size="xs" color="textSecondary" numberOfLines={1}>{t('ownerInvested')}</AppText>
+                  </View>
+                  <AppText size="xs" color="textSecondary" tabular style={styles.numCol}>{formatRupees(data.owner.capital)}</AppText>
+                  <AppText size="xs" color={data.owner.profitOrLoss >= 0 ? 'success' : 'danger'} tabular style={styles.numCol}>
+                    {formatRupees(Math.abs(data.owner.profitOrLoss))}
                   </AppText>
                   {data.totalDonation > 0 ? (
-                    <AppText size="xs" color="gold" tabular style={styles.col}>{formatRupees(r.donation)}</AppText>
+                    <AppText size="xs" color="gold" tabular style={styles.numCol}>{formatRupees(data.owner.donation)}</AppText>
                   ) : null}
-                  <AppText size="xs" weight="bold" tabular style={styles.col}>{formatRupees(r.finalPayout)}</AppText>
+                  <AppText size="xs" color="textSecondary" style={styles.numCol}></AppText>
                 </View>
-                <View style={styles.divider} />
               </View>
-            ))}
-            {/* Owner (residual)  informational, not paid out */}
-            <View style={styles.tRow}>
-              <View style={styles.flex}>
-                <AppText size="xs" weight="semibold" numberOfLines={1}>{t('owner')}</AppText>
-                <AppText size="xs" color="textSecondary" numberOfLines={1}>{t('ownerInvested')}</AppText>
-              </View>
-              <AppText size="xs" color="textSecondary" tabular style={styles.col}>{formatRupees(data.owner.capital)}</AppText>
-              <AppText size="xs" color={data.owner.profitOrLoss >= 0 ? 'success' : 'danger'} tabular style={styles.col}>
-                {formatRupees(data.owner.profitOrLoss)}
-              </AppText>
-              {data.totalDonation > 0 ? (
-                <AppText size="xs" color="gold" tabular style={styles.col}>{formatRupees(data.owner.donation)}</AppText>
-              ) : null}
-              <AppText size="xs" color="textSecondary" style={styles.col}></AppText>
-            </View>
+            </ScrollView>
+
             {data.totalDonation > 0 ? (
               <>
                 <View style={styles.divider} />
@@ -200,6 +207,8 @@ const makeStyles = (theme: Theme) =>
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     col: { width: 64, textAlign: 'right' },
+    nameCol: { width: 110 },
+    numCol: { width: 104, textAlign: 'right' },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: { borderRadius: theme.radius.hero, padding: theme.spacing.xl, gap: theme.spacing.xs, ...theme.shadows.card },
     kv: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.sm },

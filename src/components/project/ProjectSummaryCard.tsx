@@ -51,25 +51,25 @@ export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardPro
 
         {settlement.investors.map((inv) => (
           <View key={inv.investorId} style={[styles.partyBlock, styles.ruled]}>
-            <AppText size="sm" weight="bold" numberOfLines={1}>
-              {inv.name}
-            </AppText>
-            <AppText size="xs" color="textSecondary" tabular>
-              {`${t('paidInCapital')}: ${formatRupees(inv.invested)} · ${inv.profitPct}%`}
-            </AppText>
-            <View style={styles.partyLine}>
-              <AppText size="xs" color={inv.profitOrLoss >= 0 ? 'success' : 'danger'} tabular>
-                {`${t(inv.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')} ${formatRupees(Math.abs(inv.profitOrLoss))}`}
+            {/* Name on the left, their agreed share on the right. */}
+            <View style={styles.partyHeader}>
+              <AppText size="sm" weight="bold" numberOfLines={1} style={styles.partyName}>
+                {inv.name}
               </AppText>
-              {inv.donation > 0 ? (
-                <AppText size="xs" color="textSecondary" tabular>
-                  {`${t('donationLabel')} ${formatRupees(inv.donation)}`}
-                </AppText>
-              ) : null}
-              <AppText size="xs" weight="bold" tabular>
-                {`${t('payoutLabel')} ${formatRupees(inv.finalPayout)}`}
+              <AppText size="xs" weight="semibold" color="textSecondary">
+                {`${t('profitShare')} ${inv.profitPct}%`}
               </AppText>
             </View>
+            <MiniRow label={t('investedLabel')} value={formatRupees(inv.invested)} />
+            <MiniRow
+              label={t(inv.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')}
+              value={formatRupees(Math.abs(inv.profitOrLoss))}
+              tone={inv.profitOrLoss >= 0 ? 'success' : 'danger'}
+            />
+            {inv.donation > 0 ? (
+              <MiniRow label={t('donationLabel')} value={formatRupees(inv.donation)} tone="gold" />
+            ) : null}
+            <MiniRow label={t('payoutLabel')} value={formatRupees(inv.finalPayout)} bold />
           </View>
         ))}
 
@@ -77,19 +77,15 @@ export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardPro
           <AppText size="sm" weight="bold">
             {t('owner')}
           </AppText>
-          <AppText size="xs" color="textSecondary" tabular>
-            {`${t('ownerInvested')}: ${formatRupees(settlement.owner.invested)}`}
-          </AppText>
-          <View style={styles.partyLine}>
-            <AppText size="xs" color={settlement.owner.profitOrLoss >= 0 ? 'success' : 'danger'} tabular>
-              {`${t(settlement.owner.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')} ${formatRupees(Math.abs(settlement.owner.profitOrLoss))}`}
-            </AppText>
-            {settlement.owner.donation > 0 ? (
-              <AppText size="xs" color="textSecondary" tabular>
-                {`${t('donationLabel')} ${formatRupees(settlement.owner.donation)}`}
-              </AppText>
-            ) : null}
-          </View>
+          <MiniRow label={t('ownerInvested')} value={formatRupees(settlement.owner.invested)} />
+          <MiniRow
+            label={t(settlement.owner.profitOrLoss >= 0 ? 'netProfit' : 'netLoss')}
+            value={formatRupees(Math.abs(settlement.owner.profitOrLoss))}
+            tone={settlement.owner.profitOrLoss >= 0 ? 'success' : 'danger'}
+          />
+          {settlement.owner.donation > 0 ? (
+            <MiniRow label={t('donationLabel')} value={formatRupees(settlement.owner.donation)} tone="gold" />
+          ) : null}
         </View>
 
         {settlement.totalDonation > 0 ? (
@@ -121,6 +117,32 @@ export function SettleAction({ enabled, outstanding, onPress }: SettleActionProp
             (outstanding > 0 ? `\n${t('warnBuyerOwes')}: ${formatRupees(outstanding)}` : '')}
         </AppText>
       ) : null}
+    </View>
+  );
+}
+
+/** One compact label/value line inside a participant block. */
+function MiniRow({
+  label,
+  value,
+  tone,
+  bold,
+}: {
+  label: string;
+  value: string;
+  tone?: 'success' | 'danger' | 'gold';
+  bold?: boolean;
+}): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.miniRow}>
+      <AppText size="xs" color="textSecondary">
+        {label}
+      </AppText>
+      <AppText size={bold ? 'sm' : 'xs'} weight={bold ? 'bold' : 'semibold'} tabular color={tone ?? 'textPrimary'}>
+        {value}
+      </AppText>
     </View>
   );
 }
@@ -164,7 +186,15 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'space-between',
       paddingVertical: theme.spacing.sm,
     },
-    partyBlock: { paddingVertical: theme.spacing.sm, gap: 2 },
+    partyBlock: { paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
+    partyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md },
+    partyName: { flex: 1 },
+    miniRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: theme.spacing.md,
+    },
     partyLine: {
       flexDirection: 'row',
       alignItems: 'center',
