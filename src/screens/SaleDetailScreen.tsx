@@ -560,7 +560,6 @@ const makeStyles = (theme: Theme) =>
       marginTop: theme.spacing.sm,
     },
     metricRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    actionRow: { flexDirection: 'row', gap: theme.spacing.md },
     sectionTitle: { marginTop: theme.spacing.sm },
     /* sheets */
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },

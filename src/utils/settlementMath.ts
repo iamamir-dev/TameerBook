@@ -34,8 +34,10 @@ export interface DistributionInput {
   participants: ParticipantInput[];
   /** Signed net P&L of the project. */
   net: number;
-  /** Sadaqah % of profit, 0–100 (ignored on loss). */
+  /** Charity % of each person's profit share, 0–100 (ignored on loss). */
   donationPct: number;
+  /** Per-person charity opt-out (true = keeps their charity portion). */
+  donationOptOutById?: Record<string, boolean>;
   rule: DistributionRule;
 }
 
@@ -146,9 +148,10 @@ export function computeDistribution(input: DistributionInput): DistributionResul
     ownerIdx
   );
 
-  // Sadaqah pool off the top (profit only); rules divide the remainder.
-  const totalDonation = isProfit ? round2(net * (donationPct / 100)) : 0;
-  const distributable = round2(net - totalDonation);
+  // Rules divide the FULL net (e.g. 20% builder + 80% by ownership); charity
+  // is then charged per person on their own share — so an opt-out investor
+  // simply keeps their charity portion.
+  const distributableForRules = net;
 
   // NET share per participant (before adding back the sadaqah slice).
   let netShares: number[];
@@ -159,7 +162,7 @@ export function computeDistribution(input: DistributionInput): DistributionResul
   } else {
     switch (rule.kind) {
       case 'ownership': {
-        netShares = allocateProportional(distributable, participants.map((p) => p.capital), ownerIdx);
+        netShares = allocateProportional(distributableForRules, participants.map((p) => p.capital), ownerIdx);
         break;
       }
       case 'agreedPct': {
@@ -169,14 +172,14 @@ export function computeDistribution(input: DistributionInput): DistributionResul
         }
         const sum = round2(pcts.reduce((s, v) => s + v, 0));
         if (Math.abs(sum - 100) > 0.01) errors.push({ code: 'PCT_SUM_NOT_100', detail: String(sum) });
-        netShares = allocateProportional(distributable, pcts, ownerIdx);
+        netShares = allocateProportional(distributableForRules, pcts, ownerIdx);
         break;
       }
       case 'ownerFirst': {
         const ownerPct = rule.ownerPct;
         if (ownerPct < 0 || ownerPct > 100) errors.push({ code: 'PCT_OUT_OF_RANGE', detail: String(ownerPct) });
-        const ownerCut = round2(distributable * (Math.min(100, Math.max(0, ownerPct)) / 100));
-        const remainder = round2(distributable - ownerCut);
+        const ownerCut = round2(distributableForRules * (Math.min(100, Math.max(0, ownerPct)) / 100));
+        const remainder = round2(distributableForRules - ownerCut);
         netShares = allocateProportional(remainder, participants.map((p) => p.capital), ownerIdx);
         if (ownerIdx >= 0) netShares[ownerIdx] = round2(netShares[ownerIdx] + ownerCut);
         break;
@@ -188,14 +191,14 @@ export function computeDistribution(input: DistributionInput): DistributionResul
         const owedSum = round2(owed.reduce((s, v) => s + v, 0));
         if (owedSum <= 0) {
           // Nothing promised → everything to the owner.
-          netShares = participants.map((p, i) => (i === ownerIdx ? distributable : 0));
-        } else if (distributable >= owedSum) {
+          netShares = participants.map((_, i) => (i === ownerIdx ? distributableForRules : 0));
+        } else if (distributableForRules >= owedSum) {
           netShares = owed.slice();
-          if (ownerIdx >= 0) netShares[ownerIdx] = round2(distributable - owedSum);
+          if (ownerIdx >= 0) netShares[ownerIdx] = round2(distributableForRules - owedSum);
         } else {
           // Profit smaller than the promised munafa: divide what exists in
           // proportion to what was owed (nothing is guaranteed — halal).
-          netShares = allocateProportional(distributable, owed, 0);
+          netShares = allocateProportional(distributableForRules, owed, 0);
         }
         break;
       }
@@ -205,8 +208,8 @@ export function computeDistribution(input: DistributionInput): DistributionResul
           if (v < 0) errors.push({ code: 'NEGATIVE_INPUT', detail: String(v) });
         }
         const sum = round2(amounts.reduce((s, v) => s + v, 0));
-        if (Math.abs(sum - distributable) > 0.01) {
-          errors.push({ code: 'AMOUNT_SUM_MISMATCH', detail: `${sum} vs ${distributable}` });
+        if (Math.abs(sum - distributableForRules) > 0.01) {
+          errors.push({ code: 'AMOUNT_SUM_MISMATCH', detail: `${sum} vs ${distributableForRules}` });
         }
         netShares = amounts.map(round2);
         break;
@@ -214,13 +217,16 @@ export function computeDistribution(input: DistributionInput): DistributionResul
     }
   }
 
-  // Sadaqah slices proportional to each POSITIVE net share; gross = net + slice.
-  const donationSlices = isProfit
-    ? allocateProportional(totalDonation, netShares.map((v) => Math.max(0, v)), ownerIdx)
-    : participants.map(() => 0);
+  // Charity per person on their own POSITIVE share — skipped when opted out.
+  const optOut = input.donationOptOutById ?? {};
+  const donationSlices = participants.map((p, i) =>
+    isProfit && !optOut[p.id] && netShares[i] > 0 ? round2(netShares[i] * (donationPct / 100)) : 0
+  );
+  const totalDonation = round2(donationSlices.reduce((s, v) => s + v, 0));
+  const distributable = round2(net - totalDonation);
 
   const rows: DistributionRow[] = participants.map((p, i) => {
-    const gross = round2(netShares[i] + donationSlices[i]);
+    const gross = round2(netShares[i]);
     return {
       id: p.id,
       name: p.name,

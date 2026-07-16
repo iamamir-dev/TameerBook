@@ -127,24 +127,16 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
               <View style={styles.flex}>
                 <FloatingLabelInput label={t('qtyLabel')} value={qty} onChangeText={setQty} keyboardType="number-pad" />
               </View>
-              <View style={styles.flex}>
-                <FloatingLabelInput label={t('unitLabel')} value={unit} onChangeText={setUnit} />
+              {/* Unit is FIXED — it comes from the item's default unit
+                  (Settings → Categories → Materials), not typed here. */}
+              <View style={styles.unitBox}>
+                <AppText size="xs" weight="semibold" color="textSecondary">
+                  {t('unitLabel')}
+                </AppText>
+                <AppText size="md" weight="bold" numberOfLines={1}>
+                  {unit || '—'}
+                </AppText>
               </View>
-            </View>
-            {/* Common construction units — one tap instead of typing. */}
-            <View style={styles.unitChips}>
-              {['bori', 'bag', 'ft', 'kg', 'truck', 'adad'].map((u) => (
-                <Pressable
-                  key={u}
-                  onPress={() => setUnit(u)}
-                  accessibilityRole="button"
-                  style={[styles.unitChip, unit === u && styles.unitChipActive]}
-                >
-                  <AppText size="xs" weight="semibold" color={unit === u ? 'onAccent' : 'textSecondary'}>
-                    {u}
-                  </AppText>
-                </Pressable>
-              ))}
             </View>
             <FloatingLabelInput label={t('rateLabel')} value={rate} onChangeText={setRate} keyboardType="number-pad" />
 
@@ -240,16 +232,16 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
     row: { flexDirection: 'row', gap: theme.spacing.md },
-    unitChips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
-    unitChip: {
-      paddingVertical: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      borderRadius: theme.radius.pill,
-      borderWidth: 1,
+    unitBox: {
+      minWidth: 96,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.background,
+      paddingHorizontal: theme.spacing.md,
+      justifyContent: 'center',
+      gap: 2,
     },
-    unitChipActive: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
     totalRow: {
       flexDirection: 'row',
       alignItems: 'center',

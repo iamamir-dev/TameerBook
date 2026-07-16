@@ -14,6 +14,7 @@ import { listProjectInvestors } from './investors';
 import { getProjectLaborTotals } from './labor';
 import { getProject } from './projects';
 import { getSaleSummary } from './sales';
+import { insertTransaction } from './transactions';
 import { loadSettings } from './settings';
 
 /**
@@ -138,13 +139,14 @@ async function loadParticipants(projectId: string, expenses: number): Promise<{
 export async function computeSettlement(
   projectId: string,
   rule: DistributionRule = { kind: 'ownership' },
-  donationPctOverride?: number
+  donationPctOverride?: number,
+  donationOptOutById?: Record<string, boolean>
 ): Promise<Settlement> {
   const pnl = await getProjectPnl(projectId);
   const donationPct = donationPctOverride ?? (await getDonationPct(projectId));
   const { participants, meta } = await loadParticipants(projectId, pnl.expenses);
 
-  const dist = computeDistribution({ participants, net: pnl.net, donationPct, rule });
+  const dist = computeDistribution({ participants, net: pnl.net, donationPct, donationOptOutById, rule });
 
   const rows: SettlementRow[] = dist.rows.map((r) => ({
     projectInvestorId: r.id,
@@ -224,7 +226,7 @@ export async function getProjectSettlementSummary(projectId: string): Promise<Se
     ...invRows.map((r) => ({ id: r.investor_id, name: r.name, capital: r.invested, isOwner: false })),
     { id: OWNER_PARTICIPANT_ID, name: '', capital: ownerInvested, isOwner: true },
   ];
-  const dist = computeDistribution({ participants, net: pnl.net, donationPct, rule: { kind: 'ownership' } });
+  const dist = computeDistribution({ participants, net: pnl.net, donationPct, rule: { kind: 'ownerFirst', ownerPct: 20 } });
 
   const byId = new Map(dist.rows.map((r) => [r.id, r]));
   const investors: SettlementSummaryRow[] = invRows.map((r) => {
@@ -307,7 +309,13 @@ export async function getProjectDistribution(projectId: string): Promise<Project
 export async function settleProject(
   projectId: string,
   rule: DistributionRule = { kind: 'ownership' },
-  opts: { donationPct?: number; createdBy?: string } = {}
+  opts: {
+    donationPct?: number;
+    donationOptOutById?: Record<string, boolean>;
+    /** Account the payouts leave from (the one holding the sale money). */
+    payoutAccountId?: string;
+    createdBy?: string;
+  } = {}
 ): Promise<void> {
   const db = await getDatabase();
   const project = await getProject(projectId);
@@ -316,7 +324,7 @@ export async function settleProject(
     project.status === 'ACTIVE' || (project.status === 'COMPLETED' && project.settled_at == null);
   if (!settleable) throw new ProjectClosedError(projectId, project.status);
 
-  const settlement = await computeSettlement(projectId, rule, opts.donationPct);
+  const settlement = await computeSettlement(projectId, rule, opts.donationPct, opts.donationOptOutById);
   if (settlement.errors.length > 0) {
     throw new Error(`settleProject: invalid rule inputs (${settlement.errors.map((e) => e.code).join(', ')})`);
   }
@@ -375,13 +383,40 @@ export async function settleProject(
         date,
         r.projectInvestorId
       );
+      // REAL money out: pay the investor their full settlement (capital back +
+      // profit − charity) from the chosen account, so balances update and the
+      // payout shows in the cash ledger. The owner's share simply stays in the
+      // account — that IS his money landing. Balance guard throws on overdraw.
+      if (opts.payoutAccountId && r.finalPayout > 0.001) {
+        await insertTransaction(tx, {
+          direction: 'OUT',
+          amount: r.finalPayout,
+          date,
+          accountId: opts.payoutAccountId,
+          investorId: r.investorId,
+          counterpartyName: r.name,
+          description: 'Settlement payout',
+          createdBy,
+        });
+      }
+    }
+    // Charity leaves the account as one payment (when any was deducted).
+    if (opts.payoutAccountId && settlement.totalDonation > 0.001) {
+      await insertTransaction(tx, {
+        direction: 'OUT',
+        amount: settlement.totalDonation,
+        date,
+        accountId: opts.payoutAccountId,
+        description: 'Sadaqah / Charity',
+        createdBy,
+      });
     }
     // Stamp how it was divided + the double-settle marker, and complete.
     const { kind, ...params } = rule as DistributionRule & Record<string, unknown>;
     await tx.runAsync(
       "UPDATE projects SET status = 'COMPLETED', settle_rule = ?, settle_params = ?, settled_at = ? WHERE id = ?",
       kind,
-      JSON.stringify({ ...params, donationPct: settlement.donationPct }),
+      JSON.stringify({ ...params, donationPct: settlement.donationPct, donationOptOutById: opts.donationOptOutById ?? {} }),
       createdAt,
       projectId
     );

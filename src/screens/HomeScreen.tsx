@@ -662,16 +662,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.xs,
     },
-    addAccountCard: {
-      width: 120,
-      borderRadius: theme.radius.card,
-      borderWidth: 1.5,
-      borderStyle: 'dashed',
-      borderColor: theme.colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing.xs,
-    },
     /* optional sections: udhaar/labor split card + plot rows */
     flex: { flex: 1 },
     emptyPad: { paddingVertical: theme.spacing.lg },
@@ -766,10 +756,5 @@ const makeStyles = (theme: Theme) =>
     },
     progressTrackWrap: {
       marginTop: theme.spacing.xs,
-    },
-    projectFooter: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
     },
   });

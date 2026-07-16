@@ -32,6 +32,7 @@ import {
   getPlotSummary,
   getProjectCapitalSummary,
   getProjectCost,
+  getProjectDistribution,
   getProjectSettlementSummary,
   getProjectSummary,
   getSaleSummary,
@@ -49,6 +50,7 @@ import {
   type PlotRow,
   type PlotSummary,
   type ProjectCost,
+  type ProjectDistribution,
   type ProjectSummary,
   type SaleSummary,
   type SettlementSummary,
@@ -58,7 +60,6 @@ import { useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
@@ -92,6 +93,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [saleSum, setSaleSum] = useState<SaleSummary | null>(null);
   const [shares, setShares] = useState<OwnershipShare[]>([]);
   const [settlement, setSettlement] = useState<SettlementSummary | null>(null);
+  const [distribution, setDistribution] = useState<ProjectDistribution | null>(null);
   const [photos, setPhotos] = useState<DocumentRow[]>([]);
   const [freePlots, setFreePlots] = useState<PlotRow[]>([]);
   // On a completed project only the summary shows; this reveals the rest.
@@ -109,7 +111,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const loadAll = useCallback(async () => {
     const s = await getProjectSummary(projectId);
     setSummary(s);
-    const [c, cs, ss, cap, stl, plot, pics, stageRows, owned] = await Promise.all([
+    const [c, cs, ss, cap, stl, plot, pics, stageRows, dist, owned] = await Promise.all([
       getProjectCost(projectId),
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
       getSaleSummary(projectId),
@@ -118,6 +120,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
       s?.project.plot_id ? getPlotSummary(s.project.plot_id) : Promise.resolve(null),
       listDocuments('site_photo', projectId),
       listStages('PROJECT'),
+      s?.project.settled_at ? getProjectDistribution(projectId) : Promise.resolve(null),
       s?.project.plot_id ? Promise.resolve<PlotRow[]>([]) : listPlots('OWNED'),
     ]);
     setCost(c);
@@ -128,6 +131,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
     setPlotSum(plot);
     setPhotos(pics);
     setStages(stageRows);
+    setDistribution(dist);
     setFreePlots(owned);
   }, [projectId]);
 
@@ -338,7 +342,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
         {/* Completed projects lead with the settlement summary (the project's
             final story); on active projects it appears after investors below. */}
         {completed && settlement ? (
-          <ProjectSummaryCard settlement={settlement} settle={null} />
+          <ProjectSummaryCard settlement={settlement} distribution={distribution} settle={null} />
         ) : null}
 
         {/* Reveal / hide the rest of the project on a completed project (UC-10). */}
@@ -420,7 +424,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
             {/* Active-project summary / settle affordance. Renders even before a
                 receipt exists (standalone card) so it is never a dead-end. */}
             {!completed && showSummary && settlement ? (
-              <ProjectSummaryCard settlement={settlement} settle={settleAction} />
+              <ProjectSummaryCard settlement={settlement} distribution={distribution} settle={settleAction} />
             ) : !completed && settleAction ? (
               <AppCard>
                 <SettleAction {...settleAction} />

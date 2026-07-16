@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet } from 'react-native';
 
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';

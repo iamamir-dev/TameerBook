@@ -18,10 +18,8 @@ export interface TranslationKeys {
   reports: string;
   settings: string;
   quickEntry: string;
-  reorderTiles: string;
   reorderHint: string;
   restartForRtl: string;
-  notifications: string;
 
   // Quick entry tiles (kept in Roman Urdu  no accounting jargon)
   kharcha: string; // expense / money out
@@ -32,21 +30,15 @@ export interface TranslationKeys {
 
   // Home
   greeting: string;
-  acrossAllProjects: string;
   moneyIn: string;
   moneyOut: string;
   today: string;
   netFlow: string;
   myProjects: string;
-  todaysEntries: string;
   seeAll: string;
 
   // Amount input
   amount: string;
-  quickAdd10k: string;
-  quickAdd50k: string;
-  quickAdd1lakh: string;
-  quickAdd5lakh: string;
   lakhSuffix: string;
   croreSuffix: string;
 
@@ -59,7 +51,6 @@ export interface TranslationKeys {
   search: string;
   selectOne: string;
   done: string;
-  current: string;
   next: string;
 
   // Settings
@@ -79,10 +70,6 @@ export interface TranslationKeys {
   addFirstEntry: string;
 
   // Stage names (construction)
-  stageFoundation: string;
-  stageGreyStructure: string;
-  stageFinishing: string;
-  stageHandover: string;
 
   // Projects module
   newProject: string;
@@ -94,7 +81,6 @@ export interface TranslationKeys {
   review: string;
 
   // Wizard  step 1 (plot)
-  plotInfo: string;
   society: string;
   block: string;
   plotNo: string;
@@ -104,40 +90,20 @@ export interface TranslationKeys {
   unitKanal: string;
   unitSqyd: string;
   // Wizard  step 2 (price & seller)
-  priceSeller: string;
   agreedPrice: string;
   sellerName: string;
   sellerPhone: string;
-  dealerOptional: string;
   // Wizard guidance / hints
-  guidePlot: string;
-  guidePrice: string;
   guideInvestors: string;
   guideReview: string;
   newInvestor: string;
-  orAddNew: string;
   hintSociety: string;
   hintPhone: string;
 
   // Project detail
-  totalLagat: string;
-  totalAamdani: string;
-  cashThisMonth: string;
-  tabKhareedari: string;
-  tabTameer: string;
-  tabSale: string;
   tabInvestors: string;
   tabDocs: string;
-  moveNextStage: string;
-  saveAndNext: string;
-  toContinue: string;
-  fillRequired: string;
-  moveStageQuestion: string;
-  stageHistory: string;
   confirm: string;
-  stagesTitle: string;
-  progressTitle: string;
-  moneyTitle: string;
 
   // Quick Entry
   selectProject: string;
@@ -145,11 +111,6 @@ export interface TranslationKeys {
   note: string;
   party: string;
   addNew: string;
-  paymentMode: string;
-  modeCash: string;
-  modeBank: string;
-  modeJazzcash: string;
-  modeCredit: string;
   date: string;
   photoReceipt: string;
   savedToast: string;
@@ -167,16 +128,13 @@ export interface TranslationKeys {
   // Udhaar
   udhaar: string;
   payable: string;
-  payNow: string;
   noUdhaar: string;
   noUdhaarDetail: string;
 
   // Home money
   cashLabel: string;
-  bankLabel: string;
 
   // Khareedari / acquisition
-  totalPaid: string;
   remaining: string;
   transferDeadline: string;
   editPlot: string;
@@ -185,7 +143,6 @@ export interface TranslationKeys {
   manageCategories: string;
   addCategoryLabel: string;
   addSubcategory: string;
-  mainCategory: string;
   defaultUnit: string;
   name: string;
   deleteConfirm: string;
@@ -207,22 +164,16 @@ export interface TranslationKeys {
   ruleOwnerFirst: string;
   rulePrefReturn: string;
   ruleManual: string;
-  stepOwnership: string;
   stepPreview: string;
-  fillEqual: string;
-  fillByOwnership: string;
-  prefFlat: string;
-  prefPerMonth: string;
-  monthsLabel: string;
   ownerWorkSharePct: string;
   sumMustBe100: string;
-  sumMustEqualProfit: string;
   lossLockedNote: string;
-  distributableLabel: string;
   ownershipSection: string;
   distributionSection: string;
   settledOn: string;
   sadaqahPct: string;
+  charityToggleHint: string;
+  investorsPoolPct: string;
   ruleAgreedPctDesc: string;
   ruleOwnerFirstDesc: string;
   rulePrefReturnDesc: string;
@@ -251,8 +202,6 @@ export interface TranslationKeys {
   preferencesSection: string;
   setTransferDeadline: string;
   clearDeadline: string;
-  profitSharePct: string;
-  byCapitalHint: string;
   bankDetails: string;
   optional: string;
   notMarkedToday: string;
@@ -265,29 +214,11 @@ export interface TranslationKeys {
   ptInstallment: string;
   ptFinal: string;
   addPayment: string;
-  agreementPhoto: string;
-  transferTitle: string;
-  transferDate: string;
-  taxesFees: string;
-  feeStampDuty: string;
-  feeCvt: string;
-  feeRegistration: string;
-  fee236k: string;
-  feeSocietyTransfer: string;
   feeOther: string;
-  moveToPossessionQuestion: string;
 
   // Docs
   addDocument: string;
-  docLabelTitle: string;
-  docFard: string;
-  docNdc: string;
-  docRegistry: string;
-  docAgreement: string;
-  docTaxChallan: string;
-  docNaqsha: string;
   docOther: string;
-  noDocs: string;
 
   // Tameer / material / dehari / contractor
   qtyLabel: string;
@@ -296,19 +227,10 @@ export interface TranslationKeys {
   totalLabel: string;
   billPhoto: string;
   supplier: string;
-  paidToggle: string;
-  paidTo: string;
   constructionCost: string;
   topCategories: string;
-  milestonesTitle: string;
   photoDiary: string;
   todayPhotos: string;
-  contractorPayment: string;
-  againstNote: string;
-  markDone: string;
-  supplierLedger: string;
-  purchases: string;
-  payments: string;
   noPhotos: string;
 
   // Investors (Musharakah)
@@ -319,14 +241,10 @@ export interface TranslationKeys {
   photo: string;
   totalCapital: string;
   attachInvestor: string;
-  profitPct: string;
-  remainingPct: string;
   paidInCapital: string;
   ownershipPct: string;
-  lossRuleNote: string;
   addInvestment: string;
   statement: string;
-  editProfitConfirm: string;
   capitalTimeline: string;
   perProjectBreakdown: string;
   ctInitial: string;
@@ -354,11 +272,6 @@ export interface TranslationKeys {
   // Sale module
   outstanding: string;
   addReceipt: string;
-  sellerCosts: string;
-  feeDealerCommission: string;
-  fee236c: string;
-  feeSocietyCharges: string;
-  saleNdc: string;
 
   // Settlement
   settleTitle: string;
@@ -370,7 +283,6 @@ export interface TranslationKeys {
   capitalBack: string;
   profitShare: string;
   lossShare: string;
-  finalPayout: string;
   settlementReceipt: string;
   closedBanner: string;
 
@@ -389,7 +301,6 @@ export interface TranslationKeys {
   roiPct: string;
   durationLabel: string;
   profitLabel: string;
-  allProjects: string;
   paidLabel: string;
 
   // Reminders
@@ -414,64 +325,12 @@ export interface TranslationKeys {
   savedToDevice: string;
 
   // Stage validation
-  needToken: string;
-  needBayana: string;
-  needTransferDate: string;
-  needConstruction: string;
-  needSettle: string;
-  needFard: string;
-  needAgreement: string;
-  needNdc: string;
-  needRegistry: string;
-  buyingSteps: string;
-  attachLabel: string;
-  attachedLabel: string;
-  autoAdvanceNote: string;
-  invalidDateOrder: string;
-  saleSteps: string;
-  saleStepList: string;
-  saleStepBayana: string;
-  saleStepNdc: string;
-  saleStepTransfer: string;
   projectSummary: string;
-  investorDetails: string;
-  tapStageHint: string;
   statusDone: string;
   statusCurrent: string;
-  statusPending: string;
-  viewTimeline: string;
-  hideTimeline: string;
-  youAreHere: string;
-  toolsTitle: string;
-  nextLabel: string;
-  phaseDescBuy: string;
-  phaseDescBuild: string;
-  phaseDescSell: string;
 
   // Project pipeline stage names (11)
-  pstageDealPipeline: string;
-  pstageNegotiation: string;
-  pstageAgreement: string;
-  pstageTokenPaid: string;
-  pstageBayanaPaid: string;
-  pstageTransfer: string;
-  pstagePossession: string;
-  pstageConstruction: string;
-  pstageFinishing: string;
-  pstageListedForSale: string;
-  pstageClosed: string;
   // Stage descriptions (shown in the per-stage drawer)
-  sDealPipeline: string;
-  sNegotiation: string;
-  sAgreement: string;
-  sTokenPaid: string;
-  sBayanaPaid: string;
-  sTransfer: string;
-  sPossession: string;
-  sConstruction: string;
-  sFinishing: string;
-  sListed: string;
-  sClosed: string;
 
   // v2  Accounts / cash flow
   accountsTitle: string;
@@ -518,7 +377,6 @@ export interface TranslationKeys {
   phaseSaleCost: string;
   phaseGeneral: string;
   projectTotalCost: string;
-  viewPlotDetail: string;
 
   // Investment allocation
   allocationTitle: string;
@@ -607,7 +465,6 @@ export interface TranslationKeys {
   investedLabel: string;
   noEligibleInvestors: string;
   emptyLedger: string;
-  sharePdf: string;
   showSections: string;
   hideSections: string;
   galleryTitle: string;
@@ -620,7 +477,6 @@ export interface TranslationKeys {
   fsLarge: string;
   fsXL: string;
   homeSettingsTitle: string;
-  homeShortcuts: string;
 
   // Review fixes + new features (bookings / plot sale / home expense)
   overdueLabel: string;
@@ -633,7 +489,6 @@ export interface TranslationKeys {
   ctLossAdj: string;
   bookingsTitle: string;
   newBooking: string;
-  bookedQty: string;
   receivedQty: string;
   remainingQty: string;
   addDelivery: string;
@@ -661,10 +516,8 @@ export interface TranslationKeys {
   investorInUse: string;
   investmentInProject: string;
   enterInvestorAmounts: string;
-  noCommittedSet: string;
   expand: string;
   collapse: string;
-  selectInvestorsNote: string;
   receivePayment: string;
   receivedLabel: string;
   ownershipAutoNote: string;

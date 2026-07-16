@@ -162,6 +162,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
         phase: 'CONSTRUCTION',
         categoryId: itemId,
         partyId,
+        qty: Number(qty) > 0 ? Number(qty) : null,
         description: desc,
       });
       if (receiptUri) {
@@ -448,15 +449,6 @@ const makeStyles = (theme: Theme) =>
       minHeight: theme.touch.minTarget,
     },
     row: { flexDirection: 'row', gap: theme.spacing.md },
-    totalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: theme.colors.primarySoft,
-      borderRadius: theme.radius.md,
-      paddingHorizontal: theme.spacing.lg,
-      paddingVertical: theme.spacing.md,
-    },
     thumb: { width: 40, height: 40, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {

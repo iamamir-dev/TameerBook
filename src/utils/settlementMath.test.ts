@@ -65,14 +65,28 @@ describe('agreedPct rule', () => {
   });
 });
 
-describe('ownerFirst rule', () => {
-  it('owner takes the cut, remainder splits by capital incl owner', () => {
+describe('ownerFirst rule (the builder-share model)', () => {
+  it('owner takes the cut of FULL net; remainder splits by capital incl owner; charity per person', () => {
     const r = computeDistribution({ participants: P, net: 500, donationPct: 10, rule: { kind: 'ownerFirst', ownerPct: 40 } });
-    // distributable 450 → owner cut 180; remainder 270 → 54/81/135
+    // owner cut 200; remainder 300 → 60/90/150 (+200 owner) = 60/90/350 gross
     expect(r.errors).toHaveLength(0);
-    const net = r.rows.map((x) => Math.round((x.profitOrLoss - x.donation) * 100) / 100);
-    expect(net).toEqual([54, 81, 315]);
+    expect(r.rows.map((x) => x.profitOrLoss)).toEqual([60, 90, 350]);
+    expect(r.rows.map((x) => x.donation)).toEqual([6, 9, 35]);
+    expect(r.totalDonation).toBe(50);
     expect(sum(r.rows.map((x) => x.profitOrLoss))).toBe(500);
+  });
+
+  it('charity opt-out: that person keeps their charity portion', () => {
+    const r = computeDistribution({
+      participants: P,
+      net: 500,
+      donationPct: 10,
+      donationOptOutById: { amir: true },
+      rule: { kind: 'ownership' },
+    });
+    expect(r.rows.map((x) => x.donation)).toEqual([0, 15, 25]);
+    expect(r.totalDonation).toBe(40);
+    expect(r.rows[0].payout).toBe(300); // 200 capital + 100 full share
   });
 });
 

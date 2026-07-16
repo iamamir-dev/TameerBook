@@ -6,7 +6,7 @@ import type { ConstructionSummary } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { formatRupees } from '@/utils/money';
+import { formatPakistaniGrouping, formatRupees } from '@/utils/money';
 
 interface CategoryBarsProps {
   byCategory: ConstructionSummary['byCategory'];
@@ -33,9 +33,17 @@ export function CategoryBars({ byCategory, laborAccrued }: CategoryBarsProps): R
       </AppText>
       {byCategory.map((c, i) => (
         <View key={c.categoryId} style={[styles.listRow, i > 0 && styles.ruled]}>
-          <AppText size="sm" color="textSecondary" numberOfLines={1} style={styles.listLabel}>
-            {language === 'ur' ? c.nameUr : c.nameEn}
-          </AppText>
+          <View style={styles.listLabel}>
+            <AppText size="sm" color="textSecondary" numberOfLines={1}>
+              {language === 'ur' ? c.nameUr : c.nameEn}
+            </AppText>
+            {/* Total quantity in the material's unit (from structured qty). */}
+            {c.qty > 0 ? (
+              <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                {`${formatPakistaniGrouping(c.qty)}${c.unit ? ` ${c.unit}` : ''}`}
+              </AppText>
+            ) : null}
+          </View>
           <AppText size="sm" weight="bold" tabular>
             {formatRupees(c.total)}
           </AppText>
@@ -67,21 +75,4 @@ const makeStyles = (theme: Theme) =>
     },
     ruled: { borderTopWidth: 0.5, borderTopColor: theme.colors.border },
     listLabel: { flex: 1 },
-    /* category bars (matches ReportScreen's expense bars) */
-    barRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      paddingVertical: theme.spacing.xs,
-    },
-    barLabel: { width: 84 },
-    barTrack: {
-      flex: 1,
-      height: 8,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.track,
-      overflow: 'hidden',
-    },
-    barFill: { height: 8, borderRadius: theme.radius.pill, backgroundColor: theme.colors.accent },
-    barVal: { width: 84, textAlign: 'right' },
   });

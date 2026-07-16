@@ -120,8 +120,6 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.xs,
       ...theme.shadows.card,
     },
-    netRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-    netLabel: { marginLeft: 'auto' },
     rule: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: theme.colors.border,

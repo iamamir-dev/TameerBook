@@ -318,7 +318,4 @@ const makeStyles = (theme: Theme) =>
     workerCol: { flex: 1, alignItems: 'center', gap: 2 },
     workerColDivider: { width: 0.5, backgroundColor: theme.colors.border, marginVertical: 2 },
     workerTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-    workerBalance: { alignItems: 'flex-end' },
-    workerStats: { marginTop: theme.spacing.xs },
-    todayPill: { flexDirection: 'row', marginTop: theme.spacing.xs },
   });

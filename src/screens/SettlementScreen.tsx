@@ -9,20 +9,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
-  AmountInput,
   AppButton,
   AppCard,
   AppHeader,
   AppIcon,
   AppText,
+  AppToggle,
   LoadErrorState,
+  SelectSheet,
   StickyFooter,
 } from '@/components/ui';
 import {
   computeSettlement,
   getDonationPct,
   getProject,
+  listAccountsWithBalance,
   settleProject,
+  type AccountWithBalance,
   type Settlement,
 } from '@/db';
 import { useFocusReload, useSaveAction } from '@/hooks';
@@ -33,13 +36,7 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
-import {
-  equalPctFill,
-  OWNER_PARTICIPANT_ID,
-  ownershipPctFill,
-  type DistributionRule,
-  type DistributionRuleKind,
-} from '@/utils/settlementMath';
+import { type DistributionRule, type DistributionRuleKind } from '@/utils/settlementMath';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type SettleRoute = RouteProp<RootStackParamList, 'Settlement'>;
@@ -106,59 +103,55 @@ export function SettlementScreen(): React.JSX.Element {
   const [base, setBase] = useState<Settlement | null>(null);
   const [projectName, setProjectName] = useState('');
   const [donationPct, setDonationPct] = useState(0);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountSheet, setAccountSheet] = useState(false);
 
-  // Rule state
-  const [ruleKind, setRuleKind] = useState<DistributionRuleKind>('ownership');
-  const [pctById, setPctById] = useState<Record<string, number>>({});
-  const [amountById, setAmountById] = useState<Record<string, number>>({});
-  const [ownerPct, setOwnerPct] = useState(0);
-  const [prefMode, setPrefMode] = useState<'flat' | 'perMonth'>('flat');
-  const [prefPct, setPrefPct] = useState(0);
-  const [prefMonths, setPrefMonths] = useState(0);
+  // THE rule: builder's work share first, rest by ownership, charity per
+  // person (with opt-out). All percentages editable here.
+  const [ownerPct, setOwnerPct] = useState(20);
+  const [investorsPct, setInvestorsPct] = useState(70);
+  const [optOut, setOptOut] = useState<Record<string, boolean>>({});
 
   const { saving, run: runSave } = useSaveAction();
   // Which rule's explainer sheet is open (ⓘ on each rule card).
   const [infoRule, setInfoRule] = useState<DistributionRuleKind | null>(null);
 
   const load = useCallback(async () => {
-    const [s, p, dPct] = await Promise.all([
+    const [s, p, dPct, accs] = await Promise.all([
       computeSettlement(projectId),
       getProject(projectId),
       getDonationPct(projectId),
+      listAccountsWithBalance(),
     ]);
+    setAccounts(accs);
+    setAccountId((prev) => prev ?? accs[0]?.id ?? null);
     setBase(s);
     setProjectName(p?.name ?? '');
     setDonationPct(dPct);
-    setPrefMonths(Math.max(0, dayjs().diff(dayjs(p?.start_date ?? undefined), 'month')));
+    setInvestorsPct(Math.max(0, 100 - 20 - dPct));
   }, [projectId]);
   const { loadFailed, reload } = useFocusReload(load);
 
-  const rule: DistributionRule = useMemo(() => {
-    switch (ruleKind) {
-      case 'agreedPct':
-        return { kind: 'agreedPct', pctById };
-      case 'ownerFirst':
-        return { kind: 'ownerFirst', ownerPct };
-      case 'prefReturn':
-        return { kind: 'prefReturn', mode: prefMode, pct: prefPct, months: prefMonths };
-      case 'manual':
-        return { kind: 'manual', amountById };
-      default:
-        return { kind: 'ownership' };
-    }
-  }, [ruleKind, pctById, ownerPct, prefMode, prefPct, prefMonths, amountById]);
+  // The three-way split must total exactly 100 — live-checked, Next gated.
+  const pctSum = Math.round((ownerPct + investorsPct + donationPct) * 100) / 100;
+  const sumOk = Math.abs(pctSum - 100) <= 0.01;
+  /** Cap an edited field so the trio can never exceed 100. */
+  const capTo100 = (others: number) => (v: number) => Math.max(0, Math.min(v, Math.max(0, 100 - others)));
+
+  const rule: DistributionRule = useMemo(() => ({ kind: 'ownerFirst', ownerPct }), [ownerPct]);
 
   // Live preview under the chosen rule (recomputed when inputs change).
   const [preview, setPreview] = useState<Settlement | null>(null);
   useEffect(() => {
     let alive = true;
-    computeSettlement(projectId, rule, donationPct)
+    computeSettlement(projectId, rule, donationPct, optOut)
       .then((s) => alive && setPreview(s))
       .catch(swallow('settle:preview'));
     return () => {
       alive = false;
     };
-  }, [projectId, rule, donationPct]);
+  }, [projectId, rule, donationPct, optOut]);
 
   const data = preview ?? base;
   const isLoss = !(base?.isProfit ?? true);
@@ -174,15 +167,15 @@ export function SettlementScreen(): React.JSX.Element {
   );
 
   const ownerName = t('owner');
-  const steps = isLoss ? 3 : 4; // loss skips the rule step
-  const uiStep = isLoss && step > 0 ? step + 1 : step; // internal step → 0..3
+  const steps = isLoss ? 2 : 3; // loss skips the divide step
+  const uiStep = isLoss && step > 0 ? step + 1 : step; // internal step → 0..2
 
   const canNext = useMemo(() => {
     if (!data) return false;
-    if (uiStep === 1 && !isLoss) return data.errors.length === 0;
-    if (uiStep === 2) return data.errors.length === 0;
+    if (uiStep === 1 && !isLoss) return data.errors.length === 0 && sumOk;
+    if (uiStep === 2) return data.errors.length === 0 && !!accountId;
     return true;
-  }, [data, uiStep, isLoss]);
+  }, [data, uiStep, isLoss, sumOk]);
 
   const onNext = () => {
     if (step < steps - 1) setStep(step + 1);
@@ -221,7 +214,11 @@ export function SettlementScreen(): React.JSX.Element {
   const doSettle = async () => {
     if (!data) return;
     const ok = await runSave(async () => {
-      await settleProject(projectId, rule, { donationPct });
+      await settleProject(projectId, rule, {
+        donationPct,
+        donationOptOutById: optOut,
+        payoutAccountId: accountId ?? undefined,
+      });
     });
     if (!ok) return;
     await Promise.all([
@@ -246,11 +243,6 @@ export function SettlementScreen(): React.JSX.Element {
       </View>
     );
   }
-
-  const setPct = (id: string, v: number) => setPctById((m) => ({ ...m, [id]: v }));
-  const setAmount = (id: string, v: number) => setAmountById((m) => ({ ...m, [id]: v }));
-  const pctSum = Math.round(participants.reduce((s, p) => s + (pctById[p.id] ?? 0), 0) * 100) / 100;
-  const amountSum = Math.round(participants.reduce((s, p) => s + (amountById[p.id] ?? 0), 0) * 100) / 100;
 
   return (
     <View style={styles.screen}>
@@ -321,146 +313,77 @@ export function SettlementScreen(): React.JSX.Element {
 
           {uiStep === 1 && !isLoss ? (
             <>
-              <AppText size="lg" weight="bold">
-                {t('distributionRule')}
-              </AppText>
-              {RULES.map((r) => {
-                const active = ruleKind === r.kind;
-                return (
-                  <Pressable
-                    key={r.kind}
-                    onPress={() => setRuleKind(r.kind)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={[styles.ruleCard, active && styles.ruleCardActive]}
-                  >
-                    <View style={[styles.radio, active && styles.radioActive]} />
-                    <View style={styles.flex}>
-                      <AppText size="md" weight="bold" color={active ? 'accent' : 'textPrimary'}>
-                        {t(r.labelKey)}
-                      </AppText>
-                      {r.kind === 'ownership' ? (
-                        <AppText size="xs" color="textSecondary">
-                          {t('ruleOwnershipHint')}
-                        </AppText>
-                      ) : null}
-                    </View>
-                    <Pressable
-                      onPress={() => setInfoRule(r.kind)}
-                      hitSlop={theme.touch.hitSlop}
-                      accessibilityRole="button"
-                      accessibilityLabel={t(r.labelKey)}
-                    >
-                      <AppIcon name="info" size={20} color="textSecondary" />
-                    </Pressable>
-                  </Pressable>
-                );
-              })}
+              <View style={styles.rowBetween}>
+                <AppText size="lg" weight="bold" style={styles.flex}>
+                  {t('distributionRule')}
+                </AppText>
+                <Pressable
+                  onPress={() => setInfoRule('ownerFirst')}
+                  hitSlop={theme.touch.hitSlop}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('ruleOwnerFirst')}
+                >
+                  <AppIcon name="info" size={20} color="textSecondary" />
+                </Pressable>
+              </View>
 
-              {/* Rule inputs */}
-              {ruleKind === 'agreedPct' ? (
-                <AppCard style={styles.inputsCard}>
-                  <View style={styles.fillRow}>
-                    <Pressable
-                      onPress={() => setPctById(equalPctFill(participants.map((p) => p.id)))}
-                      style={styles.fillChip}
-                      accessibilityRole="button"
-                    >
-                      <AppText size="xs" weight="bold" color="accent">
-                        {t('fillEqual')}
-                      </AppText>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setPctById(ownershipPctFill(participants))}
-                      style={styles.fillChip}
-                      accessibilityRole="button"
-                    >
-                      <AppText size="xs" weight="bold" color="accent">
-                        {t('fillByOwnership')}
-                      </AppText>
-                    </Pressable>
-                  </View>
-                  {participants.map((p) => (
-                    <View key={p.id} style={styles.inputRow}>
-                      <AppText size="sm" weight="semibold" style={styles.flex} numberOfLines={1}>
-                        {p.name}
-                      </AppText>
-                      <View style={styles.pctInput}>
-                        <PctInput label="%" value={pctById[p.id] ?? 0} onChange={(v) => setPct(p.id, v)} />
-                      </View>
-                    </View>
-                  ))}
-                  <AppText size="xs" weight="bold" color={Math.abs(pctSum - 100) <= 0.01 ? 'success' : 'danger'}>
-                    {`Σ ${pctSum}%${Math.abs(pctSum - 100) > 0.01 ? ` — ${t('sumMustBe100')}` : ''}`}
-                  </AppText>
-                </AppCard>
-              ) : null}
-
-              {ruleKind === 'ownerFirst' ? (
-                <AppCard style={styles.inputsCard}>
-                  <PctInput label={t('ownerWorkSharePct')} value={ownerPct} onChange={setOwnerPct} />
-                </AppCard>
-              ) : null}
-
-              {ruleKind === 'prefReturn' ? (
-                <AppCard style={styles.inputsCard}>
-                  <View style={styles.segment}>
-                    {(['flat', 'perMonth'] as const).map((m) => (
-                      <Pressable
-                        key={m}
-                        onPress={() => setPrefMode(m)}
-                        accessibilityRole="button"
-                        style={[styles.segBtn, prefMode === m && styles.segBtnActive]}
-                      >
-                        <AppText size="sm" weight="bold" color={prefMode === m ? 'onAccent' : 'textSecondary'}>
-                          {t(m === 'flat' ? 'prefFlat' : 'prefPerMonth')}
-                        </AppText>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <PctInput label="%" value={prefPct} onChange={setPrefPct} />
-                  {prefMode === 'perMonth' ? (
-                    <PctInput label={t('monthsLabel')} value={prefMonths} onChange={setPrefMonths} />
-                  ) : null}
-                </AppCard>
-              ) : null}
-
-              {ruleKind === 'manual' ? (
-                <AppCard style={styles.inputsCard}>
-                  <AppText size="xs" color="textSecondary">
-                    {`${t('distributableLabel')}: ${formatRupees(data.distributable)}`}
-                  </AppText>
-                  {participants.map((p) => (
-                    <View key={p.id} style={styles.inputRow}>
-                      <AppText size="sm" weight="semibold" style={styles.flex} numberOfLines={1}>
-                        {p.name}
-                      </AppText>
-                      <View style={styles.amtInput}>
-                        <AmountInput label={t('amount')} value={amountById[p.id] ?? 0} onChange={(v) => setAmount(p.id, v)} floating surface={theme.colors.card} />
-                      </View>
-                    </View>
-                  ))}
-                  <AppText size="xs" weight="bold" color={Math.abs(amountSum - data.distributable) <= 0.01 ? 'success' : 'danger'}>
-                    {`Σ ${formatRupees(amountSum)}${Math.abs(amountSum - data.distributable) > 0.01 ? ` — ${t('sumMustEqualProfit')}` : ''}`}
-                  </AppText>
-                </AppCard>
-              ) : null}
-
-              {/* Sadaqah */}
+              {/* The three-way split: builder + investors + charity = 100%. */}
               <AppCard style={styles.inputsCard}>
-                <PctInput label={t('sadaqahPct')} value={donationPct} onChange={(v) => setDonationPct(Math.min(100, v))} />
+                <PctInput
+                  label={t('ownerWorkSharePct')}
+                  value={ownerPct}
+                  onChange={(v) => setOwnerPct(capTo100(investorsPct + donationPct)(v))}
+                />
+                <PctInput
+                  label={t('investorsPoolPct')}
+                  value={investorsPct}
+                  onChange={(v) => setInvestorsPct(capTo100(ownerPct + donationPct)(v))}
+                />
+                <AppText size="xs" color="textSecondary">
+                  {t('ruleOwnershipHint')}
+                </AppText>
+                <PctInput
+                  label={t('sadaqahPct')}
+                  value={donationPct}
+                  onChange={(v) => setDonationPct(capTo100(ownerPct + investorsPct)(v))}
+                />
+                {/* Live calculator — must land exactly on 100%. */}
+                <AppText size="sm" weight="bold" color={sumOk ? 'success' : 'danger'} tabular>
+                  {`${ownerPct}% + ${investorsPct}% + ${donationPct}% = ${pctSum}%${sumOk ? ' ✓' : ` — ${t('sumMustBe100')}`}`}
+                </AppText>
               </AppCard>
+
+              {/* Charity toggles — per person; off = they keep their portion. */}
+              {donationPct > 0 ? (
+              <AppCard style={styles.inputsCard}>
+                {participants.map((p) => (
+                      <View key={p.id} style={styles.rowBetween}>
+                        <AppText size="sm" weight="semibold" style={styles.flex} numberOfLines={1}>
+                          {p.name}
+                        </AppText>
+                        <AppToggle
+                          value={!optOut[p.id]}
+                          onValueChange={(v) => setOptOut((m) => ({ ...m, [p.id]: !v }))}
+                          accessibilityLabel={p.name}
+                        />
+                      </View>
+                    ))}
+                <AppText size="xs" color="textSecondary">
+                  {t('charityToggleHint')}
+                </AppText>
+              </AppCard>
+              ) : null}
             </>
           ) : null}
 
-          {uiStep === 2 || uiStep === 3 ? (
+          {uiStep === 2 ? (
             <>
               <AppText size="lg" weight="bold">
-                {uiStep === 2 ? t('stepPreview') : t('confirmSettleTitle')}
+                {t('stepPreview')}
               </AppText>
               {!isLoss ? (
                 <AppText size="sm" color="textSecondary">
-                  {t(RULES.find((r) => r.kind === ruleKind)?.labelKey ?? 'ruleOwnership')}
+                  {t('ruleOwnerFirst')}
                 </AppText>
               ) : null}
               <AppCard compact>
@@ -475,6 +398,12 @@ export function SettlementScreen(): React.JSX.Element {
                       value={formatRupees(Math.abs(r.profitOrLoss))}
                       tone={r.profitOrLoss >= 0 ? 'success' : 'danger'}
                     />
+                    {r.isOwner && data.isProfit ? (
+                      <PRow
+                        label={t('ownerWorkSharePct').replace(' %', '')}
+                        value={formatRupees(Math.round((data.net * ownerPct) / 100))}
+                      />
+                    ) : null}
                     {r.donation > 0 ? <PRow label={t('donationLabel')} value={formatRupees(r.donation)} tone="gold" /> : null}
                     {!r.isOwner ? <PRow label={t('payoutLabel')} value={formatRupees(r.finalPayout)} bold /> : null}
                   </View>
@@ -492,16 +421,43 @@ export function SettlementScreen(): React.JSX.Element {
                   </View>
                 ) : null}
               </AppCard>
-              {uiStep === 3 ? (
-                <AppText size="sm" color="textSecondary" center>
-                  {t('confirmSettleBody')}
+              {/* The account holding the sale money — payouts leave here. */}
+              <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
+                <AppIcon
+                  name={accounts.find((a) => a.id === accountId)?.type === 'BANK' ? 'bank' : 'balance'}
+                  size={18}
+                  color="primary"
+                />
+                <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                  {(() => {
+                    const a = accounts.find((x) => x.id === accountId);
+                    return a ? `${a.name} · ${formatRupees(a.balance)}` : t('selectAccount');
+                  })()}
                 </AppText>
-              ) : null}
+                <AppIcon name="forward" size={18} color="textSecondary" />
+              </Pressable>
+              <AppText size="sm" color="textSecondary" center>
+                {t('confirmSettleBody')}
+              </AppText>
             </>
           ) : null}
         </ScrollView>
         </KeyboardAvoidingView>
       ) : null}
+
+      <SelectSheet
+        visible={accountSheet}
+        onClose={() => setAccountSheet(false)}
+        options={accounts.map((a) => ({
+          id: a.id,
+          label: a.name,
+          subtitle: formatRupees(a.balance),
+        }))}
+        selectedId={accountId ?? undefined}
+        title={t('selectAccount')}
+        searchable={false}
+        onSelect={(o) => setAccountId(o.id)}
+      />
 
       {/* Rule explainer sheet — structured: heading, prose, numbered steps. */}
       <Modal visible={infoRule !== null} transparent animationType="slide" onRequestClose={() => setInfoRule(null)}>
@@ -639,49 +595,17 @@ const makeStyles = (theme: Theme) =>
     ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
     pctCol: { width: 64, textAlign: 'right' },
     person: { paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
-    ruleCard: {
+    inputsCard: { gap: theme.spacing.md },
+    accountChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: theme.spacing.md,
+      gap: theme.spacing.sm,
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.md,
       borderWidth: 1.5,
       borderColor: theme.colors.border,
-      padding: theme.spacing.lg,
-    },
-    ruleCardActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
-    radio: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      borderWidth: 2,
-      borderColor: theme.colors.border,
-    },
-    radioActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accent },
-    inputsCard: { gap: theme.spacing.md },
-    fillRow: { flexDirection: 'row', gap: theme.spacing.sm },
-    fillChip: {
-      paddingVertical: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accentSoft,
-    },
-    inputRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-    pctInput: { width: 110 },
-    amtInput: { width: 160 },
-    segment: {
-      flexDirection: 'row',
-      padding: 3,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.background,
-      alignSelf: 'flex-start',
-    },
-    segBtn: {
       paddingHorizontal: theme.spacing.lg,
-      minHeight: 34,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: theme.radius.pill,
+      minHeight: theme.touch.minTarget,
     },
-    segBtnActive: { backgroundColor: theme.colors.accent },
+    rowBetween: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   });

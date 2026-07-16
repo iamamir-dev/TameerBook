@@ -231,7 +231,6 @@ const makeStyles = (theme: Theme) =>
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     info: { flex: 1, gap: 2 },
-    capBox: { alignItems: 'flex-end' },
     card: { gap: theme.spacing.md },
     mathBlock: { gap: theme.spacing.xs },
     mathRow: {
@@ -239,11 +238,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: theme.spacing.md,
-    },
-    mathDivider: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: theme.colors.border,
-      marginVertical: theme.spacing.xs,
     },
     avatar: { width: AV, height: AV, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     avatarFallback: {

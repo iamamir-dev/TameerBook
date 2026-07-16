@@ -6,7 +6,7 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -26,20 +26,17 @@ import {
   listAccounts,
   listCategories,
   listAllCompanyTransactions,
-  listDocumentsForType,
   listProjects,
-  listTransactions,
   type ProjectRow,
   type TransactionRow,
   voidTransaction,
 } from '@/db';
 import { useFocusReload, useSaveAction } from '@/hooks';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
-import { formatPakistaniGrouping } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type TxnRoute = RouteProp<RootStackParamList, 'Transactions'>;
@@ -83,7 +80,6 @@ export function TransactionsScreen(): React.JSX.Element {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [receipts, setReceipts] = useState<Record<string, string>>({});
   // Independent filter dimensions (each combinable, each clearable).
   const [direction, setDirection] = useState<'all' | 'in' | 'out'>('all');
   const [monthOnly, setMonthOnly] = useState(false);
@@ -98,20 +94,16 @@ export function TransactionsScreen(): React.JSX.Element {
   const [selected, setSelected] = useState<TransactionRow | null>(null);
 
   const load = useCallback(async () => {
-    const [rows, cats, accts, projs, docs] = await Promise.all([
+    const [rows, cats, accts, projs] = await Promise.all([
       listAllCompanyTransactions(),
       listCategories(),
       listAccounts(),
       listProjects(),
-      listDocumentsForType('transaction'),
     ]);
     setTxns(rows);
     setCategories(cats);
     setAccounts(accts);
     setProjects(projs);
-    const map: Record<string, string> = {};
-    for (const d of docs) map[d.entity_id] = d.file_uri;
-    setReceipts(map);
   }, []);
 
   useFocusReload(load);
@@ -400,31 +392,9 @@ const makeStyles = (theme: Theme) =>
     },
     segBtnActive: { backgroundColor: theme.colors.primary },
     content: { paddingHorizontal: theme.spacing.lg },
-    divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginLeft: 56 },
     emptyText: { paddingVertical: theme.spacing.xl },
     daySection: { marginBottom: theme.spacing.md, gap: theme.spacing.xs },
     dayHeader: { marginLeft: theme.spacing.xs },
-    receiptImage: {
-      width: '100%',
-      height: 200,
-      borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.track,
-      marginTop: theme.spacing.sm,
-    },
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.sm,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track, marginBottom: theme.spacing.sm },
     fixExplain: {
       backgroundColor: theme.colors.dangerSoft,
       borderRadius: theme.radius.md,

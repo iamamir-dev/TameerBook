@@ -3,7 +3,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,24 +14,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
 import {
-  AmountInput,
   AppButton,
   AppHeader,
   AppIcon,
   AppText,
   DateField,
-  SelectSheet,
   type IconKey,
-  type SelectOption,
 } from '@/components/ui';
 import {
   attachInvestorsToProject,
   createProject,
-  listAccountsWithBalance,
   listInvestorsWithCapacity,
   listPlots,
   nowISO,
-  type AccountWithBalance,
   type InvestorCapacity,
   type PlotRow,
 } from '@/db';
@@ -40,7 +34,6 @@ import { useSaveAction } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
-import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
@@ -86,7 +79,6 @@ export function NewProjectWizard(): React.JSX.Element {
   // Investors entered during creation + the add-investor sheet's draft state.
   const [investors, setInvestors] = useState<DraftInvestor[]>([]);
   const [allInvestors, setAllInvestors] = useState<InvestorCapacity[]>([]);
-  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [addOpen, setAddOpen] = useState(false);
 
   // Reload free plots on focus — the user may return from "New Plot". A plot
@@ -107,7 +99,6 @@ export function NewProjectWizard(): React.JSX.Element {
         })
         .catch(swallow('newProject:plots'));
       listInvestorsWithCapacity().then(setAllInvestors).catch(swallow('newProject:investors'));
-      listAccountsWithBalance().then(setAccounts).catch(swallow('newProject:accounts'));
     }, [])
   );
 
@@ -473,51 +464,4 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     /* add-investor sheet */
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    chipRow: { gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-    chip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.sm,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.primarySoft,
-      maxWidth: 200,
-    },
-    chipActive: { backgroundColor: theme.colors.primary },
-    pctRow: { flexDirection: 'row', alignItems: 'center' },
-    stepper: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-    stepBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.primarySoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    stepValue: { minWidth: 48, textAlign: 'center' },
-    accountChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.primarySoft,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: theme.spacing.lg,
-      minHeight: theme.touch.minTarget,
-    },
-    pressed: { opacity: 0.6 },
   });

@@ -284,7 +284,6 @@ const makeStyles = (theme: Theme) =>
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: { gap: theme.spacing.xs },
-    actionsRow: { flexDirection: 'row', gap: theme.spacing.md },
     sectionTitle: { marginTop: theme.spacing.sm },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {

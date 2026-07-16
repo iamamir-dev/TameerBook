@@ -169,7 +169,6 @@ export function PayBookingSheet({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
-    dateRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     rowChip: {
       flexDirection: 'row',
       alignItems: 'center',

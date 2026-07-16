@@ -283,7 +283,6 @@ const makeStyles = (theme: Theme) =>
       marginVertical: theme.spacing.xs,
     },
     body: { gap: theme.spacing.md },
-    actions: { flexDirection: 'row', gap: theme.spacing.sm },
     flex: { flex: 1 },
     projectRow: {
       flexDirection: 'row',

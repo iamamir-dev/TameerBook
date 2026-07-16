@@ -291,6 +291,8 @@ export interface TransactionRow extends Base {
   /** Links a payment received to the investor it came from (like plot_id). */
   investor_id: string | null;
   description: string | null;
+  /** Material quantity (in the category's default unit); null = not a qty entry. */
+  qty: number | null;
   doc_id: string | null;
   is_void: number; // 0 | 1
   void_of_id: string | null;
@@ -1030,6 +1032,11 @@ WHERE status = 'COMPLETED' AND EXISTS (
   WHERE pi.project_id = projects.id AND pi.status = 'SETTLED');
 `;
 
+/** v23 — structured quantity on transactions (material expenses). */
+export const SCHEMA_V23_TXN_QTY = `
+ALTER TABLE transactions ADD COLUMN qty REAL;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1047,6 +1054,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 20, sql: SCHEMA_V20_STAGE_COLORS },
   { version: 21, sql: SCHEMA_V21_COMPANY_LOGO },
   { version: 22, sql: SCHEMA_V22_SETTLE_RULE },
+  { version: 23, sql: SCHEMA_V23_TXN_QTY },
 ];
 
 /* -------------------------------------------------------------------------- */

@@ -257,7 +257,6 @@ function ColumnStat({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
-    flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     hero: { gap: theme.spacing.xs },
     badgeWrap: { flexDirection: 'row', marginTop: theme.spacing.xs },
@@ -277,7 +276,6 @@ const makeStyles = (theme: Theme) =>
       borderLeftColor: theme.colors.border,
     },
     stat: { gap: 2 },
-    actionsRow: { flexDirection: 'row', gap: theme.spacing.sm },
     deliveryRow: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -134,13 +134,14 @@ export function CategoriesScreen(): React.JSX.Element {
   const label = useCategoryLabel();
 
   const [type, setType] = useState<CategoryType>('EXPENSE');
-  const [tree, setTree] = useState<CategoryTreeNode[]>([]);
+  const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const { saving, run } = useSaveAction();
 
   const load = useCallback(async () => setTree(await listCategoryTree(type)), [type]);
+  // Re-load when the tab changes; tree=null meanwhile → skeleton.
   const { reload } = useFocusReload(load);
   useEffect(() => {
     void load();
@@ -244,7 +245,10 @@ export function CategoriesScreen(): React.JSX.Element {
           return (
             <Pressable
               key={tp}
-              onPress={() => setType(tp)}
+              onPress={() => {
+                setTree(null);
+                setType(tp);
+              }}
               style={[styles.segBtn, active && styles.segBtnActive]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
@@ -261,7 +265,17 @@ export function CategoriesScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
-        {tree.map((main) => (
+        {tree === null
+          ? [0, 1, 2].map((i) => (
+              <AppCard key={i} style={styles.card}>
+                <View style={styles.skelTitle} />
+                <View style={styles.skelRow} />
+                <View style={styles.skelRow} />
+                <View style={[styles.skelRow, styles.skelShort]} />
+              </AppCard>
+            ))
+          : null}
+        {(tree ?? []).map((main) => (
           <AppCard key={main.id} style={styles.card}>
             <View style={styles.mainRow}>
               <AppIcon name={(main.icon as never) ?? 'kharcha'} size={18} color="primary" />
@@ -361,6 +375,10 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
+    // Loading skeleton — categories can take a moment on first open.
+    skelTitle: { height: 18, width: '40%', borderRadius: 6, backgroundColor: theme.colors.track },
+    skelRow: { height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.track, opacity: 0.6 },
+    skelShort: { width: '60%' },
     segment: {
       flexDirection: 'row',
       gap: theme.spacing.xs,
@@ -380,7 +398,6 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.sm,
       paddingLeft: theme.spacing.md,
     },
-    dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.textSecondary },
     addSub: {
       flexDirection: 'row',
       alignItems: 'center',

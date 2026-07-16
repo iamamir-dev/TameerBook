@@ -1,8 +1,7 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
   AmountInput,
@@ -41,7 +40,6 @@ export function InvestmentEntryScreen(): React.JSX.Element {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'Investment'>>();
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const projects = useProjectsStore((s) => s.items);

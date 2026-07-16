@@ -9,7 +9,6 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
@@ -46,7 +45,6 @@ export function NewPlotScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const forProjectId = useRoute<NewPlotRoute>().params?.forProjectId;
   const returnAfterCreate = useRoute<NewPlotRoute>().params?.returnAfterCreate ?? false;
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const [name, setName] = useState('');

@@ -57,6 +57,7 @@ export function AddExpenseSheet({
 
   const [amount, setAmount] = useState(0);
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [qty, setQty] = useState('');
   const [accountId, setAccountId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [date, setDate] = useState(todayISO().slice(0, 10));
@@ -100,6 +101,7 @@ export function AddExpenseSheet({
         projectId,
         phase: 'CONSTRUCTION',
         categoryId,
+        qty: Number(qty) > 0 ? Number(qty) : null,
         description: note || null,
       });
       onClose();
@@ -166,6 +168,24 @@ export function AddExpenseSheet({
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
+          {/* Quantity + FIXED unit (from the category's default unit) — same
+              pattern as bookings, so material expenses carry real quantities. */}
+          {selectedCategory?.default_unit ? (
+            <View style={styles.qtyRow}>
+              <View style={styles.flexGrow}>
+                <FloatingLabelInput label={t('qtyLabel')} value={qty} onChangeText={setQty} keyboardType="number-pad" />
+              </View>
+              <View style={styles.unitBox}>
+                <AppText size="xs" weight="semibold" color="textSecondary">
+                  {t('unitLabel')}
+                </AppText>
+                <AppText size="md" weight="bold" numberOfLines={1}>
+                  {selectedCategory.default_unit}
+                </AppText>
+              </View>
+            </View>
+          ) : null}
+
           <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
           {/* Date */}
@@ -210,6 +230,18 @@ export function AddExpenseSheet({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    qtyRow: { flexDirection: 'row', gap: theme.spacing.md },
+    flexGrow: { flex: 1 },
+    unitBox: {
+      minWidth: 96,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.card,
+      paddingHorizontal: theme.spacing.md,
+      justifyContent: 'center',
+      gap: 2,
+    },
     flex: { flex: 1 },
     hint: { paddingHorizontal: theme.spacing.sm, marginTop: -theme.spacing.xs },
     rowChip: {

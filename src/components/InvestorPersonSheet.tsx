@@ -304,7 +304,6 @@ const makeStyles = (theme: Theme) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.border,
     },
-    photoRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     photoPicker: { alignSelf: 'flex-start' },
     cameraBadge: {
       position: 'absolute',

@@ -1,6 +1,6 @@
 import { getDatabase } from '../database';
 import type { ProjectStatus } from '../schema';
-import { CAPITAL_SUM_SQL as CAP_SUM, GROSS_CONTRIBUTED_SQL } from './capital';
+import { CAPITAL_SUM_SQL as GROSS_CONTRIBUTED_SQL } from './capital';
 import { requireCompanyId } from './companies';
 
 export interface ProjectReportRow {

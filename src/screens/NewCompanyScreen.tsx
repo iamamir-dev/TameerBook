@@ -2,7 +2,6 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AmountInput, AppButton, AppHeader, AppIcon, AppText, StickyFooter } from '@/components/ui';
@@ -26,7 +25,6 @@ export function NewCompanyScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const [name, setName] = useState('');

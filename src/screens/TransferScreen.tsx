@@ -9,7 +9,6 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
@@ -52,7 +51,6 @@ export function TransferScreen(): React.JSX.Element {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<TransferRoute>();
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);

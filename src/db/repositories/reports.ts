@@ -7,6 +7,10 @@ export interface CategorySpend {
   nameEn: string;
   nameUr: string;
   total: number;
+  /** Σ structured quantities (0 when none recorded). */
+  qty: number;
+  /** The category's default unit (Settings → Categories). */
+  unit: string | null;
 }
 
 export interface ConstructionSummary {
@@ -39,7 +43,9 @@ export async function getConstructionSummary(
     `SELECT COALESCE(t.category_id, '__other__') AS categoryId,
             COALESCE(c.name_en, 'Other') AS nameEn,
             COALESCE(c.name_ur, 'Deegar') AS nameUr,
-            COALESCE(SUM(t.amount), 0) AS total
+            COALESCE(SUM(t.amount), 0) AS total,
+            COALESCE(SUM(t.qty), 0) AS qty,
+            c.default_unit AS unit
      FROM transactions t
      LEFT JOIN categories c ON c.id = t.category_id
      WHERE t.project_id = ? AND t.phase = 'CONSTRUCTION' AND t.direction = 'OUT'

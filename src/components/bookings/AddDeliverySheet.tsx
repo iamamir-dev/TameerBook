@@ -210,7 +210,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
-    dateRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     backdrop: {
       position: 'absolute',
       top: 0,

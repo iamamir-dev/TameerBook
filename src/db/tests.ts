@@ -453,8 +453,9 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
       ['agreed-% reproduces legacy', near(agreed.rows.find((r) => r.name.endsWith('Amir'))?.profitOrLoss ?? 0, 100)],
     ];
 
-    // Commit and verify ledger writes
-    await settleProject(project.id);
+    // Commit with REAL payouts from the account and verify ledger + cash.
+    // Account: 1000 opening + 1500 sale + 500 investments − 1000 expenses = 2000.
+    await settleProject(project.id, undefined, { payoutAccountId: acc.id });
     const donationRows = await db.getFirstAsync<{ c: number; s: number }>(
       `SELECT COUNT(*) AS c, COALESCE(SUM(amount), 0) AS s FROM capital_ledger
        WHERE entry_type = 'DONATION' AND project_investor_id IN
@@ -468,6 +469,8 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     );
     checks.push(['project COMPLETED', proj?.status === 'COMPLETED']);
     checks.push(['settle rule + settled_at stamped', proj?.settle_rule === 'ownership' && !!proj?.settled_at]);
+    // Payouts 290 + 435 and charity 50 leave the account → 2000 − 775 = 1225.
+    checks.push(['account balance updated by payouts', near(await getAccountBalance(acc.id), 1225)]);
     const plotRow = await db.getFirstAsync<{ status: string }>('SELECT status FROM plots WHERE id = ?', plot.id);
     checks.push(['plot SOLD on settlement', plotRow?.status === 'SOLD']);
 

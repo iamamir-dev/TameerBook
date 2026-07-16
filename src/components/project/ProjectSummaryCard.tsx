@@ -2,7 +2,8 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppButton, AppCard, AppText } from '@/components/ui';
-import type { SettlementSummary } from '@/db';
+import type { ProjectDistribution, SettlementSummary } from '@/db';
+import dayjs from 'dayjs';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -19,6 +20,8 @@ export interface SettleActionProps {
 
 interface ProjectSummaryCardProps {
   settlement: SettlementSummary;
+  /** What actually happened at settlement (null = not settled yet). */
+  distribution?: ProjectDistribution | null;
   /** Render the settle button inside the card (null = hidden, e.g. completed). */
   settle?: SettleActionProps | null;
 }
@@ -28,7 +31,7 @@ interface ProjectSummaryCardProps {
  * a per-investor payout block, the owner's residual, and (while the project
  * is ACTIVE with a sale) the settle affordance.
  */
-export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardProps): React.JSX.Element {
+export function ProjectSummaryCard({ settlement, distribution, settle }: ProjectSummaryCardProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -95,6 +98,31 @@ export function ProjectSummaryCard({ settlement, settle }: ProjectSummaryCardPro
 
         {settlement.totalDonation > 0 ? (
           <SummaryRow label={t('totalDonation')} value={formatRupees(settlement.totalDonation)} />
+        ) : null}
+
+        {/* What actually happened at settlement (from the ledger — the khata). */}
+        {distribution?.settledAt ? (
+          <View style={[styles.partyBlock, styles.ruled]}>
+            <View style={styles.partyHeader}>
+              <AppText size="sm" weight="bold" color="accent" style={styles.partyName}>
+                {t('distributionSection')}
+              </AppText>
+              <AppText size="xs" color="textSecondary">
+                {`${t('settledOn')} ${dayjs(distribution.settledAt).format('DD MMM YYYY')}`}
+              </AppText>
+            </View>
+            {distribution.rows.map((r) => (
+              <View key={r.investorId} style={styles.partyBlock}>
+                <AppText size="sm" weight="bold" numberOfLines={1}>
+                  {r.name}
+                </AppText>
+                {r.profit > 0 ? <MiniRow label={t('netProfit')} value={formatRupees(r.profit)} tone="success" /> : null}
+                {r.lossAdj > 0 ? <MiniRow label={t('netLoss')} value={formatRupees(r.lossAdj)} tone="danger" /> : null}
+                {r.donation > 0 ? <MiniRow label={t('donationLabel')} value={formatRupees(r.donation)} tone="gold" /> : null}
+                <MiniRow label={t('capitalBack')} value={formatRupees(r.capitalBack)} bold />
+              </View>
+            ))}
+          </View>
         ) : null}
 
         {settle ? <SettleAction {...settle} /> : null}
@@ -198,12 +226,6 @@ const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: theme.spacing.md,
-    },
-    partyLine: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
       gap: theme.spacing.md,
     },
     ruled: {

@@ -34,6 +34,8 @@ export interface NewTransaction {
   investorId?: string | null;
   bookingId?: string | null;
   description?: string | null;
+  /** Material quantity in the category's default unit. */
+  qty?: number | null;
   docId?: string | null;
   createdBy?: string;
 }
@@ -117,8 +119,8 @@ export async function insertTransaction(
     `INSERT INTO transactions
        (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
         phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-        labor_id, investor_id, booking_id, description, doc_id, is_void, void_of_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+        labor_id, investor_id, booking_id, description, qty, doc_id, is_void, void_of_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -140,6 +142,7 @@ export async function insertTransaction(
     input.investorId ?? null,
     input.bookingId ?? null,
     input.description ?? null,
+    input.qty ?? null,
     input.docId ?? null
   );
   return id;
@@ -177,8 +180,8 @@ export async function voidTransaction(
       `INSERT INTO transactions
          (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
           phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-          labor_id, investor_id, booking_id, description, doc_id, is_void, void_of_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          labor_id, investor_id, booking_id, description, qty, doc_id, is_void, void_of_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       reversalId,
       nowISO(),
       createdBy,
@@ -200,6 +203,7 @@ export async function voidTransaction(
       original.investor_id,
       original.booking_id,
       `Reversal of ${id}`,
+      original.qty,
       original.doc_id,
       id
     );
