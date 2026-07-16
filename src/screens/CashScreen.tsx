@@ -281,7 +281,7 @@ export function CashScreen(): React.JSX.Element {
                       {inv.name}
                     </AppText>
                     <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                      {`${formatRupees(inv.remaining)} ${t('remainingToInvest')}`}
+                      {`${t('investedLabel')} ${formatRupees(inv.staked)}`}
                     </AppText>
                   </View>
                   <AppText size="sm" weight="bold" color="gold" tabular>

@@ -138,36 +138,14 @@ export function InvestorsScreen(): React.JSX.Element {
                 <AppIcon name="forward" size={20} color="textSecondary" />
               </View>
 
-              {/* Notebook math — pledge / paid-in / remaining, like the plot card. */}
+              {/* Total actually invested over time — no pledge concept. */}
               <View style={styles.mathBlock}>
                 <View style={styles.mathRow}>
-                  <AppText size="sm" color="textSecondary">
-                    {t('committedAmount')}
-                  </AppText>
-                  <AppText size="sm" weight="semibold" tabular>
-                    {formatRupees(inv.committed_amount)}
-                  </AppText>
-                </View>
-                <View style={styles.mathRow}>
-                  <AppText size="sm" color="textSecondary">
+                  <AppText size="sm" weight="bold">
                     {t('paidInCapital')}
                   </AppText>
-                  <AppText size="sm" weight="semibold" color="success" tabular>
+                  <AppText size="md" weight="bold" color="success" tabular>
                     {formatRupees(inv.received)}
-                  </AppText>
-                </View>
-                <View style={styles.mathDivider} />
-                <View style={styles.mathRow}>
-                  <AppText size="sm" weight="bold">
-                    {t('remaining')}
-                  </AppText>
-                  <AppText
-                    size="md"
-                    weight="bold"
-                    color={inv.committed_amount - inv.received > 0 ? 'gold' : 'success'}
-                    tabular
-                  >
-                    {formatRupees(Math.max(0, inv.committed_amount - inv.received))}
                   </AppText>
                 </View>
               </View>

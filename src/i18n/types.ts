@@ -255,7 +255,6 @@ export interface TranslationKeys {
   byCapitalHint: string;
   bankDetails: string;
   optional: string;
-  setPledgeToAdd: string;
   notMarkedToday: string;
   owedToSuppliers: string;
   openBookings: string;
@@ -320,7 +319,6 @@ export interface TranslationKeys {
   photo: string;
   totalCapital: string;
   attachInvestor: string;
-  committedAmount: string;
   profitPct: string;
   remainingPct: string;
   paidInCapital: string;
@@ -606,7 +604,6 @@ export interface TranslationKeys {
   investorAlreadyExited: string;
   profitPctRange: string;
   categoryRequired: string;
-  remainingToInvest: string;
   investedLabel: string;
   noEligibleInvestors: string;
   emptyLedger: string;

@@ -54,10 +54,8 @@ export function InvestorSheet({
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  // Investors with nothing left to stake are hidden entirely (V-5).
-  const [people, setPeople] = useState<InvestorOption[]>(() =>
-    existingInvestors.filter((p) => p.remaining > 0)
-  );
+  // Every investor is eligible — stakes are real money, no pledge cap.
+  const [people, setPeople] = useState<InvestorOption[]>(() => existingInvestors);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [personOpen, setPersonOpen] = useState(false);
@@ -72,7 +70,7 @@ export function InvestorSheet({
     const wasVisible = prevVisibleRef.current;
     prevVisibleRef.current = visible;
     if (!visible) return;
-    const eligible = existingInvestors.filter((p) => p.remaining > 0);
+    const eligible = existingInvestors;
     if (!wasVisible) {
       setPeople(eligible);
       setSelected(new Set());
@@ -89,8 +87,7 @@ export function InvestorSheet({
     });
   }, [visible, existingInvestors]);
 
-  // Ticking an investor pre-fills their project stake with their remaining
-  // capacity; the user can override it. Un-ticking clears the amount.
+  // Ticking an investor reveals an empty amount field; un-ticking clears it.
   const toggle = (inv: InvestorOption) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -102,21 +99,16 @@ export function InvestorSheet({
         });
       } else {
         next.add(inv.id);
-        setAmounts((m) => ({ ...m, [inv.id]: m[inv.id] ?? inv.remaining }));
+        setAmounts((m) => ({ ...m, [inv.id]: m[inv.id] ?? 0 }));
       }
       return next;
     });
 
   const chosen = people.filter((p) => selected.has(p.id));
   const totalAmount = chosen.reduce((s, p) => s + (amounts[p.id] ?? 0), 0);
-  // Every selected investor needs a real stake within their capacity: an
-  // amount greater than 0 and no more than what they have left to invest (V-4).
-  const allValid =
-    chosen.length > 0 &&
-    chosen.every((p) => {
-      const a = amounts[p.id] ?? 0;
-      return a > 0 && a <= p.remaining;
-    });
+  // Every selected investor just needs a real amount (> 0) — the money they
+  // are actually putting in now.
+  const allValid = chosen.length > 0 && chosen.every((p) => (amounts[p.id] ?? 0) > 0);
   const canSubmit = allValid;
 
   const submit = () => {
@@ -187,7 +179,7 @@ export function InvestorSheet({
                         {inv.name}
                       </AppText>
                       <AppText size="xs" color="textSecondary" tabular>
-                        {`${formatRupees(inv.staked)} ${t('investedLabel')} · ${formatRupees(inv.remaining)} ${t('remainingToInvest')}`}
+                        {`${t('investedLabel')} ${formatRupees(inv.staked)}`}
                       </AppText>
                     </View>
                     {isSel ? (
@@ -256,7 +248,7 @@ export function InvestorSheet({
           // is their capacity; one saved without a pledge has none and can't be
           // added to a project — tell the user instead of silently dropping it.
           if (inv.committed_amount <= 0) {
-            Alert.alert(t('setPledgeToAdd'));
+            Alert.alert(t('enterAmount'));
             return;
           }
           const opt = { id: inv.id, name: inv.name, staked: 0, remaining: inv.committed_amount };

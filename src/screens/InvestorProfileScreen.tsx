@@ -156,8 +156,8 @@ export function InvestorProfileScreen(): React.JSX.Element {
         </style></head><body>
         <h1>TameerBook</h1>
         <div class="sub">${t('statement')}  ${investor.name}${investor.phone ? ' · ' + investor.phone : ''}</div>
-        <div>${t('receivedLabel')} / ${t('committedAmount')}</div>
-        <div class="total">${formatRupees(received)} / ${formatRupees(committed)}</div>
+        <div>${t('receivedLabel')}</div>
+        <div class="total">${formatRupees(received)}</div>
         <table><thead><tr><th>${t('date')}</th><th>${t('category')}</th><th>${t('projects')}</th><th style="text-align:right">${t('amount')}</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
         <p class="sub">${dayjs().format('DD MMM YYYY')}</p>
@@ -199,11 +199,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
           <AppText size="display" weight="bold" color="onHero" tabular numberOfLines={1} adjustsFontSizeToFit>
             {formatRupees(received)}
           </AppText>
-          {committed > 0 ? (
-            <AppText size="sm" color="onPrimaryMuted">
-              {`${t('committedAmount')} ${formatRupees(committed)} · ${t('remaining')} ${formatRupees(remaining)}`}
-            </AppText>
-          ) : null}
+
         </View>
 
         <ContactRow phone={investor?.phone} cnic={investor?.cnic} />
@@ -350,7 +346,6 @@ export function InvestorProfileScreen(): React.JSX.Element {
               onChange={setPayAmount}
               floating
               surface={theme.colors.card}
-              error={payAmount > 0 && payAmount > remaining ? t('exceedsRemaining') : null}
             />
             <Pressable onPress={() => setAccountSheet(true)} style={styles.accountChip} accessibilityRole="button">
               <AppIcon name={payAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
@@ -365,7 +360,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
               icon="check"
               onPress={onReceivePayment}
               loading={savingPay}
-              disabled={payAmount <= 0 || !payAccountId || payAmount > remaining}
+              disabled={payAmount <= 0 || !payAccountId}
             />
           </View>
         </KeyboardAvoidingView>

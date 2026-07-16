@@ -106,7 +106,7 @@ export function ReportScreen(): React.JSX.Element {
         { heading: t('udhaar'), columns: [t('udhaar'), t('totalLabel')], rows: [[t('receivable'), formatRupees(udhaar.receivable)], [t('payable'), formatRupees(udhaar.payable)]] },
       ];
     if (type === 'investment')
-      return [{ columns: [t('investors'), t('projects'), t('committedAmount'), t('paidLabel')], rows: matrix.map((m) => [m.investorName, m.projectName, formatRupees(m.committed), formatRupees(m.paid)]) }];
+      return [{ columns: [t('investors'), t('projects'), t('paidLabel')], rows: matrix.map((m) => [m.investorName, m.projectName, formatRupees(m.paid)]) }];
     if (type === 'roi')
       return [{ columns: [t('projects'), t('profitLabel'), t('durationLabel'), t('roiPct')], rows: roi.map((r) => [r.name, formatRupees(r.profit), `${days(r.startDate)} ${t('daysRunning')}`, `${r.roiPct.toFixed(1)}%`]) }];
     if (type === 'accounts')

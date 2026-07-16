@@ -200,7 +200,6 @@ export function InvestorPersonSheet({
             </Pressable>
 
             {/* Money: total pledged + what's handed over now (into an account). */}
-            <AmountInput label={t('committedAmount')} value={committed} onChange={setCommitted} floating surface={theme.colors.card} />
             {!editing ? (
               <>
                 <AmountInput
@@ -209,7 +208,6 @@ export function InvestorPersonSheet({
                   onChange={setGiven}
                   floating
                   surface={theme.colors.card}
-                  error={given > 0 && committed > 0 && given > committed ? t('exceedsRemaining') : null}
                 />
                 {given > 0 ? (
                   <>

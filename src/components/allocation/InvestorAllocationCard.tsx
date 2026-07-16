@@ -36,7 +36,7 @@ export function InvestorAllocationCard({ investor, returns }: Props): React.JSX.
             {formatRupees(investor.staked)}
           </AppText>
           <AppText size="xs" color="textSecondary" tabular>
-            {formatRupees(investor.remaining)} {t('remainingToInvest')}
+            {t('investedLabel')} {formatRupees(investor.staked)}
           </AppText>
         </View>
       </View>
