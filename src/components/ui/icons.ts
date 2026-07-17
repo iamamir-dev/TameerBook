@@ -85,6 +85,7 @@ export const ICONS = {
 
   // Documents (each property/legal paper has its own meaningful icon)
   document: FileText,
+  pdf: FileText,
   statement: ScrollText,
   record: ScrollText, // Fard (record of rights)
   agreement: FileSignature, // بیع نامہ

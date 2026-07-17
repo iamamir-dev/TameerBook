@@ -1,9 +1,10 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-
-import { AppButton, AppCard, AppText } from '@/components/ui';
-import type { ProjectDistribution, SettlementSummary } from '@/db';
 import dayjs from 'dayjs';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
+
+import { ActionsDrawer, AppButton, AppCard, AppIcon, AppText } from '@/components/ui';
+import type { ProjectDistribution, SettlementSummary } from '@/db';
+import type { SettlementReportActions } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -24,17 +25,31 @@ interface ProjectSummaryCardProps {
   distribution?: ProjectDistribution | null;
   /** Render the settle button inside the card (null = hidden, e.g. completed). */
   settle?: SettleActionProps | null;
+  /** Pencil beside the heading — switches a completed project to edit mode. */
+  onEdit?: (() => void) | null;
+  /** Report actions (preview / download / share) once the project is settled. */
+  report?: SettlementReportActions | null;
+  /** Project timeline: start → settled (end = today while running). */
+  period?: { start: string | null; end: string | null } | null;
 }
 
 /**
  * The live settlement summary on Project Detail: revenue / expenses / net,
- * a per-investor payout block, the owner's residual, and (while the project
- * is ACTIVE with a sale) the settle affordance.
+ * a per-investor payout block, the owner's residual, the committed
+ * distribution and — once settled — the branded-PDF report drawer.
  */
-export function ProjectSummaryCard({ settlement, distribution, settle }: ProjectSummaryCardProps): React.JSX.Element {
+export function ProjectSummaryCard({
+  settlement,
+  distribution,
+  settle,
+  onEdit,
+  report,
+  period,
+}: ProjectSummaryCardProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
+  const [reportDrawer, setReportDrawer] = useState(false);
 
   return (
     <>
@@ -42,19 +57,38 @@ export function ProjectSummaryCard({ settlement, distribution, settle }: Project
         <AppText size="lg" weight="bold">
           {t('projectSummary')}
         </AppText>
+        {onEdit ? (
+          <Pressable
+            onPress={onEdit}
+            hitSlop={theme.touch.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel={t('editProject')}
+            style={styles.editBtn}
+          >
+            <AppIcon name="edit" size={16} color="primary" />
+          </Pressable>
+        ) : null}
       </View>
       <AppCard>
-        <SummaryRow label={t('revenue')} value={formatRupees(settlement.revenue)} first />
-        <SummaryRow label={t('totalExpenses')} value={formatRupees(settlement.expenses)} />
+        <SummaryRow label={t('revenue')} value={formatRupees(settlement.revenue)} tone="success" first />
+        <SummaryRow label={t('totalExpenses')} value={formatRupees(settlement.expenses)} tone="danger" />
         <SummaryRow
           label={t(settlement.isProfit ? 'netProfit' : 'netLoss')}
           value={formatRupees(Math.abs(settlement.net))}
           tone={settlement.isProfit ? 'success' : 'danger'}
         />
+        {period?.start ? (
+          <SummaryRow
+            label={t('durationLabel')}
+            value={`${dayjs(period.start).format('DD MMM YY')} → ${dayjs(period.end ?? undefined).format(
+              'DD MMM YY'
+            )} · ${Math.max(1, dayjs(period.end ?? undefined).diff(dayjs(period.start), 'day'))} ${t('daysLabel')}`}
+          />
+        ) : null}
 
         {settlement.investors.map((inv) => (
           <View key={inv.investorId} style={[styles.partyBlock, styles.ruled]}>
-            {/* Name on the left, their agreed share on the right. */}
+            {/* Name on the left, their ownership share on the right. */}
             <View style={styles.partyHeader}>
               <AppText size="sm" weight="bold" numberOfLines={1} style={styles.partyName}>
                 {inv.name}
@@ -125,8 +159,34 @@ export function ProjectSummaryCard({ settlement, distribution, settle }: Project
           </View>
         ) : null}
 
+        {/* The branded report — ONE button, options in the app's drawer. */}
+        {report?.ready ? (
+          <View style={styles.reportBtn}>
+            <AppButton
+              label={t('reportTitle')}
+              icon="pdf"
+              variant="secondary"
+              onPress={() => setReportDrawer(true)}
+              loading={report.busy}
+            />
+          </View>
+        ) : null}
+
         {settle ? <SettleAction {...settle} /> : null}
       </AppCard>
+
+      {report ? (
+        <ActionsDrawer
+          visible={reportDrawer}
+          onClose={() => setReportDrawer(false)}
+          title={t('reportTitle')}
+          actions={[
+            { icon: 'preview', label: t('preview'), onPress: report.preview },
+            { icon: 'download', label: t('download'), onPress: report.download },
+            { icon: 'share', label: t('shareLabel'), onPress: report.share },
+          ]}
+        />
+      ) : null}
     </>
   );
 }
@@ -213,6 +273,14 @@ const makeStyles = (theme: Theme) =>
       justifyContent: 'space-between',
       marginTop: theme.spacing.sm,
     },
+    editBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     summaryRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -232,6 +300,7 @@ const makeStyles = (theme: Theme) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.border,
     },
+    reportBtn: { marginTop: theme.spacing.md },
     settleBtn: { marginTop: theme.spacing.md, gap: theme.spacing.sm },
     settleHint: { paddingHorizontal: theme.spacing.md },
   });

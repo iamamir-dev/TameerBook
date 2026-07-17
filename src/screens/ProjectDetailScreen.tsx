@@ -34,6 +34,7 @@ import {
   getProjectCost,
   getProjectDistribution,
   getProjectSettlementSummary,
+  getSettledSettlement,
   getProjectSummary,
   getSaleSummary,
   includePlotInProject,
@@ -53,10 +54,11 @@ import {
   type ProjectDistribution,
   type ProjectSummary,
   type SaleSummary,
+  type SettledReport,
   type SettlementSummary,
   type StageRow,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSettlementReport } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -96,8 +98,10 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [distribution, setDistribution] = useState<ProjectDistribution | null>(null);
   const [photos, setPhotos] = useState<DocumentRow[]>([]);
   const [freePlots, setFreePlots] = useState<PlotRow[]>([]);
-  // On a completed project only the summary shows; this reveals the rest.
-  const [showAllSections, setShowAllSections] = useState(false);
+  // A completed project opens as a read-only summary; the pencil flips it
+  // into edit mode (the full detail sections), Done flips it back.
+  const [editMode, setEditMode] = useState(false);
+  const [settledReport, setSettledReport] = useState<SettledReport | null>(null);
 
   // Sheets: attach-investor (shared <InvestorSheet>) + add-plot picker.
   const [allInvestors, setAllInvestors] = useState<InvestorCapacity[]>([]);
@@ -111,7 +115,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const loadAll = useCallback(async () => {
     const s = await getProjectSummary(projectId);
     setSummary(s);
-    const [c, cs, ss, cap, stl, plot, pics, stageRows, dist, owned] = await Promise.all([
+    const [c, cs, ss, cap, stl, plot, pics, stageRows, dist, owned, settled] = await Promise.all([
       getProjectCost(projectId),
       getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
       getSaleSummary(projectId),
@@ -122,6 +126,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
       listStages('PROJECT'),
       s?.project.settled_at ? getProjectDistribution(projectId) : Promise.resolve(null),
       s?.project.plot_id ? Promise.resolve<PlotRow[]>([]) : listPlots('OWNED'),
+      s?.project.settled_at ? getSettledSettlement(projectId) : Promise.resolve(null),
     ]);
     setCost(c);
     setConstr(cs);
@@ -133,6 +138,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
     setStages(stageRows);
     setDistribution(dist);
     setFreePlots(owned);
+    setSettledReport(settled);
   }, [projectId]);
 
   const load = useCallback(async () => {
@@ -143,8 +149,22 @@ export function ProjectDetailScreen(): React.JSX.Element {
 
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
-  // A completed project shows only its summary until the user reveals the rest.
-  const detailsVisible = !completed || showAllSections;
+  // A completed project shows only its summary until the pencil opens edit mode.
+  const detailsVisible = !completed || editMode;
+
+  // Branded settlement report (preview / download / share) — any time after
+  // settling, rebuilt from the rule stored on the project.
+  const projectPeriod = project
+    ? { start: project.start_date ?? project.created_at, end: project.settled_at }
+    : null;
+
+  const report = useSettlementReport({
+    projectName: project?.name ?? '',
+    settlement: settledReport?.settlement ?? null,
+    plot: plotSum?.plot ?? null,
+    period: projectPeriod,
+    payoutAccountName: settledReport?.payoutAccountName ?? null,
+  });
 
   const catLabel = useCallback(
     (c: { nameEn: string; nameUr: string }) => (language === 'ur' ? c.nameUr : c.nameEn),
@@ -319,44 +339,58 @@ export function ProjectDetailScreen(): React.JSX.Element {
           </View>
         ) : null}
 
-        {/* Total cost hero with the color-coded phase columns */}
-        {(() => {
-          const st = stages.find((x) => x.id === project?.stage_id) ?? null;
-          const tone: ColorKey = st ? stageTone(st) : 'accent';
-          return (
-            <Pressable
-              onPress={() => !completed && setStageSheet(true)}
-              accessibilityRole="button"
-              style={[styles.stagePill, { backgroundColor: softToneColor(theme, tone) }]}
-            >
-              <AppIcon name="tag" size={14} color={tone} />
-              <AppText size="xs" weight="bold" color={tone}>
-                {st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel')}
-              </AppText>
-            </Pressable>
-          );
-        })()}
 
-        <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} salePrice={saleSum?.sale?.agreed_price ?? 0} />
-
-        {/* Completed projects lead with the settlement summary (the project's
-            final story); on active projects it appears after investors below. */}
-        {completed && settlement ? (
-          <ProjectSummaryCard settlement={settlement} distribution={distribution} settle={null} />
-        ) : null}
-
-        {/* Reveal / hide the rest of the project on a completed project (UC-10). */}
-        {completed ? (
-          <AppCard compact onPress={() => setShowAllSections((v) => !v)}>
+        {/* Edit mode: the way back to the read-only summary. */}
+        {completed && editMode ? (
+          <AppCard compact onPress={() => setEditMode(false)}>
             <View style={styles.toolRow}>
-              <AppIcon name={showAllSections ? 'collapse' : 'expand'} size={20} color="primary" />
+              <AppIcon name="check" size={20} color="success" />
               <AppText size="sm" weight="bold" style={styles.flex}>
-                {showAllSections ? t('hideSections') : t('showSections')}
+                {t('doneEditing')}
               </AppText>
               <AppIcon name="forward" size={18} color="textSecondary" />
             </View>
           </AppCard>
         ) : null}
+
+        {/* Total cost hero with the color-coded phase columns — hidden on a
+            completed project's read-only summary (the summary IS the page). */}
+        {detailsVisible ? (
+          <>
+            {(() => {
+              const st = stages.find((x) => x.id === project?.stage_id) ?? null;
+              const tone: ColorKey = st ? stageTone(st) : 'accent';
+              return (
+                <Pressable
+                  onPress={() => !completed && setStageSheet(true)}
+                  accessibilityRole="button"
+                  style={[styles.stagePill, { backgroundColor: softToneColor(theme, tone) }]}
+                >
+                  <AppIcon name="tag" size={14} color={tone} />
+                  <AppText size="xs" weight="bold" color={tone}>
+                    {st ? (language === 'ur' ? st.name_ur : st.name_en) : t('setStatusLabel')}
+                  </AppText>
+                </Pressable>
+              );
+            })()}
+
+            <ProjectCostCard cost={cost} received={saleSum?.receiptsTotal ?? 0} salePrice={saleSum?.sale?.agreed_price ?? 0} />
+          </>
+        ) : null}
+
+        {/* Completed projects ARE their summary (the project's final story);
+            the pencil beside the heading flips into edit mode instead. */}
+        {completed && !editMode && settlement ? (
+          <ProjectSummaryCard
+            settlement={settlement}
+            distribution={distribution}
+            settle={null}
+            onEdit={() => setEditMode(true)}
+            report={report}
+            period={projectPeriod}
+          />
+        ) : null}
+
 
         {detailsVisible ? (
           <>
@@ -424,7 +458,12 @@ export function ProjectDetailScreen(): React.JSX.Element {
             {/* Active-project summary / settle affordance. Renders even before a
                 receipt exists (standalone card) so it is never a dead-end. */}
             {!completed && showSummary && settlement ? (
-              <ProjectSummaryCard settlement={settlement} distribution={distribution} settle={settleAction} />
+              <ProjectSummaryCard
+                settlement={settlement}
+                distribution={distribution}
+                settle={settleAction}
+                period={projectPeriod}
+              />
             ) : !completed && settleAction ? (
               <AppCard>
                 <SettleAction {...settleAction} />

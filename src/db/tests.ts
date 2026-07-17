@@ -40,6 +40,7 @@ import {
   getPlotSummary,
   getProjectCost,
   getProjectSettlementSummary,
+  getSettledSettlement,
   getSaleSummary,
   getTotalBalance,
   getTransaction,
@@ -473,6 +474,17 @@ async function testSettlementProfitWithDonation(): Promise<TestResult> {
     checks.push(['account balance updated by payouts', near(await getAccountBalance(acc.id), 1225)]);
     const plotRow = await db.getFirstAsync<{ status: string }>('SELECT status FROM plots WHERE id = ?', plot.id);
     checks.push(['plot SOLD on settlement', plotRow?.status === 'SOLD']);
+
+    // The report rebuild must reproduce the committed numbers any time later.
+    const rebuilt = await getSettledSettlement(project.id);
+    const rbAmir = rebuilt?.settlement.rows.find((r) => r.name === 'DBTEST Amir');
+    checks.push([
+      'settled report rebuilds payouts + account',
+      !!rebuilt &&
+        near(rbAmir?.finalPayout ?? 0, 290) &&
+        near(rebuilt.settlement.totalDonation, 50) &&
+        rebuilt.payoutAccountName === 'DBTEST Set-Acc',
+    ]);
 
     return report('T-SET profit + donation', checks);
   } finally {

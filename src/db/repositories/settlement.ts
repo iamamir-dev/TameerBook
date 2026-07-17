@@ -258,6 +258,90 @@ export async function getProjectSettlementSummary(projectId: string): Promise<Se
   };
 }
 
+
+export interface SettledReport {
+  settlement: Settlement;
+  payoutAccountName: string | null;
+}
+
+/**
+ * Rebuild the settlement EXACTLY as it was committed — from the stored rule +
+ * params and the gross capital of the participations closed by it. Returns
+ * null until the project is settled (or for pre-v2 legacy settlements).
+ */
+export async function getSettledSettlement(projectId: string): Promise<SettledReport | null> {
+  const project = await getProject(projectId);
+  if (!project?.settled_at || !project.settle_rule) return null;
+
+  let params: Record<string, unknown> = {};
+  try {
+    params = JSON.parse(project.settle_params ?? '{}') as Record<string, unknown>;
+  } catch {
+    params = {};
+  }
+  const donationPct = Number(params.donationPct) || 0;
+  const donationOptOutById = (params.donationOptOutById ?? {}) as Record<string, boolean>;
+  const payoutAccountId = typeof params.payoutAccountId === 'string' ? params.payoutAccountId : null;
+  const { donationPct: _d, donationOptOutById: _o, payoutAccountId: _a, ...ruleParams } = params;
+  const rule = { kind: project.settle_rule, ...ruleParams } as DistributionRule;
+
+  const pnl = await getProjectPnl(projectId);
+  const db = await getDatabase();
+  // Gross contributions of the SETTLED participations (net capital is zero
+  // after settlement — the EXIT_SETTLEMENT rows cancel it).
+  const invRows = await db.getAllAsync<{ piId: string; investorId: string; name: string; invested: number }>(
+    `SELECT pi.id AS piId, pi.investor_id AS investorId, COALESCE(inv.name, '') AS name,
+        COALESCE(${GROSS_CONTRIBUTED_SQL}, 0) AS invested
+     FROM project_investors pi
+     LEFT JOIN investors inv ON inv.id = pi.investor_id
+     LEFT JOIN capital_ledger cl ON cl.project_investor_id = pi.id
+     WHERE pi.project_id = ? AND pi.status = 'SETTLED'
+     GROUP BY pi.id`,
+    projectId
+  );
+  const investorCapital = invRows.reduce((sum, r) => sum + r.invested, 0);
+  const ownerCapital = Math.max(0, pnl.expenses - investorCapital);
+
+  const meta = new Map(invRows.map((r) => [r.piId, { projectInvestorId: r.piId, investorId: r.investorId }]));
+  const participants: ParticipantInput[] = [
+    ...invRows.map((r) => ({ id: r.piId, name: r.name, capital: r.invested, isOwner: false })),
+    { id: OWNER_PARTICIPANT_ID, name: '', capital: ownerCapital, isOwner: true },
+  ];
+  const dist = computeDistribution({ participants, net: pnl.net, donationPct, donationOptOutById, rule });
+
+  const rows: SettlementRow[] = dist.rows.map((r) => ({
+    projectInvestorId: r.id,
+    investorId: r.isOwner ? OWNER_PARTICIPANT_ID : meta.get(r.id)?.investorId ?? r.id,
+    name: r.name,
+    isOwner: r.isOwner,
+    capital: r.capital,
+    ownershipPct: r.ownershipPct,
+    profitOrLoss: r.profitOrLoss,
+    donation: r.donation,
+    finalPayout: r.payout,
+  }));
+
+  let payoutAccountName: string | null = null;
+  if (payoutAccountId) {
+    const acc = await db.getFirstAsync<{ name: string }>('SELECT name FROM accounts WHERE id = ?', payoutAccountId);
+    payoutAccountName = acc?.name ?? null;
+  }
+
+  return {
+    settlement: {
+      ...pnl,
+      totalCapital: dist.totalCapital,
+      donationPct: dist.donationPct,
+      totalDonation: dist.totalDonation,
+      distributable: dist.distributable,
+      rows,
+      errors: dist.errors,
+      rule,
+    },
+    payoutAccountName,
+  };
+}
+
 export interface ProjectDistributionRow {
   investorId: string;
   name: string;
@@ -416,7 +500,12 @@ export async function settleProject(
     await tx.runAsync(
       "UPDATE projects SET status = 'COMPLETED', settle_rule = ?, settle_params = ?, settled_at = ? WHERE id = ?",
       kind,
-      JSON.stringify({ ...params, donationPct: settlement.donationPct, donationOptOutById: opts.donationOptOutById ?? {} }),
+      JSON.stringify({
+        ...params,
+        donationPct: settlement.donationPct,
+        donationOptOutById: opts.donationOptOutById ?? {},
+        payoutAccountId: opts.payoutAccountId ?? null,
+      }),
       createdAt,
       projectId
     );

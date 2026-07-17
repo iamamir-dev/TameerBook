@@ -283,7 +283,10 @@ export interface TranslationKeys {
   capitalBack: string;
   profitShare: string;
   lossShare: string;
-  settlementReceipt: string;
+  reportTitle: string;
+  settledStatus: string;
+  signaturesTitle: string;
+  madeWith: string;
   closedBanner: string;
 
   // Reports
@@ -465,8 +468,8 @@ export interface TranslationKeys {
   investedLabel: string;
   noEligibleInvestors: string;
   emptyLedger: string;
-  showSections: string;
-  hideSections: string;
+  editProject: string;
+  doneEditing: string;
   galleryTitle: string;
 
   // Settings — font & home layout

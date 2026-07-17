@@ -1,9 +1,6 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,13 +19,15 @@ import {
 import {
   computeSettlement,
   getDonationPct,
+  getPlot,
   getProject,
   listAccountsWithBalance,
   settleProject,
   type AccountWithBalance,
+  type PlotRow,
   type Settlement,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSettlementReport } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -102,10 +101,14 @@ export function SettlementScreen(): React.JSX.Element {
   const [step, setStep] = useState(0);
   const [base, setBase] = useState<Settlement | null>(null);
   const [projectName, setProjectName] = useState('');
+  const [period, setPeriod] = useState<{ start: string | null; end: string | null } | null>(null);
+  const [plot, setPlot] = useState<PlotRow | null>(null);
   const [donationPct, setDonationPct] = useState(0);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountSheet, setAccountSheet] = useState(false);
+  // After confirm: the frozen numbers the report step renders from.
+  const [reportData, setReportData] = useState<Settlement | null>(null);
 
   // THE rule: builder's work share first, rest by ownership, charity per
   // person (with opt-out). All percentages editable here.
@@ -117,7 +120,12 @@ export function SettlementScreen(): React.JSX.Element {
   // Which rule's explainer sheet is open (ⓘ on each rule card).
   const [infoRule, setInfoRule] = useState<DistributionRuleKind | null>(null);
 
+  // Once settled, the wizard is a receipt — never reload (a recompute would
+  // see zero ACTIVE participations and blank the report).
+  const settledRef = useRef(false);
+
   const load = useCallback(async () => {
+    if (settledRef.current) return;
     const [s, p, dPct, accs] = await Promise.all([
       computeSettlement(projectId),
       getProject(projectId),
@@ -128,6 +136,8 @@ export function SettlementScreen(): React.JSX.Element {
     setAccountId((prev) => prev ?? accs[0]?.id ?? null);
     setBase(s);
     setProjectName(p?.name ?? '');
+    setPeriod(p ? { start: p.start_date ?? p.created_at, end: p.settled_at } : null);
+    setPlot(p?.plot_id ? await getPlot(p.plot_id) : null);
     setDonationPct(dPct);
     setInvestorsPct(Math.max(0, 100 - 20 - dPct));
   }, [projectId]);
@@ -140,6 +150,14 @@ export function SettlementScreen(): React.JSX.Element {
   const capTo100 = (others: number) => (v: number) => Math.max(0, Math.min(v, Math.max(0, 100 - others)));
 
   const rule: DistributionRule = useMemo(() => ({ kind: 'ownerFirst', ownerPct }), [ownerPct]);
+
+  const report = useSettlementReport({
+    projectName,
+    settlement: reportData,
+    plot,
+    period,
+    payoutAccountName: accounts.find((a) => a.id === accountId)?.name ?? null,
+  });
 
   // Live preview under the chosen rule (recomputed when inputs change).
   const [preview, setPreview] = useState<Settlement | null>(null);
@@ -167,48 +185,40 @@ export function SettlementScreen(): React.JSX.Element {
   );
 
   const ownerName = t('owner');
-  const steps = isLoss ? 2 : 3; // loss skips the divide step
-  const uiStep = isLoss && step > 0 ? step + 1 : step; // internal step → 0..2
+  const steps = isLoss ? 3 : 4; // loss skips the divide step; last = report
+  const uiStep = isLoss && step > 0 ? step + 1 : step; // internal step → 0..3
 
   const canNext = useMemo(() => {
     if (!data) return false;
     if (uiStep === 1 && !isLoss) return data.errors.length === 0 && sumOk;
     if (uiStep === 2) return data.errors.length === 0 && !!accountId;
+    if (uiStep === 3) return true;
     return true;
   }, [data, uiStep, isLoss, sumOk]);
 
-  const onNext = () => {
-    if (step < steps - 1) setStep(step + 1);
-    else onConfirm();
-  };
+  // System back (hardware button / gesture) mirrors the header back:
+  // mid-wizard it steps back instead of abandoning the flow.
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      if (step === 0 || uiStep === 3) return; // entering/leaving is fine
+      e.preventDefault();
+      setStep(step - 1);
+    });
+  }, [navigation, step, uiStep]);
 
-  const sharePdf = async (s: Settlement) => {
-    const showDonation = s.totalDonation > 0;
-    const right = ' style="text-align:right"';
-    const ruleLabel = t(RULES.find((r) => r.kind === s.rule.kind)?.labelKey ?? 'ruleOwnership');
-    const rows = s.rows
-      .map(
-        (r) =>
-          `<tr><td>${r.isOwner ? t('owner') : r.name}</td><td${right}>${formatRupees(r.capital)}</td><td${right}>${formatRupees(Math.abs(r.profitOrLoss))}</td>${showDonation ? `<td${right}>${formatRupees(r.donation)}</td>` : ''}<td${right}><b>${r.isOwner ? '' : formatRupees(r.finalPayout)}</b></td></tr>`
-      )
-      .join('');
-    const html = `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
-      <style>body{font-family:-apple-system,Roboto,sans-serif;padding:24px;color:#211F1B}
-      h1{color:#1D1C18;margin:0}.sub{color:#9A958B;margin:4px 0 16px}
-      .k{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ECE8DF}
-      table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px;border-bottom:1px solid #ECE8DF;font-size:13px;text-align:left}
-      th{color:#9A958B;text-transform:uppercase;font-size:11px}</style></head><body>
-      <h1>TameerBook</h1><div class="sub">${t('settlementReceipt')}  ${projectName} · ${dayjs().format('DD MMM YYYY')} · ${ruleLabel}</div>
-      <div class="k"><span>${t('revenue')}</span><b>${formatRupees(s.revenue)}</b></div>
-      <div class="k"><span>${t('totalExpenses')}</span><b>${formatRupees(s.expenses)}</b></div>
-      <div class="k"><span>${s.isProfit ? t('netProfit') : t('netLoss')}</span><b>${formatRupees(Math.abs(s.net))}</b></div>
-      ${showDonation ? `<div class="k"><span>${t('totalDonation')} (${s.donationPct}%)</span><b>${formatRupees(s.totalDonation)}</b></div>` : ''}
-      <table><thead><tr><th>${t('investors')}</th><th${right}>${t('capitalBack')}</th><th${right}>${s.isProfit ? t('profitShare') : t('lossShare')}</th>${showDonation ? `<th${right}>${t('donationLabel')}</th>` : ''}<th${right}>${t('payoutLabel')}</th></tr></thead>
-      <tbody>${rows}</tbody></table></body></html>`;
-    const { uri } = await Print.printToFileAsync({ html });
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: t('settlementReceipt') });
+  /** Leave the finished wizard — land squarely on the project page. */
+  const exitToProject = () => navigation.popTo('ProjectDetail', { projectId });
+
+  const onNext = () => {
+    if (uiStep === 3) {
+      exitToProject(); // report step → done
+      return;
     }
+    if (uiStep === 2) {
+      onConfirm(); // preview & confirm step commits, then advances to report
+      return;
+    }
+    setStep(step + 1);
   };
 
   const doSettle = async () => {
@@ -221,11 +231,10 @@ export function SettlementScreen(): React.JSX.Element {
       });
     });
     if (!ok) return;
-    await Promise.all([
-      refreshProjects().catch(swallow('settlement:refresh')),
-      sharePdf(data).catch(swallow('settlement:sharePdf')),
-    ]);
-    navigation.goBack();
+    settledRef.current = true;
+    setReportData(data);
+    refreshProjects().catch(swallow('settlement:refresh'));
+    setStep(steps - 1); // → report step
   };
 
   const onConfirm = () => {
@@ -249,7 +258,7 @@ export function SettlementScreen(): React.JSX.Element {
       <AppHeader
         title={t('settleTitle')}
         subtitle={`${projectName} · ${step + 1} / ${steps}`}
-        onBack={() => (step === 0 ? navigation.goBack() : setStep(step - 1))}
+        onBack={() => (uiStep === 3 ? exitToProject() : step === 0 ? navigation.goBack() : setStep(step - 1))}
       />
 
       {/* Progress dots */}
@@ -441,6 +450,40 @@ export function SettlementScreen(): React.JSX.Element {
               </AppText>
             </>
           ) : null}
+
+          {uiStep === 3 ? (
+            <>
+              {/* Settled — branded report with preview / download / share. */}
+              <View style={styles.reportHero}>
+                <View style={styles.reportCheck}>
+                  <AppIcon name="check" size={34} color="onAccent" />
+                </View>
+                <AppText size="lg" weight="bold" center>
+                  {t('settledStatus')}
+                </AppText>
+                <AppText size="sm" color="textSecondary" center>
+                  {t('reportTitle')} · {projectName}
+                </AppText>
+              </View>
+              <AppCard style={styles.inputsCard}>
+                <AppButton
+                  label={t('preview')}
+                  icon="preview"
+                  variant="secondary"
+                  onPress={report.preview}
+                  loading={report.busy}
+                />
+                <AppButton
+                  label={t('download')}
+                  icon="download"
+                  variant="secondary"
+                  onPress={report.download}
+                  loading={report.busy}
+                />
+                <AppButton label={t('shareLabel')} icon="share" onPress={report.share} loading={report.busy} />
+              </AppCard>
+            </>
+          ) : null}
         </ScrollView>
         </KeyboardAvoidingView>
       ) : null}
@@ -506,8 +549,8 @@ export function SettlementScreen(): React.JSX.Element {
 
       <StickyFooter>
         <AppButton
-          label={step === steps - 1 ? t('confirm') : t('next')}
-          icon={step === steps - 1 ? 'check' : 'forward'}
+          label={uiStep === 3 ? t('done') : uiStep === 2 ? t('confirm') : t('next')}
+          icon={uiStep === 3 || uiStep === 2 ? 'check' : 'forward'}
           onPress={onNext}
           loading={saving}
           disabled={!canNext}
@@ -596,6 +639,16 @@ const makeStyles = (theme: Theme) =>
     pctCol: { width: 64, textAlign: 'right' },
     person: { paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
     inputsCard: { gap: theme.spacing.md },
+    reportHero: { alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xl },
+    reportCheck: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: theme.colors.success,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: theme.spacing.xs,
+    },
     accountChip: {
       flexDirection: 'row',
       alignItems: 'center',
