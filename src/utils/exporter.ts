@@ -1,10 +1,7 @@
-import dayjs from 'dayjs';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-
-import { formatRupees } from '@/utils/money';
 
 export type ExportFormat = 'pdf' | 'csv';
 
@@ -66,49 +63,4 @@ export async function saveReport(p: ExportPayload, format: ExportFormat): Promis
   // iOS / web: route through the share sheet ("Save to Files").
   await shareReport(p, format);
   return false;
-}
-
-/** Localized strings for the exit receipt (callers pass `t(...)` results). */
-export interface ExitReceiptLabels {
-  /** Receipt heading, e.g. t('exitReceipt'). */
-  title: string;
-  /** Project row label, e.g. t('projects'). */
-  project: string;
-  /** Leaver row label, e.g. t('exitWho'). */
-  who: string;
-  /** Buyer row label, e.g. t('buyer'). */
-  buyer: string;
-  /** Amount row label, e.g. t('exitValue'). */
-  value: string;
-  /** Date row label, e.g. t('date'). */
-  date: string;
-  /** Fine-print note, e.g. t('exitValueNote'). */
-  note: string;
-}
-
-export interface ExitReceiptInput {
-  projectName: string;
-  investorName: string;
-  buyerName: string;
-  /** Exit value paid, in rupees. */
-  amount: number;
-  labels: ExitReceiptLabels;
-}
-
-/** Build the printable HTML for the investor-exit receipt PDF. */
-export function exitReceiptHtml(input: ExitReceiptInput): string {
-  const { projectName, investorName, buyerName, amount, labels } = input;
-  return `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
-      <style>body{font-family:-apple-system,Roboto,sans-serif;padding:24px;color:#211F1B}
-      h1{color:#1D1C18;margin:0}.r{margin:6px 0}.lbl{color:#9A958B}.sig{margin-top:48px;display:flex;justify-content:space-between}
-      .sig div{border-top:1px solid #211F1B;width:40%;text-align:center;padding-top:6px;color:#9A958B}</style></head><body>
-      <h1>TameerBook</h1><h2>${labels.title}</h2>
-      <div class="r"><span class="lbl">${labels.project}:</span> ${projectName}</div>
-      <div class="r"><span class="lbl">${labels.who}</span> ${investorName}</div>
-      <div class="r"><span class="lbl">${labels.buyer}:</span> ${buyerName}</div>
-      <div class="r"><span class="lbl">${labels.value}:</span> <b>${formatRupees(amount)}</b></div>
-      <div class="r"><span class="lbl">${labels.date}:</span> ${dayjs().format('DD MMM YYYY')}</div>
-      <div class="r">${labels.note}</div>
-      <div class="sig"><div>${investorName}</div><div>${buyerName}</div></div>
-      </body></html>`;
 }

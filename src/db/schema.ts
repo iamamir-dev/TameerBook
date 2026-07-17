@@ -308,8 +308,6 @@ export interface InvestorRow extends Base {
   status: InvestorStatus;
   /** Total the investor has pledged to invest (their stake basis). */
   committed_amount: number;
-  /** How much of that pledge they've actually handed over so far. */
-  given_amount: number;
 }
 
 export interface ProjectInvestorRow extends Base {
@@ -1037,6 +1035,16 @@ export const SCHEMA_V23_TXN_QTY = `
 ALTER TABLE transactions ADD COLUMN qty REAL;
 `;
 
+/**
+ * v24 — drop the write-only `investors.given_amount` column. It was written by
+ * addInvestor/updateInvestor but never read anywhere: an investor's "received"
+ * is always DERIVED from their IN transactions (`getInvestorReceived`). Removing
+ * dead schema. (SQLite ≥ 3.35, which expo-sqlite bundles, supports DROP COLUMN.)
+ */
+export const SCHEMA_V24_DROP_GIVEN_AMOUNT = `
+ALTER TABLE investors DROP COLUMN given_amount;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1055,6 +1063,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 21, sql: SCHEMA_V21_COMPANY_LOGO },
   { version: 22, sql: SCHEMA_V22_SETTLE_RULE },
   { version: 23, sql: SCHEMA_V23_TXN_QTY },
+  { version: 24, sql: SCHEMA_V24_DROP_GIVEN_AMOUNT },
 ];
 
 /* -------------------------------------------------------------------------- */

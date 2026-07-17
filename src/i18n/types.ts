@@ -247,6 +247,12 @@ export interface TranslationKeys {
   statement: string;
   capitalTimeline: string;
   perProjectBreakdown: string;
+  profitEarned: string;
+  availableBalance: string;
+  addMoney: string;
+  newInvestment: string;
+  investFromBalance: string;
+  payout: string;
   ctInitial: string;
   ctAdditional: string;
   selectInvestor: string;
