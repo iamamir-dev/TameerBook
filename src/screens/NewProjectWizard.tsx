@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
+import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/modules/investors';
 import {
   AppButton,
   AppHeader,

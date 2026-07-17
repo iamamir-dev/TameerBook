@@ -6,7 +6,6 @@ import { useTheme } from '@/theme';
 
 import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
 import { AccountsScreen } from '@/screens/AccountsScreen';
-import { AllocationScreen } from '@/screens/AllocationScreen';
 import { BookingDetailScreen } from '@/screens/BookingDetailScreen';
 import { BookingsScreen } from '@/screens/BookingsScreen';
 import { CashScreen } from '@/screens/CashScreen';
@@ -14,11 +13,14 @@ import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
 import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
 import { DevToolsScreen } from '@/screens/DevToolsScreen';
 import { EntryScreen } from '@/screens/EntryScreen';
-import { ExitWizardScreen } from '@/screens/ExitWizardScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
-import { InvestmentEntryScreen } from '@/screens/InvestmentEntryScreen';
-import { InvestorProfileScreen } from '@/screens/InvestorProfileScreen';
-import { InvestorsScreen } from '@/screens/InvestorsScreen';
+import {
+  AllocationScreen,
+  ExitWizardScreen,
+  InvestmentEntryScreen,
+  InvestorProfileScreen,
+  InvestorsScreen,
+} from '@/modules/investors';
 import { LaborerDetailScreen } from '@/screens/LaborerDetailScreen';
 import { LaborScreen } from '@/screens/LaborScreen';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';

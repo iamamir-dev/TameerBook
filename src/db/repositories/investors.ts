@@ -6,7 +6,10 @@ import {
   type ProjectInvestorRow,
   type ProjectInvestorStatus,
 } from '../schema';
+import { computeInvestorStanding } from '@/utils/investorMath';
+
 import { nowISO, uuid } from '../uuid';
+import { getInvestorTotalCapital } from './capital';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { addDocument } from './documents';
@@ -21,8 +24,6 @@ export interface NewInvestor {
   bankInfo?: string | null;
   /** Total pledged (their stake basis). */
   committedAmount?: number;
-  /** How much of the pledge they've handed over so far. */
-  givenAmount?: number;
   status?: InvestorStatus;
   createdBy?: string;
 }
@@ -33,8 +34,8 @@ export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
-    `INSERT INTO investors (id, created_at, created_by, company_id, name, cnic, phone, photo_uri, bank_info, status, committed_amount, given_amount)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO investors (id, created_at, created_by, company_id, name, cnic, phone, photo_uri, bank_info, status, committed_amount)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -45,8 +46,7 @@ export async function addInvestor(input: NewInvestor): Promise<InvestorRow> {
     input.photoUri ?? null,
     input.bankInfo ?? null,
     input.status ?? 'ACTIVE',
-    Math.max(0, input.committedAmount ?? 0),
-    Math.max(0, input.givenAmount ?? 0)
+    Math.max(0, input.committedAmount ?? 0)
   );
   return (await db.getFirstAsync<InvestorRow>('SELECT * FROM investors WHERE id = ?', id))!;
 }
@@ -87,19 +87,77 @@ export interface InvestorSummary {
   received: number;
   /** committed − received (still owed). */
   remaining: number;
+  /** "Total investment" — gross cash the investor has put in (= received). */
+  invested: number;
+  /** "Profit earned" — realized profit across settled projects. */
+  profit: number;
+  /** Cash already paid back to the investor. */
+  paidOut: number;
+  /** "Total" standing = invested + profit − paidOut. */
+  total: number;
+  /** Net capital currently staked in projects. */
+  staked: number;
+  /** Re-deployable balance (returned capital + earned profit sitting idle). */
+  available: number;
+  /** Any participation settled → the pledge "remaining" line is hidden. */
+  settledAny: boolean;
 }
 
-/** Committed / received / remaining for one investor (like a plot summary). */
+/**
+ * An investor's full standing (like a plot summary, but folding both ledgers):
+ * committed/received/remaining pledge tracking PLUS the derived
+ * invested / profit / total / staked / available (see `computeInvestorStanding`).
+ * Fixes the bug where realized profit showed in Capital History but never rolled
+ * into any total.
+ */
 export async function getInvestorSummary(investorId: string): Promise<InvestorSummary> {
   const investor = await getInvestor(investorId);
   if (!investor) throw new Error(`getInvestorSummary: investor ${investorId} not found`);
+  const db = await getDatabase();
+
   const received = await getInvestorReceived(investorId);
+  const netStaked = await getInvestorTotalCapital(investorId);
+  const paidRow = await db.getFirstAsync<{ s: number }>(
+    `SELECT COALESCE(SUM(amount), 0) AS s
+     FROM transactions WHERE investor_id = ? AND direction = 'OUT' AND is_void = 0`,
+    investorId
+  );
+  const profitRow = await db.getFirstAsync<{ p: number }>(
+    `SELECT COALESCE(SUM(CASE cl.entry_type
+        WHEN 'PROFIT_PAYOUT' THEN cl.amount
+        WHEN 'DONATION'      THEN -cl.amount
+        WHEN 'LOSS_ADJ'      THEN -cl.amount
+        ELSE 0 END), 0) AS p
+     FROM capital_ledger cl
+     JOIN project_investors pi ON pi.id = cl.project_investor_id
+     WHERE pi.investor_id = ?`,
+    investorId
+  );
+  const settledRow = await db.getFirstAsync<{ c: number }>(
+    "SELECT COUNT(*) AS c FROM project_investors WHERE investor_id = ? AND status = 'SETTLED'",
+    investorId
+  );
+
+  const standing = computeInvestorStanding({
+    receivedCash: received,
+    paidOutCash: paidRow?.s ?? 0,
+    realizedProfit: profitRow?.p ?? 0,
+    netStaked,
+  });
+
   return {
     investor,
     committed: investor.committed_amount,
     received,
     remaining: Math.max(0, investor.committed_amount - received),
+    ...standing,
+    settledAny: (settledRow?.c ?? 0) > 0,
   };
+}
+
+/** Re-deployable balance for the "invest from existing balance" flow. */
+export async function getInvestorAvailableBalance(investorId: string): Promise<number> {
+  return (await getInvestorSummary(investorId)).available;
 }
 
 export interface InvestorPaymentInput {
@@ -152,7 +210,6 @@ export interface UpdateInvestor {
   photoUri?: string | null;
   bankInfo?: string | null;
   committedAmount?: number;
-  givenAmount?: number;
 }
 
 /** Edit an investor's identity + pledge details. */
@@ -161,14 +218,13 @@ export async function updateInvestor(id: string, patch: UpdateInvestor): Promise
   const inv = await getInvestor(id);
   if (!inv) throw new Error(`updateInvestor: investor ${id} not found`);
   await db.runAsync(
-    'UPDATE investors SET name = ?, phone = ?, cnic = ?, photo_uri = ?, bank_info = ?, committed_amount = ?, given_amount = ? WHERE id = ?',
+    'UPDATE investors SET name = ?, phone = ?, cnic = ?, photo_uri = ?, bank_info = ?, committed_amount = ? WHERE id = ?',
     patch.name?.trim() || inv.name,
     patch.phone !== undefined ? patch.phone : inv.phone,
     patch.cnic !== undefined ? patch.cnic : inv.cnic,
     patch.photoUri !== undefined ? patch.photoUri : inv.photo_uri,
     patch.bankInfo !== undefined ? patch.bankInfo : inv.bank_info,
     patch.committedAmount !== undefined ? Math.max(0, patch.committedAmount) : inv.committed_amount,
-    patch.givenAmount !== undefined ? Math.max(0, patch.givenAmount) : inv.given_amount,
     id
   );
 }

@@ -1,6 +1,12 @@
+import { type CategoryContext, scopeCategoriesToContext } from '@/utils/categoryScope';
+
 import { getDatabase } from '../database';
 import { type CategoryRow, type CategoryType, DEFAULT_USER } from '../schema';
 import { nowISO, uuid } from '../uuid';
+
+// Re-export the pure scoping helpers so `@/db` stays the one import site.
+export { scopeCategoriesToContext };
+export type { CategoryContext };
 
 export interface NewCategory {
   nameEn: string;
@@ -117,6 +123,17 @@ export async function listCategoryTree(type: CategoryType): Promise<CategoryTree
     }
   }
   return all.filter((c) => !c.parent_id).map((m) => ({ ...m, children: byParent.get(m.id) ?? [] }));
+}
+
+/**
+ * The single source for a module's bookable categories. Returns only LEAF
+ * categories (never headings, never system/business-posted ones), in the
+ * user's Settings order, scoped to the given context.
+ */
+export async function listCategoriesForContext(context: CategoryContext): Promise<CategoryRow[]> {
+  const type: CategoryType = context === 'income' ? 'INCOME' : 'EXPENSE';
+  const all = await listCategories(type);
+  return scopeCategoriesToContext(all, context);
 }
 
 export async function listCategories(type?: CategoryType): Promise<CategoryRow[]> {

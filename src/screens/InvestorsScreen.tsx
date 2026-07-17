@@ -1,11 +1,11 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InvestorPersonSheet } from '@/components/InvestorPersonSheet';
-import { AppCard, AppHeader, AppIcon, AppText, EmptyState, PhoneChip, SearchBar } from '@/components/ui';
+
+import { AppCard, AppHeader, AppIcon, AppText, Avatar, EmptyState, PhoneChip, SearchBar } from '@/components/ui';
 import {
   deleteInvestor,
   isInvestorInUse,
@@ -120,42 +120,52 @@ export function InvestorsScreen(): React.JSX.Element {
               return inv.name.toLowerCase().includes(q) || (inv.phone ?? '').includes(query.trim());
             })
             .map((inv) => (
-            <AppCard
-              key={inv.id}
-              style={styles.card}
-              onPress={() => navigation.navigate('InvestorProfile', { investorId: inv.id })}
-              onLongPress={() => setMenuFor(inv)}
-            >
-              {/* Header — avatar, name + phone, chevron (same shape as plots). */}
-              <View style={styles.row}>
-                <Avatar uri={inv.photo_uri} name={inv.name} styles={styles} />
-                <View style={styles.info}>
-                  <AppText size="md" weight="bold" numberOfLines={1}>
-                    {inv.name}
-                  </AppText>
-                  {inv.phone ? <PhoneChip phone={inv.phone} compact /> : null}
+              <AppCard
+                key={inv.id}
+                style={styles.card}
+                onPress={() => navigation.navigate('InvestorProfile', { investorId: inv.id })}
+                onLongPress={() => setMenuFor(inv)}
+              >
+                {/* Header — avatar, name + phone, chevron (same shape as plots). */}
+                <View style={styles.row}>
+                  <Avatar uri={inv.photo_uri} name={inv.name} />
+                  <View style={styles.info}>
+                    <AppText size="md" weight="bold" numberOfLines={1}>
+                      {inv.name}
+                    </AppText>
+                    {inv.phone ? <PhoneChip phone={inv.phone} compact /> : null}
+                  </View>
+                  <AppIcon name="forward" size={20} color="textSecondary" />
                 </View>
-                <AppIcon name="forward" size={20} color="textSecondary" />
-              </View>
 
-              {/* Total actually invested over time — no pledge concept. */}
-              <View style={styles.mathBlock}>
-                <View style={styles.mathRow}>
-                  <AppText size="sm" weight="bold">
-                    {t('paidInCapital')}
-                  </AppText>
-                  <AppText size="md" weight="bold" color="success" tabular>
-                    {formatRupees(inv.received)}
-                  </AppText>
+                {/* Total standing — folds realized profit into the headline. */}
+                <View style={styles.mathBlock}>
+                  <View style={styles.mathRow}>
+                    <AppText size="sm" weight="bold">
+                      {t('totalLabel')}
+                    </AppText>
+                    <AppText size="md" weight="bold" color="success" tabular>
+                      {formatRupees(inv.total)}
+                    </AppText>
+                  </View>
+                  {inv.profit !== 0 ? (
+                    <View style={styles.mathRow}>
+                      <AppText size="sm" color="textSecondary">
+                        {t('profitEarned')}
+                      </AppText>
+                      <AppText size="sm" weight="bold" color={inv.profit >= 0 ? 'success' : 'danger'} tabular>
+                        {`${inv.profit >= 0 ? '+ ' : '− '}${formatRupees(Math.abs(inv.profit))}`}
+                      </AppText>
+                    </View>
+                  ) : null}
                 </View>
-              </View>
-            </AppCard>
-          ))}
+              </AppCard>
+            ))}
         </ScrollView>
       )}
 
       {/* Add / edit investor — the ONE shared person modal (identity + money) */}
-      <InvestorPersonSheet
+      {/* <InvestorPersonSheet
         visible={sheetOpen}
         onClose={() => {
           setSheetOpen(false);
@@ -163,7 +173,7 @@ export function InvestorsScreen(): React.JSX.Element {
         }}
         editing={editing}
         onSaved={onSaved}
-      />
+      /> */}
 
       {/* Long-press action menu — Edit / Delete */}
       <Modal
@@ -204,27 +214,6 @@ export function InvestorsScreen(): React.JSX.Element {
   );
 }
 
-function Avatar({
-  uri,
-  name,
-  styles,
-}: {
-  uri: string | null;
-  name: string;
-  styles: ReturnType<typeof makeStyles>;
-}): React.JSX.Element {
-  if (uri) return <Image source={{ uri }} style={styles.avatar} />;
-  return (
-    <View style={styles.avatarFallback}>
-      <AppText size="lg" weight="bold" color="onPrimary">
-        {name.trim().charAt(0).toUpperCase() || '?'}
-      </AppText>
-    </View>
-  );
-}
-
-const AV = 48;
-
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
@@ -238,15 +227,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: theme.spacing.md,
-    },
-    avatar: { width: AV, height: AV, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    avatarFallback: {
-      width: AV,
-      height: AV,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.gold,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },

@@ -9,7 +9,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/components/InvestorSheet';
+import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/modules/investors';
 import { AddPlotSheet } from '@/components/project/AddPlotSheet';
 import { PhaseCardsSection } from '@/components/project/PhaseCardsSection';
 import { ProjectCostCard } from '@/components/project/ProjectCostCard';

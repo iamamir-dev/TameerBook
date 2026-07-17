@@ -5,9 +5,15 @@ import {
   DEFAULT_USER,
   type InvestorRow,
   type ProjectStatus,
+  type TransactionRow,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
 import { requireCompanyId } from './companies';
+
+/** Note marker on a capital_ledger stake funded from the investor's balance
+ *  (no cash transaction) — see `investFromBalance`. Used to include it in the
+ *  activity feed without double-counting cash-funded stakes. */
+export const FROM_BALANCE_NOTE = 'FROM_BALANCE';
 
 export interface NewCapitalEntry {
   projectInvestorId: string;
@@ -164,31 +170,44 @@ export async function getInvestorTotalCapital(investorId: string): Promise<numbe
 }
 
 export interface InvestorWithCapital extends InvestorRow {
-  /** Received so far (Σ their payment transactions) — their "paid". */
+  /** Received so far (Σ their IN payment transactions). */
   received: number;
+  /** Realized profit across settled projects. */
+  profit: number;
+  /** Total standing = received + profit − paidOut (folds profit into the total). */
+  total: number;
 }
 
 /**
- * All investors with how much has been RECEIVED from each (Σ payments), to
- * show against their committed pledge — the plot-style deal/paid/remaining.
+ * All investors with their standing: cash received, realized profit, and the
+ * profit-inclusive total (so the list shows the same "Total" as the profile,
+ * not just cash-in). Ordered by name.
  */
 export async function listInvestorsWithCapital(): Promise<InvestorWithCapital[]> {
   const db = await getDatabase();
-  return db.getAllAsync<InvestorWithCapital>(
+  const rows = await db.getAllAsync<InvestorRow & { received: number; paidOut: number; profit: number }>(
     `SELECT inv.*,
-       COALESCE((
-         SELECT SUM(t.amount) FROM transactions t
-         WHERE t.investor_id = inv.id AND t.direction = 'IN' AND t.is_void = 0
-       ), 0) AS received
+       COALESCE((SELECT SUM(t.amount) FROM transactions t
+         WHERE t.investor_id = inv.id AND t.direction = 'IN' AND t.is_void = 0), 0) AS received,
+       COALESCE((SELECT SUM(t.amount) FROM transactions t
+         WHERE t.investor_id = inv.id AND t.direction = 'OUT' AND t.is_void = 0), 0) AS paidOut,
+       COALESCE((SELECT SUM(CASE cl.entry_type
+            WHEN 'PROFIT_PAYOUT' THEN cl.amount
+            WHEN 'DONATION'      THEN -cl.amount
+            WHEN 'LOSS_ADJ'      THEN -cl.amount
+            ELSE 0 END)
+          FROM capital_ledger cl
+          JOIN project_investors pi ON pi.id = cl.project_investor_id
+          WHERE pi.investor_id = inv.id), 0) AS profit
      FROM investors inv
      WHERE inv.company_id = ?
      ORDER BY inv.name`,
     requireCompanyId()
   );
-}
-
-export interface InvestorLedgerEntry extends CapitalLedgerRow {
-  projectName: string;
+  return rows.map(({ paidOut, ...r }) => ({
+    ...r,
+    total: r.received + r.profit - paidOut,
+  }));
 }
 
 export interface InvestorProjectReturn {
@@ -246,16 +265,80 @@ export async function getInvestorProjectReturns(investorId: string): Promise<Inv
   }));
 }
 
-/** Full capital ledger for an investor across projects (newest first). */
-export async function listInvestorLedger(investorId: string): Promise<InvestorLedgerEntry[]> {
+/** One row of the investor's unified activity feed. */
+export interface InvestorActivityRow {
+  id: string;
+  date: string;
+  amount: number;
+  direction: 'in' | 'out';
+  /** Display key: a capital entry_type, or 'TXN_IN' / 'TXN_OUT' for cash rows. */
+  entryType: string;
+  projectName: string;
+  /** Present for cash rows → enables the detail sheet + in-place edit. */
+  txn: TransactionRow | null;
+  editable: boolean;
+}
+
+const ACCOUNTING_TYPES = "'PROFIT_PAYOUT','DONATION','EXIT_SETTLEMENT','LOSS_ADJ'";
+
+/**
+ * The investor's unified activity feed for the reusable `ActivityList`: their
+ * real cash transactions (editable, with the rich detail sheet) MERGED with the
+ * view-only settlement/accounting entries (profit / donation / exit) and any
+ * "from balance" stakes — WITHOUT double-counting cash-funded stakes (those show
+ * once, as their IN transaction). Newest first.
+ */
+export async function listInvestorActivity(investorId: string): Promise<InvestorActivityRow[]> {
   const db = await getDatabase();
-  return db.getAllAsync<InvestorLedgerEntry>(
+
+  const txns = await db.getAllAsync<TransactionRow & { projectName: string }>(
+    `SELECT t.*, COALESCE(pr.name, '') AS projectName
+     FROM transactions t
+     LEFT JOIN projects pr ON pr.id = t.project_id
+     WHERE t.investor_id = ? AND t.is_void = 0`,
+    investorId
+  );
+
+  const caps = await db.getAllAsync<CapitalLedgerRow & { projectName: string }>(
     `SELECT cl.*, COALESCE(pr.name, '') AS projectName
      FROM capital_ledger cl
      JOIN project_investors pi ON pi.id = cl.project_investor_id
      JOIN projects pr ON pr.id = pi.project_id
      WHERE pi.investor_id = ?
-     ORDER BY cl.date DESC, cl.created_at DESC`,
+       AND (cl.entry_type IN (${ACCOUNTING_TYPES})
+            OR (cl.entry_type IN ('INITIAL','ADDITIONAL') AND cl.note = '${FROM_BALANCE_NOTE}'))`,
     investorId
   );
+
+  const CAP_POSITIVE = new Set(['INITIAL', 'ADDITIONAL', 'TRANSFER_IN', 'PROFIT_PAYOUT']);
+
+  const txnRows: InvestorActivityRow[] = txns.map((row) => {
+    const { projectName, ...txn } = row;
+    return {
+      id: row.id,
+      date: row.date,
+      amount: row.amount,
+      direction: row.direction === 'IN' ? 'in' : 'out',
+      entryType: row.direction === 'IN' ? 'TXN_IN' : 'TXN_OUT',
+      projectName,
+      txn: txn as TransactionRow,
+      editable: true,
+    };
+  });
+
+  const capRows: InvestorActivityRow[] = caps.map((c) => ({
+    id: c.id,
+    date: c.date,
+    amount: c.amount,
+    direction: CAP_POSITIVE.has(c.entry_type) ? 'in' : 'out',
+    entryType: c.entry_type,
+    projectName: c.projectName,
+    txn: null,
+    editable: false,
+  }));
+
+  return [...txnRows, ...capRows].sort((a, b) => {
+    if (a.date === b.date) return 0;
+    return a.date < b.date ? 1 : -1;
+  });
 }

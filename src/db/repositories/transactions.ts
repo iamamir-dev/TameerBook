@@ -217,6 +217,73 @@ export async function voidTransaction(
   return getTransaction(reversalId) as Promise<TransactionRow>;
 }
 
+export interface TransactionPatch {
+  amount?: number;
+  date?: string;
+  categoryId?: string | null;
+  accountId?: string | null;
+  description?: string | null;
+}
+
+/**
+ * Edit a transaction IN PLACE (keeps the same row — it is NOT voided/deleted).
+ * A deliberate, user-requested exception to the append-only rule for simple
+ * standalone entries; balances are derived, so the numbers stay correct.
+ *
+ * GUARDED: rejects void/reversal rows and rows whose correctness depends on a
+ * linked partner (transfers, udhaar, labor, bookings, sale receipts) — those
+ * must be corrected through their own flow. An OUT edit that would overdraw the
+ * account throws `InsufficientFundsError` (balance computed excluding this row).
+ */
+export async function updateTransaction(id: string, patch: TransactionPatch): Promise<void> {
+  const db = await getDatabase();
+  const t = await getTransaction(id);
+  if (!t) throw new Error(`updateTransaction: ${id} not found`);
+  if (t.is_void === 1) throw new Error('updateTransaction: cannot edit a void row');
+  if (t.void_of_id) throw new Error('updateTransaction: cannot edit a reversal row');
+  if (t.transfer_id || t.udhaar_id || t.labor_id || t.booking_id) {
+    throw new Error('updateTransaction: linked transaction is not directly editable');
+  }
+  const receipt = await db.getFirstAsync<{ id: string }>(
+    'SELECT id FROM sale_receipts WHERE txn_id = ? LIMIT 1',
+    id
+  );
+  if (receipt) throw new Error('updateTransaction: sale-receipt transaction is not directly editable');
+
+  const amount = patch.amount ?? t.amount;
+  if (amount <= 0) throw new Error('updateTransaction: amount must be positive');
+  const accountId = patch.accountId !== undefined ? patch.accountId : t.account_id;
+
+  // Overdraw guard for OUT rows: the new amount must fit the account balance
+  // computed WITHOUT this row's current effect.
+  if (t.direction === 'OUT' && accountId) {
+    const row = await db.getFirstAsync<{ balance: number }>(
+      `SELECT a.opening_balance + COALESCE(SUM(
+         CASE WHEN tx.direction = 'IN' THEN tx.amount
+              WHEN tx.direction = 'OUT' THEN -tx.amount
+              ELSE 0 END), 0) AS balance
+       FROM accounts a
+       LEFT JOIN transactions tx ON tx.account_id = a.id AND tx.is_void = 0 AND tx.id != ?
+       WHERE a.id = ?
+       GROUP BY a.id`,
+      id,
+      accountId
+    );
+    const balance = row?.balance ?? 0;
+    if (amount > balance + 0.001) throw new InsufficientFundsError(accountId, balance, amount);
+  }
+
+  await db.runAsync(
+    'UPDATE transactions SET amount = ?, date = ?, category_id = ?, account_id = ?, description = ? WHERE id = ?',
+    amount,
+    patch.date ?? t.date,
+    patch.categoryId !== undefined ? patch.categoryId : t.category_id,
+    accountId,
+    patch.description !== undefined ? patch.description : t.description,
+    id
+  );
+}
+
 /** All live (non-void) transactions for a project, newest first. */
 export async function listTransactions(projectId: string): Promise<TransactionRow[]> {
   const db = await getDatabase();

@@ -5,6 +5,7 @@
  */
 export { AppText } from './AppText';
 export { AppIcon } from './AppIcon';
+export { Avatar } from './Avatar';
 export { AppButton, type ButtonVariant } from './AppButton';
 export { AppToggle } from './AppToggle';
 export { AppCard } from './AppCard';
@@ -28,4 +29,8 @@ export { AddPhotoTile } from './AddPhotoTile';
 export { AppHeader } from './AppHeader';
 export { StickyFooter } from './StickyFooter';
 export { SelectSheet, type SelectOption } from './SelectSheet';
+export { AppSheet } from './AppSheet';
+export { AccountPickerRow } from './AccountPickerRow';
+export { LabelValueRow } from './LabelValueRow';
+export { MoneyEntrySheet } from './MoneyEntrySheet';
 export { ICONS, iconFor, type GlyphName, type IconKey } from './icons';
