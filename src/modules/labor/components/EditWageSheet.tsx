@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { AmountInput, AppButton, AppSheet, AppText } from '@/components/ui';
+import { AmountInput, AppButton, AppSheet } from '@/components/ui';
 import { setLaborerWage } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -53,12 +53,11 @@ export function EditWageSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
+      icon="dehari"
       title={t('dailyWage')}
+      subtitle={projectName}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={wage <= 0} />}
     >
-      <AppText size="sm" color="textSecondary" numberOfLines={1}>
-        {projectName}
-      </AppText>
       <AmountInput floating surface={theme.colors.card} label={t('dailyWage')} value={wage} onChange={setWage} />
     </AppSheet>
   );

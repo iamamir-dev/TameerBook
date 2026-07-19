@@ -60,6 +60,7 @@ export function AttachProjectSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
+      icon="project"
       title={t('includeInProject')}
       footer={
         <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!projectId || wage <= 0} />

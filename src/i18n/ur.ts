@@ -477,6 +477,8 @@ export const ur: TranslationKeys = {
   exceedsRemaining: 'رقم بقایا سے زیادہ ہے۔',
   tabCash: 'کیش',
   receivedNow: 'ابھی نقد وصول ہوا',
+  investorDetailsHint: 'تفصیل اور ابتدائی رقم',
+  moneySection: 'رقم',
   obWelcomeBody: 'آپ کا مکمل تعمیراتی کھاتا — پلاٹ، پروجیکٹس، کیش اور پارٹنرز، سب ایک جگہ۔',
   optionalDetails: 'اختیاری تفصیلات',
   companyNameHint: 'ایپ میں آپ کا کاروبار اسی نام سے نظر آئے گا۔',

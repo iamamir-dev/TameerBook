@@ -474,6 +474,8 @@ export const en: TranslationKeys = {
   exceedsRemaining: 'Amount is more than what is remaining.',
   tabCash: 'Cash',
   receivedNow: 'Paid now (cash received)',
+  investorDetailsHint: 'Details & opening money',
+  moneySection: 'Money',
   obWelcomeBody: 'Your complete construction ledger — plots, projects, cash and partners, all in one place.',
   optionalDetails: 'Optional details',
   companyNameHint: 'How your business appears across the app.',

@@ -5,7 +5,9 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
-    photoPicker: { alignSelf: 'flex-start' },
+    photoPicker: { alignSelf: 'center', marginBottom: theme.spacing.xs },
+    sectionLabel: { marginTop: theme.spacing.xs },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginVertical: theme.spacing.xs },
     cameraBadge: {
       position: 'absolute',
       right: -2,

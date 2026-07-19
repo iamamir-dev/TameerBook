@@ -105,6 +105,7 @@ export function InvestorSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
+      icon="investor"
       title={t('attachInvestor')}
       footer={<AppButton label={t('add')} icon="check" onPress={submit} loading={saving} disabled={!canSubmit} />}
     >

@@ -85,11 +85,7 @@ export function AttendanceCalendarSheet({
   const selectedStatus = selected ? statusOf(selected) : null;
 
   return (
-    <AppSheet visible={visible} onClose={onClose} title={t('attendanceTitle')}>
-      <AppText size="sm" color="textSecondary" numberOfLines={1}>
-        {projectName}
-      </AppText>
-
+    <AppSheet visible={visible} onClose={onClose} icon="today" title={t('attendanceTitle')} subtitle={projectName}>
       <MonthCalendar selected={selected} onSelectDate={setSelected} dayVisual={dayVisual} onMonthChange={setMonthPrefix} />
 
       {/* Legend */}

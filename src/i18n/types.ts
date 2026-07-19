@@ -515,6 +515,8 @@ export interface TranslationKeys {
   exceedsRemaining: string;
   tabCash: string;
   receivedNow: string;
+  investorDetailsHint: string;
+  moneySection: string;
   obWelcomeBody: string;
   optionalDetails: string;
   companyNameHint: string;

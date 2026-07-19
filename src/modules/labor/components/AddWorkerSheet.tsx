@@ -78,6 +78,7 @@ export function AddWorkerSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
+      icon="dehari"
       title={t('addWorker')}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />}
     >

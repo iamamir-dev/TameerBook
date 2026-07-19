@@ -172,7 +172,9 @@ export function InvestorPersonSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
+      icon="investor"
       title={editing ? t('editInvestor') : t('addInvestor')}
+      subtitle={t('investorDetailsHint')}
       footer={<AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!canSave} />}
     >
       {/* Tap the photo itself to add/replace it — no separate button. */}
@@ -186,6 +188,12 @@ export function InvestorPersonSheet({
       <FloatingLabelInput label={t('personName')} value={form.name} onChangeText={(v) => patch({ name: v })} />
       <FloatingLabelInput label={t('phone')} value={form.phone} onChangeText={(v) => patch({ phone: v })} mask="phone" />
       <FloatingLabelInput label={t('cnic')} value={form.cnic} onChangeText={(v) => patch({ cnic: v })} mask="cnic" />
+
+      {/* Money section — separated from identity for a clearer read. */}
+      <View style={styles.divider} />
+      <AppText size="overline" weight="bold" color="textSecondary" uppercase style={styles.sectionLabel}>
+        {t('moneySection')}
+      </AppText>
 
       {/* Bank = pick from the accounts already in the app (no typing). */}
       <Pressable onPress={() => setBankSheet(true)} style={styles.bankChip} accessibilityRole="button">

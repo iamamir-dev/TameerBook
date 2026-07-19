@@ -98,7 +98,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
 
   return (
     <>
-      <AppSheet visible={worker !== null} onClose={onClose} title={worker?.laborer.name ?? ''}>
+      <AppSheet visible={worker !== null} onClose={onClose} icon="dehari" title={worker?.laborer.name ?? ''}>
         <AppText size="sm" color="textSecondary">
           {`${t('dailyWage')}: ${formatRupees(worker?.projectLaborer.daily_wage ?? 0)} · ${t('wageBalance')}: ${formatRupees(worker?.balance.balance ?? 0)}`}
         </AppText>

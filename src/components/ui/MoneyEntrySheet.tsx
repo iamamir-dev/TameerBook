@@ -13,11 +13,15 @@ import { AppButton } from './AppButton';
 import { AppSheet } from './AppSheet';
 import { AppText } from './AppText';
 import { DateField } from './DateField';
+import type { GlyphName, IconKey } from './icons';
 
 interface MoneyEntrySheetProps {
   visible: boolean;
   onClose: () => void;
   title: string;
+  /** Optional header identity forwarded to AppSheet. */
+  icon?: IconKey | GlyphName;
+  subtitle?: string;
 
   /** Amount (rupees). */
   amount: number;
@@ -67,6 +71,8 @@ export function MoneyEntrySheet({
   visible,
   onClose,
   title,
+  icon,
+  subtitle,
   amount,
   onAmountChange,
   amountError,
@@ -100,6 +106,8 @@ export function MoneyEntrySheet({
       visible={visible}
       onClose={onClose}
       title={title}
+      icon={icon}
+      subtitle={subtitle}
       footer={
         <AppButton
           label={saveLabel ?? t('save')}
