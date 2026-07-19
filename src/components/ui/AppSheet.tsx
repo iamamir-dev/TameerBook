@@ -14,19 +14,15 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
-import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
-import type { GlyphName, IconKey } from './icons';
 
 interface AppSheetProps {
   visible: boolean;
   onClose: () => void;
-  /** Bold title rendered in the header. */
+  /** Centered title in the compact header. */
   title?: string;
   /** Optional one-line context under the title. */
   subtitle?: string;
-  /** Optional leading icon chip — gives each sheet a clear identity. */
-  icon?: IconKey | GlyphName;
   /** Sheet body. */
   children: React.ReactNode;
   /** Pinned bar below the scroll area (e.g. a Save button); safe-area padded. */
@@ -52,7 +48,6 @@ export function AppSheet({
   onClose,
   title,
   subtitle,
-  icon,
   children,
   footer,
   scroll = true,
@@ -90,21 +85,14 @@ export function AppSheet({
 
           {title ? (
             <View style={styles.header}>
-              {icon ? (
-                <View style={styles.iconChip}>
-                  <AppIcon name={icon} size={24} color="primary" />
-                </View>
-              ) : null}
-              <View style={styles.headerText}>
-                <AppText size="xl" weight="bold" numberOfLines={1}>
-                  {title}
+              <AppText size="lg" weight="bold" center numberOfLines={1}>
+                {title}
+              </AppText>
+              {subtitle ? (
+                <AppText size="sm" color="textSecondary" center numberOfLines={1}>
+                  {subtitle}
                 </AppText>
-                {subtitle ? (
-                  <AppText size="sm" color="textSecondary" numberOfLines={1}>
-                    {subtitle}
-                  </AppText>
-                ) : null}
-              </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -132,23 +120,9 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.xl,
       ...theme.shadows.raised,
     },
-    grabberArea: { alignItems: 'center', paddingVertical: theme.spacing.md },
+    grabberArea: { alignItems: 'center', paddingVertical: theme.spacing.sm },
     grabber: { width: 40, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.md,
-      marginBottom: theme.spacing.lg,
-    },
-    iconChip: {
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.md,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.primarySoft,
-    },
-    headerText: { flex: 1, gap: 2 },
+    header: { alignItems: 'center', gap: 2, marginBottom: theme.spacing.md },
     scroll: { flexGrow: 0, flexShrink: 1 },
     scrollContent: { gap: theme.spacing.md, paddingBottom: theme.spacing.sm },
     staticBody: { gap: theme.spacing.md },

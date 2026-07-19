@@ -131,7 +131,6 @@ export function PayWorkerSheet({
     <MoneyEntrySheet
       visible={visible}
       onClose={onClose}
-      icon="moneyOut"
       title={t('payWorker')}
       header={header}
       amount={form.amount}

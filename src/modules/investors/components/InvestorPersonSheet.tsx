@@ -172,7 +172,6 @@ export function InvestorPersonSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
-      icon="investor"
       title={editing ? t('editInvestor') : t('addInvestor')}
       subtitle={t('investorDetailsHint')}
       footer={<AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!canSave} />}

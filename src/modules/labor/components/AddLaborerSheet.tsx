@@ -70,7 +70,6 @@ export function AddLaborerSheet({ visible, onClose, onSaved }: Props): React.JSX
     <AppSheet
       visible={visible}
       onClose={onClose}
-      icon="dehari"
       title={t('addWorker')}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!form.name.trim()} />}
     >

@@ -53,7 +53,6 @@ export function EditWageSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
-      icon="dehari"
       title={t('dailyWage')}
       subtitle={projectName}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={wage <= 0} />}
