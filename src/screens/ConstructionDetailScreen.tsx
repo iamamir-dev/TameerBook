@@ -7,10 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
 import { AddExpenseSheet } from '@/components/construction/AddExpenseSheet';
-import { AddWorkerSheet } from '@/components/construction/AddWorkerSheet';
 import { CategoryBars } from '@/components/construction/CategoryBars';
-import { WorkerSheet } from '@/components/construction/WorkerSheet';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import { AddWorkerSheet, WorkerSheet } from '@/modules/labor';
 import {
   AppButton,
   AppCard,
@@ -27,6 +26,7 @@ import {
   listLaborers,
   listProjectLaborers,
   listProjectPhaseTransactions,
+  markAllPresentForProject,
   type AccountWithBalance,
   type CategoryRow,
   type ConstructionSummary,
@@ -35,11 +35,12 @@ import {
   type ProjectRow,
   type TransactionRow,
 } from '@/db';
-import { useCategoryLabel, useFocusReload } from '@/hooks';
+import { useCategoryLabel, useFocusReload, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -93,9 +94,18 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   }, [projectId]);
 
   const { reload } = useFocusReload(loadData);
+  const { run: runSave } = useSaveAction();
 
   // A completed project's construction phase is read-only history.
   const completed = project?.status === 'COMPLETED';
+
+  // Bulk-mark every active worker present today (skips conflicts / no-wage).
+  const onMarkAllPresent = () => {
+    void runSave(async () => {
+      await markAllPresentForProject(projectId, todayISO().slice(0, 10));
+      await reload();
+    });
+  };
 
   const catLabel = useCategoryLabel();
   const catNameById = useCallback(
@@ -175,11 +185,20 @@ export function ConstructionDetailScreen(): React.JSX.Element {
             {t('laborTitle')}
           </AppText>
           {!completed ? (
-            <Pressable onPress={() => setAddWorkerOpen(true)} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
-              <AppText size="sm" weight="semibold" color="accent">
-                {t('addWorker')}
-              </AppText>
-            </Pressable>
+            <View style={styles.headerActions}>
+              {workers.length > 0 ? (
+                <Pressable onPress={onMarkAllPresent} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
+                  <AppText size="sm" weight="semibold" color="accent">
+                    {t('markAllPresent')}
+                  </AppText>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => setAddWorkerOpen(true)} hitSlop={theme.touch.hitSlop} accessibilityRole="button">
+                <AppText size="sm" weight="semibold" color="accent">
+                  {t('addWorker')}
+                </AppText>
+              </Pressable>
+            </View>
           ) : null}
         </View>
 
@@ -306,6 +325,7 @@ const makeStyles = (theme: Theme) =>
       marginTop: theme.spacing.sm,
     },
     emptyText: { paddingVertical: theme.spacing.md },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg },
     /* worker cards */
     workerColumns: {
       flexDirection: 'row',

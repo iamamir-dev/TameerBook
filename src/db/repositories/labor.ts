@@ -6,7 +6,7 @@ import {
   type LaborerRow,
   type ProjectLaborerRow,
 } from '../schema';
-import { nowISO, uuid } from '../uuid';
+import { nowISO, todayLocalISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { assertProjectActive } from './guards';
@@ -193,10 +193,14 @@ export interface MarkAttendanceInput {
   createdBy?: string;
 }
 
-/** Wage owed for a day at the given wage/status: full, half, or nothing. */
+/**
+ * Wage owed for a day at the given wage/status: full, half, or nothing. HALF is
+ * rounded to whole rupees so an odd wage can't leave an unclearable `.5` residue
+ * (amounts are entered as integers everywhere).
+ */
 export function wageForStatus(dailyWage: number, status: AttendanceStatus): number {
   if (status === 'FULL') return dailyWage;
-  if (status === 'HALF') return dailyWage / 2;
+  if (status === 'HALF') return Math.round(dailyWage / 2);
   return 0;
 }
 
@@ -410,7 +414,7 @@ export async function listProjectLaborers(projectId: string): Promise<ProjectLab
     "SELECT * FROM project_laborers WHERE project_id = ? AND status = 'ACTIVE' ORDER BY created_at ASC",
     projectId
   );
-  const today = nowISO().slice(0, 10);
+  const today = todayLocalISO();
   const out: ProjectLaborerSummary[] = [];
   for (const pl of rows) {
     const laborer = await getLaborer(pl.laborer_id);
@@ -428,6 +432,30 @@ export async function listProjectLaborers(projectId: string): Promise<ProjectLab
     });
   }
   return out;
+}
+
+/**
+ * Bulk-mark every ACTIVE worker on a project as FULL for a date (default the
+ * caller's local today). Workers with no dihari set, already earning on another
+ * project that day (the one-dihari guard), or inactive are skipped — the rest
+ * are marked. Returns how many were actually marked. Idempotent: re-running
+ * re-affirms FULL for the day.
+ */
+export async function markAllPresentForProject(projectId: string, date: string): Promise<number> {
+  const workers = await listProjectLaborers(projectId);
+  let marked = 0;
+  for (const w of workers) {
+    if (w.projectLaborer.daily_wage <= 0) continue;
+    try {
+      await markAttendance({ projectLaborerId: w.projectLaborer.id, date, status: 'FULL' });
+      marked++;
+    } catch (e) {
+      // Expected skips: cross-project conflict / inactive / no wage. Re-throw
+      // anything genuinely unexpected.
+      if (!isAttendanceConflict(e) && !isWorkerInactive(e) && !isWageNotSet(e)) throw e;
+    }
+  }
+  return marked;
 }
 
 export interface ProjectLaborTotals {
@@ -522,7 +550,7 @@ export async function getLaborerKhata(laborerId: string): Promise<LaborerKhata> 
     laborerId
   );
 
-  const today = nowISO().slice(0, 10);
+  const today = todayLocalISO();
   const participations: LaborerProjectParticipation[] = [];
   for (const pl of pls) {
     const { projectName, projectStatus, ...row } = pl;

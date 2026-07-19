@@ -363,6 +363,7 @@ export const en: TranslationKeys = {
   // v2  Labor
   laborTitle: 'Labor',
   addWorker: 'Add worker',
+  markAllPresent: 'Mark all present',
   workerName: 'Worker name',
   dailyWage: 'Daily wage',
   attendanceTitle: 'Attendance',

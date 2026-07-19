@@ -21,8 +21,7 @@ import {
   InvestorProfileScreen,
   InvestorsScreen,
 } from '@/modules/investors';
-import { LaborerDetailScreen } from '@/screens/LaborerDetailScreen';
-import { LaborScreen } from '@/screens/LaborScreen';
+import { LaborerDetailScreen, LaborScreen } from '@/modules/labor';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
 import { NewPlotScreen } from '@/screens/NewPlotScreen';

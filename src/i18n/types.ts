@@ -396,6 +396,7 @@ export interface TranslationKeys {
   // v2  Labor
   laborTitle: string;
   addWorker: string;
+  markAllPresent: string;
   workerName: string;
   dailyWage: string;
   attendanceTitle: string;

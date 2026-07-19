@@ -1,43 +1,35 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Image, ScrollView, View } from 'react-native';
 
-import { AttachProjectSheet } from '@/components/labor/AttachProjectSheet';
-import { AttendanceCalendarSheet } from '@/components/labor/AttendanceCalendarSheet';
-import { EditWageSheet } from '@/components/labor/EditWageSheet';
-import { KhataHero } from '@/components/labor/KhataHero';
-import { KhataHistoryList } from '@/components/labor/KhataHistoryList';
-import { ParticipationCard } from '@/components/labor/ParticipationCard';
-import { PayWorkerSheet } from '@/components/labor/PayWorkerSheet';
-import { AppButton, AppHeader, AppText, ContactRow, StickyFooter } from '@/components/ui';
-import {
-  getLaborerKhata,
-  listAccountsWithBalance,
-  listProjects,
-  markAttendance,
-  type AccountWithBalance,
-  type AttendanceStatus,
-  type LaborerKhata,
-  type LaborerProjectParticipation,
-  type ProjectRow,
-} from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { AppButton, AppHeader, AppText, ContactRow, LoadErrorState, StickyFooter } from '@/components/ui';
+import { markAttendance, type AttendanceStatus, type LaborerProjectParticipation } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
+
+import { AttachProjectSheet } from '../components/AttachProjectSheet';
+import { AttendanceCalendarSheet } from '../components/AttendanceCalendarSheet';
+import { EditWageSheet } from '../components/EditWageSheet';
+import { KhataHero } from '../components/KhataHero';
+import { KhataHistoryList } from '../components/KhataHistoryList';
+import { ParticipationCard } from '../components/ParticipationCard';
+import { PayWorkerSheet } from '../components/PayWorkerSheet';
+import { useKhataStatement } from '../hooks/useKhataStatement';
+import { useLaborerKhata } from '../hooks/useLaborerKhata';
+import { makeStyles } from '../styled/LaborerDetailScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailRoute = RouteProp<RootStackParamList, 'LaborerDetail'>;
 
 /**
- * Worker khata — EVERYTHING about one worker, manageable right here: the
- * balance hero, per-project cards (mark today's attendance, open the month
- * calendar to mark any date, tap the dihari to change it), the unified
- * history, paying wages, and attaching the worker to another project ("+"
- * in the header). A payment always books to one project participation.
+ * Worker khata — everything about one worker: balance hero, per-project cards
+ * (mark today, open the calendar, change the dihari), unified history, pay, and
+ * attach to another project. Thin: data via `useLaborerKhata`, PDF via
+ * `useKhataStatement`. Marking is optimistic (instant pill).
  */
 export function LaborerDetailScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -46,35 +38,21 @@ export function LaborerDetailScreen(): React.JSX.Element {
   const { laborerId } = useRoute<DetailRoute>().params;
   const styles = makeStyles(theme);
 
-  const [khata, setKhata] = useState<LaborerKhata | null>(null);
-  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const { data, loadFailed, reload } = useLaborerKhata(laborerId);
+  const { khata, accounts, projects } = data;
+  const { run: runSave } = useSaveAction();
+  const statement = useKhataStatement(khata);
+
   const [payOpen, setPayOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [wageFor, setWageFor] = useState<LaborerProjectParticipation | null>(null);
   const [calendarFor, setCalendarFor] = useState<LaborerProjectParticipation | null>(null);
-  // Which participation's attendance save is in flight — only THAT card's
-  // chips disable, not every card's.
+  // Optimistic today-status overlay per participation (instant pill feedback).
+  const [optimistic, setOptimistic] = useState<Record<string, AttendanceStatus>>({});
   const [savingPlId, setSavingPlId] = useState<string | null>(null);
-
-  const { run: runSave } = useSaveAction();
-
-  const load = useCallback(async () => {
-    const [k, accs, projs] = await Promise.all([
-      getLaborerKhata(laborerId),
-      listAccountsWithBalance(),
-      listProjects(),
-    ]);
-    setKhata(k);
-    setAccounts(accs);
-    setProjects(projs);
-  }, [laborerId]);
-
-  const { reload } = useFocusReload(load);
 
   const canPay = (khata?.participations ?? []).some((p) => p.balance.balance > 0);
 
-  // ACTIVE projects the worker is not already actively attached to.
   const attachableProjects = useMemo(() => {
     const attached = new Set(
       (khata?.participations ?? [])
@@ -84,21 +62,24 @@ export function LaborerDetailScreen(): React.JSX.Element {
     return projects.filter((p) => p.status === 'ACTIVE' && !attached.has(p.id));
   }, [projects, khata]);
 
-  /** Mark today's dihari on one project (one earning day across projects). */
   const onMarkAttendance = (p: LaborerProjectParticipation, status: AttendanceStatus) => {
+    const plId = p.projectLaborer.id;
+    setOptimistic((m) => ({ ...m, [plId]: status })); // instant feedback
     void (async () => {
-      setSavingPlId(p.projectLaborer.id);
+      setSavingPlId(plId);
       try {
         const ok = await runSave(async () => {
-          await markAttendance({
-            projectLaborerId: p.projectLaborer.id,
-            date: todayISO().slice(0, 10),
-            status,
-          });
+          await markAttendance({ projectLaborerId: plId, date: todayISO().slice(0, 10), status });
         });
         if (ok) await reload();
       } finally {
         setSavingPlId(null);
+        // Drop the overlay: reloaded data now carries the real status (or the
+        // write was blocked and we revert to it).
+        setOptimistic((m) => {
+          const { [plId]: _drop, ...rest } = m;
+          return rest;
+        });
       }
     })();
   };
@@ -111,38 +92,28 @@ export function LaborerDetailScreen(): React.JSX.Element {
         onBack={() => navigation.goBack()}
         rightAction={
           attachableProjects.length > 0
-            ? {
-              icon: 'add',
-              onPress: () => setAttachOpen(true),
-              accessibilityLabel: t('includeInProject'),
-            }
+            ? { icon: 'add', onPress: () => setAttachOpen(true), accessibilityLabel: t('includeInProject') }
             : undefined
         }
       />
 
-      {khata ? (
+      {loadFailed && !khata ? (
+        <LoadErrorState onRetry={reload} />
+      ) : khata ? (
         <ScrollView
           style={styles.flex}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
         >
-          <KhataHero
-            earned={khata.totals.earned}
-            taken={khata.totals.taken}
-            balance={khata.totals.balance}
-          />
+          <KhataHero earned={khata.totals.earned} taken={khata.totals.taken} balance={khata.totals.balance} />
 
           <View style={styles.identityRow}>
-            {khata.laborer.photo_uri ? (
-              <Image source={{ uri: khata.laborer.photo_uri }} style={styles.workerAvatar} />
-            ) : null}
+            {khata.laborer.photo_uri ? <Image source={{ uri: khata.laborer.photo_uri }} style={styles.workerAvatar} /> : null}
             <View style={styles.flexGrow}>
               <ContactRow phone={khata.laborer.phone} cnic={khata.laborer.cnic} />
             </View>
           </View>
 
-          {/* One card per project participation — attendance, dihari and
-              balance all manageable in place. */}
           {khata.participations.length > 0 ? (
             <AppText size="lg" weight="bold">
               {t('projects')}
@@ -151,7 +122,7 @@ export function LaborerDetailScreen(): React.JSX.Element {
           {khata.participations.map((p) => (
             <ParticipationCard
               key={p.projectLaborer.id}
-              participation={p}
+              participation={{ ...p, todayStatus: optimistic[p.projectLaborer.id] ?? p.todayStatus }}
               saving={savingPlId === p.projectLaborer.id}
               onMarkAttendance={(status) => onMarkAttendance(p, status)}
               onEditWage={() => setWageFor(p)}
@@ -166,12 +137,20 @@ export function LaborerDetailScreen(): React.JSX.Element {
       )}
 
       <StickyFooter>
-        <AppButton
-          label={t('payWorker')}
-          icon="moneyOut"
-          onPress={() => setPayOpen(true)}
-          disabled={!canPay}
-        />
+        <View style={styles.footerRow}>
+          <AppButton
+            label={t('statement')}
+            icon="statement"
+            variant="secondary"
+            fullWidth={false}
+            loading={statement.busy}
+            disabled={!khata}
+            onPress={statement.share}
+          />
+          <View style={styles.flex}>
+            <AppButton label={t('payWorker')} icon="moneyOut" onPress={() => setPayOpen(true)} disabled={!canPay} />
+          </View>
+        </View>
       </StickyFooter>
 
       <PayWorkerSheet
@@ -209,13 +188,3 @@ export function LaborerDetailScreen(): React.JSX.Element {
     </View>
   );
 }
-
-const makeStyles = (theme: Theme) =>
-  StyleSheet.create({
-    identityRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-    flexGrow: { flex: 1 },
-    workerAvatar: { width: 56, height: 56, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    screen: { flex: 1, backgroundColor: theme.colors.background },
-    flex: { flex: 1 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
-  });

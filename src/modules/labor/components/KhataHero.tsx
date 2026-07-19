@@ -1,11 +1,12 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AppText } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
 import { formatRupees } from '@/utils/money';
+
+import { makeStyles } from '../styled/KhataHero.styles';
 
 interface KhataHeroProps {
   /** Cross-project totals: what the worker earned / took / is still owed. */
@@ -48,14 +49,3 @@ export function KhataHero({ earned, taken, balance }: KhataHeroProps): React.JSX
     </View>
   );
 }
-
-const makeStyles = (theme: Theme) =>
-  StyleSheet.create({
-    hero: {
-      backgroundColor: theme.colors.heroBg,
-      borderRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.xs,
-      ...theme.shadows.card,
-    },
-  });

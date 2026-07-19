@@ -366,6 +366,7 @@ export const ur: TranslationKeys = {
   // v2  Labor
   laborTitle: 'مزدور',
   addWorker: 'مزدور شامل کریں',
+  markAllPresent: 'سب کو حاضر لگائیں',
   workerName: 'مزدور کا نام',
   dailyWage: 'دیہاڑی',
   attendanceTitle: 'حاضری',
