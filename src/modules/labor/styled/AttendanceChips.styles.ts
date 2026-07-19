@@ -7,16 +7,14 @@ export const makeStyles = (theme: Theme) =>
     row: { flexDirection: 'row', gap: theme.spacing.sm },
     chip: {
       flex: 1,
-      minHeight: 44,
+      minHeight: theme.touch.minTarget, // 56 — meets the touch-target rule
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 2,
+      paddingHorizontal: theme.spacing.xs,
       borderRadius: theme.radius.md,
       borderWidth: 1.5,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.card,
-    },
-    chipActive: {
-      borderColor: theme.colors.accent,
-      backgroundColor: theme.colors.accentSoft,
     },
   });

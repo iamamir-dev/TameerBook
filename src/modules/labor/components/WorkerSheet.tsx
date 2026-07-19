@@ -106,7 +106,7 @@ export function WorkerSheet({ worker, onClose, accounts, onSaved }: WorkerSheetP
         <AppText size="overline" weight="bold" color="textSecondary" uppercase style={styles.sectionLabel}>
           {`${t('attendanceTitle')} · ${t('today')}`}
         </AppText>
-        <AttendanceChips value={todayStatus} onMark={onMark} disabled={marking} />
+        <AttendanceChips value={todayStatus} onMark={onMark} disabled={marking} dailyWage={worker?.projectLaborer.daily_wage} />
 
         {attendance.slice(0, 7).map((a) => (
           <View key={a.id} style={styles.attRow}>

@@ -106,6 +106,22 @@ export function WorkerAccordion({
             {worker.phone ? <PhoneChip phone={worker.phone} compact /> : null}
           </View>
         </View>
+        {/* Pay is offered on the row itself when the worker is owed — no need
+            to expand first. */}
+        {onPay ? (
+          <Pressable
+            onPress={onPay}
+            hitSlop={theme.touch.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel={t('payWorker')}
+            style={({ pressed }) => [styles.payPill, pressed && styles.pressedDim]}
+          >
+            <AppIcon name="rupee" size={14} color="onAccent" />
+            <AppText size="xs" weight="bold" color="onAccent">
+              {t('payWorker')}
+            </AppText>
+          </Pressable>
+        ) : null}
         {/* Opens the full khata (where attendance is marked). */}
         <Pressable
           onPress={onSeeAll}
@@ -185,19 +201,11 @@ export function WorkerAccordion({
               ))}
               {khata.participations.length > 0 ? <View style={styles.divider} /> : null}
 
-              {/* History header carries the compact actions (no bottom buttons). */}
+              {/* History header — Pay lives on the collapsed row above. */}
               <View style={styles.historyHeader}>
                 <AppText size="md" weight="bold" style={styles.flex}>
                   {t('historyTitle')}
                 </AppText>
-                {onPay ? (
-                  <Pressable onPress={onPay} accessibilityRole="button" style={styles.pillBtn}>
-                    <AppIcon name="rupee" size={14} color="onAccent" />
-                    <AppText size="xs" weight="bold" color="onAccent">
-                      {t('payWorker')}
-                    </AppText>
-                  </Pressable>
-                ) : null}
                 <Pressable onPress={onSeeAll} accessibilityRole="button" style={styles.pillBtnSoft}>
                   <AppText size="xs" weight="bold" color="accent">
                     {t('seeAll')}

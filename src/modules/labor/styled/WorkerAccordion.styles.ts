@@ -14,10 +14,11 @@ export const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     pressedDim: { opacity: 0.7 },
-    pillBtn: {
+    payPill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
+      minHeight: 36,
       paddingVertical: theme.spacing.xs,
       paddingHorizontal: theme.spacing.md,
       borderRadius: theme.radius.pill,

@@ -16,6 +16,7 @@ import {
   AppHeader,
   AppText,
   LedgerTable,
+  Toast,
   type LedgerRow,
 } from '@/components/ui';
 import {
@@ -35,7 +36,7 @@ import {
   type ProjectRow,
   type TransactionRow,
 } from '@/db';
-import { useCategoryLabel, useFocusReload, useSaveAction } from '@/hooks';
+import { useCategoryLabel, useFocusReload, useSaveAction, useToast } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -95,6 +96,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
 
   const { reload } = useFocusReload(loadData);
   const { run: runSave } = useSaveAction();
+  const { toast, showToast } = useToast();
 
   // A completed project's construction phase is read-only history.
   const completed = project?.status === 'COMPLETED';
@@ -102,8 +104,9 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   // Bulk-mark every active worker present today (skips conflicts / no-wage).
   const onMarkAllPresent = () => {
     void runSave(async () => {
-      await markAllPresentForProject(projectId, todayISO().slice(0, 10));
+      const n = await markAllPresentForProject(projectId, todayISO().slice(0, 10));
       await reload();
+      showToast(`${n} · ${t('markAllPresent')}`);
     });
   };
 
@@ -306,6 +309,8 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         onSaved={reload}
       />
       <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
+
+      <Toast message={toast} />
     </View>
   );
 }

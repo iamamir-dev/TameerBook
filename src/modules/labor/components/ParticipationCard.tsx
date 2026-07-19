@@ -73,7 +73,7 @@ export function ParticipationCard({
               </Pressable>
             ) : null}
           </View>
-          <AttendanceChips value={todayStatus} onMark={onMarkAttendance!} disabled={saving} />
+          <AttendanceChips value={todayStatus} onMark={onMarkAttendance!} disabled={saving} dailyWage={projectLaborer.daily_wage} />
         </>
       ) : null}
 
