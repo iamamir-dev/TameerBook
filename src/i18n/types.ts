@@ -144,6 +144,7 @@ export interface TranslationKeys {
   addCategoryLabel: string;
   addSubcategory: string;
   defaultUnit: string;
+  secondaryUnit: string;
   name: string;
   deleteConfirm: string;
   paymentIn: string;

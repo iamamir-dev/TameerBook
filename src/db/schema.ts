@@ -250,8 +250,12 @@ export interface CategoryRow extends Base {
   icon: string | null;
   /** 1 = created/used by business logic; can't be renamed or deleted. */
   is_system: number;
-  /** For material sub-categories: the unit it's usually measured in (bori, kg…). */
+  /** For material sub-categories: the PRIMARY unit it's measured in (bori, kg…). */
   default_unit: string | null;
+  /** Optional smaller sub-unit (e.g. g for a kg material). */
+  secondary_unit: string | null;
+  /** How many secondary units make ONE primary (1 kg = 1000 g → 1000). */
+  secondary_factor: number | null;
   /** User-defined display order within its level (drag-to-reorder). */
   sort_order: number;
 }
@@ -397,7 +401,15 @@ export interface MaterialBookingRow extends Base {
 export interface MaterialDeliveryRow extends Base {
   booking_id: string;
   date: string;
+  /** Delivered quantity, in the booking's PRIMARY unit. */
   qty: number;
+  /** Project that RECEIVED this delivery (null = the booking's own project). */
+  project_id: string | null;
+  /**
+   * Links the paired cost-transfer transactions posted when a delivery goes to
+   * a different project than the booking (so deleting the delivery voids them).
+   */
+  transfer_id: string | null;
   note: string | null;
 }
 
@@ -1045,6 +1057,19 @@ export const SCHEMA_V24_DROP_GIVEN_AMOUNT = `
 ALTER TABLE investors DROP COLUMN given_amount;
 `;
 
+/**
+ * v25 — materials get a secondary sub-unit (kg→g) and deliveries can go to a
+ * different project than the booking (cost follows the material via a paired
+ * cost-transfer, linked by `transfer_id`).
+ */
+export const SCHEMA_V25_MATERIAL_UNITS_XPROJECT = `
+ALTER TABLE categories ADD COLUMN secondary_unit TEXT;
+ALTER TABLE categories ADD COLUMN secondary_factor REAL;
+ALTER TABLE material_deliveries ADD COLUMN project_id TEXT;
+ALTER TABLE material_deliveries ADD COLUMN transfer_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_deliv_project ON material_deliveries (project_id);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1064,6 +1089,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 22, sql: SCHEMA_V22_SETTLE_RULE },
   { version: 23, sql: SCHEMA_V23_TXN_QTY },
   { version: 24, sql: SCHEMA_V24_DROP_GIVEN_AMOUNT },
+  { version: 25, sql: SCHEMA_V25_MATERIAL_UNITS_XPROJECT },
 ];
 
 /* -------------------------------------------------------------------------- */

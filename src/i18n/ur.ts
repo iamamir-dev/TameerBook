@@ -126,6 +126,7 @@ export const ur: TranslationKeys = {
   addCategoryLabel: 'قسم شامل کریں',
   addSubcategory: 'ذیلی قسم شامل کریں',
   defaultUnit: 'ڈیفالٹ یونٹ',
+  secondaryUnit: 'ذیلی یونٹ',
   name: 'نام',
   deleteConfirm: 'اسے حذف کریں؟ یہ واپس نہیں ہو سکتا۔',
   paymentIn: 'رقم کی وصولی',

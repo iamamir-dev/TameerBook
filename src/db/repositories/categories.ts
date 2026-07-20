@@ -15,6 +15,8 @@ export interface NewCategory {
   icon?: string | null;
   parentId?: string | null;
   defaultUnit?: string | null;
+  secondaryUnit?: string | null;
+  secondaryFactor?: number | null;
   createdBy?: string;
 }
 
@@ -36,8 +38,8 @@ export async function addCategory(input: NewCategory): Promise<CategoryRow> {
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
-    `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    `INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, secondary_unit, secondary_factor)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -46,7 +48,9 @@ export async function addCategory(input: NewCategory): Promise<CategoryRow> {
     nameUr,
     input.type,
     input.icon ?? null,
-    input.defaultUnit ?? null
+    input.defaultUnit ?? null,
+    input.secondaryUnit ?? null,
+    input.secondaryFactor ?? null
   );
   return (await db.getFirstAsync<CategoryRow>('SELECT * FROM categories WHERE id = ?', id))!;
 }
@@ -56,6 +60,8 @@ export interface UpdateCategory {
   icon?: string | null;
   parentId?: string | null;
   defaultUnit?: string | null;
+  secondaryUnit?: string | null;
+  secondaryFactor?: number | null;
 }
 
 /** Edit a user category (system categories are locked). */
@@ -66,12 +72,14 @@ export async function updateCategory(id: string, patch: UpdateCategory): Promise
   if (c.is_system) throw new Error('updateCategory: system category is locked');
   const name = patch.name?.trim() || c.name_en;
   await db.runAsync(
-    'UPDATE categories SET name_en = ?, name_ur = ?, icon = ?, parent_id = ?, default_unit = ? WHERE id = ?',
+    'UPDATE categories SET name_en = ?, name_ur = ?, icon = ?, parent_id = ?, default_unit = ?, secondary_unit = ?, secondary_factor = ? WHERE id = ?',
     name,
     name,
     patch.icon !== undefined ? patch.icon : c.icon,
     patch.parentId !== undefined ? patch.parentId : c.parent_id,
     patch.defaultUnit !== undefined ? patch.defaultUnit : c.default_unit,
+    patch.secondaryUnit !== undefined ? patch.secondaryUnit : c.secondary_unit,
+    patch.secondaryFactor !== undefined ? patch.secondaryFactor : c.secondary_factor,
     id
   );
 }

@@ -138,6 +138,8 @@ export function CategoriesScreen(): React.JSX.Element {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
+  const [secUnit, setSecUnit] = useState('');
+  const [secFactor, setSecFactor] = useState('');
   const { saving, run } = useSaveAction();
 
   const load = useCallback(async () => setTree(await listCategoryTree(type)), [type]);
@@ -147,19 +149,26 @@ export function CategoriesScreen(): React.JSX.Element {
     void load();
   }, [load]);
 
+  const resetUnitFields = () => {
+    setUnit('');
+    setSecUnit('');
+    setSecFactor('');
+  };
   const openAddMain = () => {
     setName('');
-    setUnit('');
+    resetUnitFields();
     setEditor({ mode: 'addMain' });
   };
   const openAddSub = (parentId: string) => {
     setName('');
-    setUnit('');
+    resetUnitFields();
     setEditor({ mode: 'addSub', parentId });
   };
   const openEdit = (cat: CategoryRow, isSub: boolean) => {
     setName(cat.name_en);
     setUnit(cat.default_unit ?? '');
+    setSecUnit(cat.secondary_unit ?? '');
+    setSecFactor(cat.secondary_factor ? String(cat.secondary_factor) : '');
     setEditor({ mode: 'edit', cat, isSub });
   };
 
@@ -167,10 +176,18 @@ export function CategoriesScreen(): React.JSX.Element {
 
   const save = () => {
     if (!editor || !name.trim() || saving) return;
+    // Secondary unit only meaningful with a primary unit + a positive factor.
+    const secondaryUnit = unit.trim() && secUnit.trim() ? secUnit.trim() : null;
+    const secondaryFactor = secondaryUnit && Number(secFactor) > 0 ? Number(secFactor) : null;
     void (async () => {
       const ok = await run(async () => {
         if (editor.mode === 'edit') {
-          await updateCategory(editor.cat.id, { name, defaultUnit: unit.trim() || null });
+          await updateCategory(editor.cat.id, {
+            name,
+            defaultUnit: unit.trim() || null,
+            secondaryUnit: secondaryFactor ? secondaryUnit : null,
+            secondaryFactor,
+          });
         } else {
           await addCategory({
             nameEn: name,
@@ -178,6 +195,8 @@ export function CategoriesScreen(): React.JSX.Element {
             type,
             parentId: editor.mode === 'addSub' ? editor.parentId : null,
             defaultUnit: unit.trim() || null,
+            secondaryUnit: secondaryFactor ? secondaryUnit : null,
+            secondaryFactor,
           });
         }
       });
@@ -361,7 +380,23 @@ export function CategoriesScreen(): React.JSX.Element {
             </AppText>
             <FloatingLabelInput label={t('name')} value={name} onChangeText={setName} />
             {showUnit ? (
-              <FloatingLabelInput label={`${t('defaultUnit')} (${t('optional')})`} value={unit} onChangeText={setUnit} />
+              <>
+                <FloatingLabelInput label={`${t('defaultUnit')} (${t('optional')})`} value={unit} onChangeText={setUnit} />
+                {/* Optional smaller sub-unit + how many make one main unit. */}
+                {unit.trim() ? (
+                  <>
+                    <FloatingLabelInput label={`${t('secondaryUnit')} (${t('optional')})`} value={secUnit} onChangeText={setSecUnit} />
+                    {secUnit.trim() ? (
+                      <FloatingLabelInput
+                        label={`1 ${unit.trim()} = ? ${secUnit.trim()}`}
+                        value={secFactor}
+                        onChangeText={setSecFactor}
+                        keyboardType="number-pad"
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </>
             ) : null}
             <AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!name.trim()} />
           </View>

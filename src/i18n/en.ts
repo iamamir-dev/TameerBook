@@ -123,6 +123,7 @@ export const en: TranslationKeys = {
   addCategoryLabel: 'Add category',
   addSubcategory: 'Add sub-category',
   defaultUnit: 'Default unit',
+  secondaryUnit: 'Sub-unit',
   name: 'Name',
   deleteConfirm: 'Delete this? This cannot be undone.',
   paymentIn: 'Payment In',
