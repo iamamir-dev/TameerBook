@@ -3,9 +3,10 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
+import type { ColorPalette, Theme } from '@/theme/theme';
 import { hasSecondary, type UnitDef } from '@/utils/units';
 
+import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
 
 interface QtyUnitRowProps {
@@ -16,18 +17,57 @@ interface QtyUnitRowProps {
   label?: string;
   /** Change this (e.g. the sheet's visible flag) to reset the fields. */
   resetToken?: unknown;
+  /** Inline error (red borders + message), like AmountInput. */
+  error?: string | null;
 }
 
 const parse = (text: string) => Number(text.replace(/[^0-9.]/g, '')) || 0;
 
+/** One unit cell: a number field with a colour-coded unit chip. */
+function UnitCell({
+  value,
+  onChangeText,
+  unitLabel,
+  tone,
+  soft,
+  error,
+}: {
+  value: string;
+  onChangeText: (v: string) => void;
+  unitLabel: string;
+  tone: keyof ColorPalette;
+  soft: keyof ColorPalette;
+  error: boolean;
+}): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={[styles.cell, { borderColor: error ? theme.colors.danger : theme.colors.border }]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType="decimal-pad"
+        placeholder="0"
+        placeholderTextColor={theme.colors.textSecondary}
+        style={styles.input}
+      />
+      <View style={[styles.unitChip, { backgroundColor: theme.colors[soft] }]}>
+        <AppText size="sm" weight="bold" color={tone}>
+          {unitLabel}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
 /**
  * Quantity input that understands a material's two units. With a secondary unit
- * it shows TWO clearly-labelled fields — e.g. "kg" and "g" — so the user can
- * enter "10 kg 100 g" in one go; the row combines them into the canonical
- * PRIMARY value (10.1 kg) and shows the total underneath. Without a secondary
- * unit it's a single field with the unit shown beside it.
+ * it shows TWO colour-coded fields — the primary unit (accent) and the smaller
+ * sub-unit (gold) — so the user can enter "10 kg 100 g" in one go; the row
+ * combines them into the canonical PRIMARY value and shows the total. Without a
+ * secondary unit it's a single field with its unit shown.
  */
-export function QtyUnitRow({ onQty, unit, label, resetToken }: QtyUnitRowProps): React.JSX.Element {
+export function QtyUnitRow({ onQty, unit, label, resetToken, error }: QtyUnitRowProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -43,8 +83,7 @@ export function QtyUnitRow({ onQty, unit, label, resetToken }: QtyUnitRowProps):
   const factor = unit.factor ?? 1;
 
   const emit = (pRaw: string, sRaw: string) => {
-    const primary = parse(pRaw) + (secondary ? parse(sRaw) / factor : 0);
-    onQty(primary);
+    onQty(parse(pRaw) + (secondary ? parse(sRaw) / factor : 0));
   };
   const onPrimary = (v: string) => {
     setPrimaryRaw(v);
@@ -56,6 +95,7 @@ export function QtyUnitRow({ onQty, unit, label, resetToken }: QtyUnitRowProps):
   };
 
   const combined = parse(primaryRaw) + (secondary ? parse(secondaryRaw) / factor : 0);
+  const hasError = !!error;
 
   return (
     <View style={styles.wrap}>
@@ -64,52 +104,42 @@ export function QtyUnitRow({ onQty, unit, label, resetToken }: QtyUnitRowProps):
       </AppText>
 
       <View style={styles.row}>
-        {/* Primary unit cell */}
-        <View style={styles.cell}>
-          <TextInput
-            value={primaryRaw}
-            onChangeText={onPrimary}
-            keyboardType="decimal-pad"
-            placeholder="0"
-            placeholderTextColor={theme.colors.textSecondary}
-            style={styles.input}
-          />
-          <View style={styles.unitChip}>
-            <AppText size="sm" weight="bold" color="textSecondary">
-              {unit.primary || '—'}
-            </AppText>
-          </View>
-        </View>
-
-        {/* Secondary unit cell — only when the material defines one */}
+        <UnitCell
+          value={primaryRaw}
+          onChangeText={onPrimary}
+          unitLabel={unit.primary || '—'}
+          tone="accent"
+          soft="accentSoft"
+          error={hasError}
+        />
         {secondary ? (
           <>
             <AppText size="lg" weight="bold" color="textSecondary" style={styles.plus}>
               +
             </AppText>
-            <View style={styles.cell}>
-              <TextInput
-                value={secondaryRaw}
-                onChangeText={onSecondary}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={theme.colors.textSecondary}
-                style={styles.input}
-              />
-              <View style={styles.unitChip}>
-                <AppText size="sm" weight="bold" color="textSecondary">
-                  {unit.secondary}
-                </AppText>
-              </View>
-            </View>
+            <UnitCell
+              value={secondaryRaw}
+              onChangeText={onSecondary}
+              unitLabel={unit.secondary ?? ''}
+              tone="gold"
+              soft="goldSoft"
+              error={hasError}
+            />
           </>
         ) : null}
       </View>
 
-      {secondary && combined > 0 ? (
-        <AppText size="xs" weight="semibold" color="accent">
-          {`= ${combined.toLocaleString('en-PK')} ${unit.primary}`}
+      {hasError ? (
+        <AppText size="xs" weight="semibold" color="danger">
+          {error}
         </AppText>
+      ) : secondary && combined > 0 ? (
+        <View style={styles.totalRow}>
+          <AppIcon name="checkCircle" size={14} color="accent" />
+          <AppText size="xs" weight="bold" color="accent">
+            {`${combined.toLocaleString('en-PK')} ${unit.primary}`}
+          </AppText>
+        </View>
       ) : null}
     </View>
   );
@@ -126,7 +156,6 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       borderRadius: theme.radius.md,
       borderWidth: 1.5,
-      borderColor: theme.colors.border,
       backgroundColor: theme.colors.background,
       paddingLeft: theme.spacing.lg,
       paddingRight: theme.spacing.xs,
@@ -144,7 +173,7 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.xs,
       borderRadius: theme.radius.sm,
-      backgroundColor: theme.colors.primarySoft,
       marginLeft: theme.spacing.sm,
     },
+    totalRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   });

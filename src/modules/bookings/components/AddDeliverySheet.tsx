@@ -155,12 +155,12 @@ export function AddDeliverySheet({
         {`${t('remainingQty')}: ${remainingText}`}
       </AppText>
 
-      <QtyUnitRow unit={{ primary: unit, secondary: null, factor: null }} resetToken={visible} onQty={(qty) => patch({ qty })} />
-      {over ? (
-        <AppText size="xs" weight="semibold" color="danger">
-          {t('exceedsRemaining')}
-        </AppText>
-      ) : null}
+      <QtyUnitRow
+        unit={{ primary: unit, secondary: null, factor: null }}
+        resetToken={visible}
+        onQty={(qty) => patch({ qty })}
+        error={over ? t('exceedsRemaining') : null}
+      />
 
       {/* Route this delivery to another project (cost follows the material). */}
       {showProjectPicker ? (
