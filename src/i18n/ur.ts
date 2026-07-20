@@ -467,6 +467,8 @@ export const ur: TranslationKeys = {
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',
   deliverToProject: 'پراجیکٹ میں بھیجیں',
+  items: 'اشیاء',
+  addItem: 'آئٹم شامل کریں',
   actions: 'اعمال',
   cancelBookingLabel: 'بکنگ منسوخ کریں',
   cancelBookingConfirm: 'یہ بکنگ بند کریں؟ باقی میٹریل اور ادائیگیاں رک جائیں گی۔',

@@ -507,6 +507,8 @@ export interface TranslationKeys {
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;
+  items: string;
+  addItem: string;
   actions: string;
   cancelBookingLabel: string;
   cancelBookingConfirm: string;

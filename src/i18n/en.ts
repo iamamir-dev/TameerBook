@@ -464,6 +464,8 @@ export const en: TranslationKeys = {
   payBookingLabel: 'Pay supplier',
   payRemainingLabel: 'To pay',
   deliverToProject: 'Deliver to project',
+  items: 'Items',
+  addItem: 'Add item',
   actions: 'Actions',
   cancelBookingLabel: 'Cancel booking',
   cancelBookingConfirm: 'Close this booking? Remaining material and payments will stop.',

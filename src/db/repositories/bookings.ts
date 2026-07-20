@@ -62,6 +62,46 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
   ))!;
 }
 
+/**
+ * Book several materials at once (e.g. all from the same supplier) in ONE atomic
+ * write — either every line is booked or none is. Each line becomes its own
+ * `material_bookings` row, so they track their deliveries/payments independently.
+ */
+export async function createBookings(inputs: NewBooking[]): Promise<void> {
+  if (inputs.length === 0) return;
+  for (const i of inputs) {
+    if (i.qty <= 0) throw new Error('createBookings: qty must be positive');
+    if (i.rate < 0) throw new Error('createBookings: rate cannot be negative');
+  }
+  const projectIds = [...new Set(inputs.map((i) => i.projectId).filter(Boolean))] as string[];
+  for (const pid of projectIds) await assertProjectActive(pid);
+
+  const db = await getDatabase();
+  const companyId = requireCompanyId();
+  const now = nowISO();
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const i of inputs) {
+      await tx.runAsync(
+        `INSERT INTO material_bookings
+           (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, qty, rate, total, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+        uuid(),
+        now,
+        i.createdBy ?? DEFAULT_USER,
+        companyId,
+        i.projectId ?? null,
+        i.partyId ?? null,
+        i.supplierName ?? null,
+        i.itemName,
+        i.unit ?? null,
+        i.qty,
+        i.rate,
+        i.qty * i.rate
+      );
+    }
+  });
+}
+
 export interface BookingSummary {
   booking: MaterialBookingRow;
   /** Σ delivered qty. */
