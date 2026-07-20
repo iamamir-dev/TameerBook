@@ -135,6 +135,7 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
     <AppSheet
       visible={visible}
       onClose={onClose}
+      fill
       title={t('newBooking')}
       subtitle={allLines.length > 1 ? `${allLines.length} ${t('items')}` : undefined}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />}
