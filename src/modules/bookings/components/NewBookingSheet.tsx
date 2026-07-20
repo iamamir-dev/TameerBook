@@ -5,6 +5,7 @@ import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AmountInput,
   AppButton,
+  AppCard,
   AppIcon,
   AppSheet,
   AppText,
@@ -15,7 +16,7 @@ import {
   type MaterialSelection,
   type SelectOption,
 } from '@/components/ui';
-import { createBookings, listParties, listProjects, type PartyRow, type ProjectRow } from '@/db';
+import { addParty, createBookings, listParties, listProjects, type PartyRow, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -106,6 +107,13 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
     if (!canSave || saving) return;
     void (async () => {
       const ok = await runSave(async () => {
+        // Persist a typed supplier as a party so it's reusable next time.
+        let resolvedPartyId = partyId;
+        const name = supplierName.trim();
+        if (!resolvedPartyId && name) {
+          const existing = parties.find((p) => p.name.toLowerCase() === name.toLowerCase());
+          resolvedPartyId = existing ? existing.id : (await addParty({ type: 'SUPPLIER', name })).id;
+        }
         await createBookings(
           allLines.map((l) => ({
             itemName: l.material.name.trim(),
@@ -113,8 +121,8 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
             rate: l.rate,
             unit: l.material.unit.primary,
             projectId,
-            supplierName: supplierName.trim() || null,
-            partyId,
+            supplierName: name || null,
+            partyId: resolvedPartyId,
           }))
         );
         await onSaved();
@@ -183,12 +191,12 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
       ))}
 
       {/* Add-an-item mini form */}
-      <View style={styles.addCard}>
+      <AppCard style={styles.addCard}>
         <MaterialItemPicker value={draft.material} onChange={(material) => setDraft((d) => ({ ...d, material }))} />
         <QtyUnitRow unit={draft.material.unit} resetToken={draftNonce} onQty={(qty) => setDraft((d) => ({ ...d, qty }))} />
-        <AmountInput label={t('rateLabel')} value={draft.rate} onChange={(rate) => setDraft((d) => ({ ...d, rate }))} floating surface={theme.colors.background} />
+        <AmountInput label={t('rateLabel')} value={draft.rate} onChange={(rate) => setDraft((d) => ({ ...d, rate }))} floating surface={theme.colors.card} />
         <AppButton label={t('addItem')} icon="add" variant="secondary" onPress={addLine} disabled={!draftValid} />
-      </View>
+      </AppCard>
 
       {grandTotal > 0 ? (
         <View style={styles.totalRow}>

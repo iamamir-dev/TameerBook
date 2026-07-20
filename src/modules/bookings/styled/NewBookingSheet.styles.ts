@@ -6,15 +6,8 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     flex: { flex: 1 },
     sectionLabel: { marginTop: theme.spacing.sm },
-    // A card that groups the "add an item" mini-form.
-    addCard: {
-      gap: theme.spacing.md,
-      padding: theme.spacing.md,
-      borderRadius: theme.radius.md,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.background,
-    },
+    // Groups the "add an item" mini-form (AppCard supplies the surface).
+    addCard: { gap: theme.spacing.md },
     // An already-added line.
     itemRow: {
       flexDirection: 'row',
