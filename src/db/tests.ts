@@ -30,10 +30,17 @@ import {
   addSaleReceipt,
   addTransaction,
   attachLaborerToProject,
+  addDelivery,
+  cancelBooking,
   computeSettlement,
+  createBooking,
   createPlot,
   createProject,
   createUdhaar,
+  deleteDelivery,
+  getBookingSummary,
+  listDeliveries,
+  payBooking,
   getAccountBalance,
   getConstructionSummary,
   getLaborBalance,
@@ -97,9 +104,15 @@ class Cleanup {
   investors: string[] = [];
   laborers: string[] = [];
   udhaar: string[] = [];
+  bookings: string[] = [];
 
   async run(): Promise<void> {
     const db = await getDatabase();
+    for (const id of this.bookings) {
+      await db.runAsync('DELETE FROM transactions WHERE booking_id = ?', id);
+      await db.runAsync('DELETE FROM material_deliveries WHERE booking_id = ?', id);
+      await db.runAsync('DELETE FROM material_bookings WHERE id = ?', id);
+    }
     for (const id of this.projects) {
       await db.runAsync(
         `DELETE FROM capital_ledger WHERE project_investor_id IN
@@ -1066,6 +1079,57 @@ async function testCategoryManagement(): Promise<TestResult> {
   return report('T-CAT category management', checks);
 }
 
+/* -------------------------------------------------------------------------- */
+/*  T-XPROJ  cross-project material delivery (cost follows the material)       */
+/* -------------------------------------------------------------------------- */
+
+async function testCrossProjectDelivery(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST XP-Acc', type: 'CASH', openingBalance: 100_000 });
+    c.accounts.push(acc.id);
+    const projA = await createProject({ name: 'DBTEST XP-A' });
+    const projB = await createProject({ name: 'DBTEST XP-B' });
+    c.projects.push(projA.id, projB.id);
+
+    const checks: Check[] = [];
+
+    // Booking on A: 100 @ 10 = 1000, fully paid → A construction cost 1000.
+    const bk = await createBooking({ itemName: 'DBTEST Cement', qty: 100, rate: 10, projectId: projA.id });
+    c.bookings.push(bk.id);
+    await payBooking({ bookingId: bk.id, amount: 1000, date: D, accountId: acc.id });
+    checks.push(['A cost 1000 after pay', near((await getProjectCost(projA.id)).constructionCost, 1000)]);
+
+    // Deliver 40 to B → value 400 moves A→B.
+    await addDelivery({ bookingId: bk.id, qty: 40, date: D, projectId: projB.id });
+    checks.push(['A cost 600 after xfer', near((await getProjectCost(projA.id)).constructionCost, 600)]);
+    checks.push(['B cost 400 after xfer', near((await getProjectCost(projB.id)).constructionCost, 400)]);
+
+    // Account cash is untouched by the (cash-less) transfer: 100000 − 1000.
+    checks.push(['account still 99000', near(await getAccountBalance(acc.id), 99_000)]);
+
+    // Deliver the remaining 60 to A itself (no transfer); booking now CLOSED.
+    await addDelivery({ bookingId: bk.id, qty: 60, date: D });
+    checks.push(['booking closed', (await getBookingSummary(bk.id)).booking.status === 'CLOSED']);
+
+    // Delete the cross-project delivery → its cost-transfer reverses.
+    const xfer = (await listDeliveries(bk.id)).find((d) => d.project_id === projB.id)!;
+    await deleteDelivery(xfer.id);
+    checks.push(['A cost back to 1000', near((await getProjectCost(projA.id)).constructionCost, 1000)]);
+    checks.push(['B cost back to 0', near((await getProjectCost(projB.id)).constructionCost, 0)]);
+
+    // Cancel keeps a booking closed even with qty/pay outstanding.
+    const bk2 = await createBooking({ itemName: 'DBTEST Sariya', qty: 50, rate: 5, projectId: projA.id });
+    c.bookings.push(bk2.id);
+    await cancelBooking(bk2.id);
+    checks.push(['cancelled booking is CANCELLED', (await getBookingSummary(bk2.id)).booking.status === 'CANCELLED']);
+
+    return report('T-XPROJ cross-project delivery cost', checks);
+  } finally {
+    await c.run();
+  }
+}
+
 export async function runDbTests(): Promise<TestResult[]> {
   // Everything is company-scoped now  run the whole suite inside a throwaway
   // test company, then restore the user's active company and delete it.
@@ -1088,6 +1152,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testInvestorCommitmentVsCash,
     testValidationGuards,
     testCategoryManagement,
+    testCrossProjectDelivery,
     testCompanyIsolation,
     testReconciliation,
   ];
@@ -1103,6 +1168,11 @@ export async function runDbTests(): Promise<TestResult[]> {
   } finally {
     // Remove the test company (and its seeded Cash account), restore the user's.
     const db = await getDatabase();
+    await db.runAsync(
+      'DELETE FROM material_deliveries WHERE booking_id IN (SELECT id FROM material_bookings WHERE company_id = ?)',
+      testCompany.id
+    );
+    await db.runAsync('DELETE FROM material_bookings WHERE company_id = ?', testCompany.id);
     await db.runAsync('DELETE FROM transactions WHERE company_id = ?', testCompany.id);
     await db.runAsync('DELETE FROM accounts WHERE company_id = ?', testCompany.id);
     await db.runAsync('DELETE FROM companies WHERE id = ?', testCompany.id);

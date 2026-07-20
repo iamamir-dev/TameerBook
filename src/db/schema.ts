@@ -375,8 +375,9 @@ export interface SaleReceiptRow extends Base {
   is_void: number; // 0 | 1
 }
 
-/** Booking status: OPEN until fully received AND fully paid. */
-export const BOOKING_STATUSES = ['OPEN', 'CLOSED'] as const;
+/** Booking status: OPEN until fully received AND fully paid; CANCELLED = closed
+ *  early by the user (supplier won't finish delivering). */
+export const BOOKING_STATUSES = ['OPEN', 'CLOSED', 'CANCELLED'] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 /**

@@ -39,33 +39,45 @@ export async function getConstructionSummary(
 
   // LEFT JOIN so legacy uncategorized rows land in an "Other" bucket instead
   // of silently disappearing — the bars must always sum to the hero total.
+  // NET direction: a cross-project material transfer credits the source project
+  // with a CONSTRUCTION IN (same "Material Booking" category), so its category
+  // total and the hero both net down and the bars still sum to the hero.
   const byCategory = await db.getAllAsync<CategorySpend>(
     `SELECT COALESCE(t.category_id, '__other__') AS categoryId,
             COALESCE(c.name_en, 'Other') AS nameEn,
             COALESCE(c.name_ur, 'Deegar') AS nameUr,
-            COALESCE(SUM(t.amount), 0) AS total,
+            COALESCE(SUM(CASE t.direction WHEN 'OUT' THEN t.amount ELSE -t.amount END), 0) AS total,
             COALESCE(SUM(t.qty), 0) AS qty,
             c.default_unit AS unit
      FROM transactions t
      LEFT JOIN categories c ON c.id = t.category_id
-     WHERE t.project_id = ? AND t.phase = 'CONSTRUCTION' AND t.direction = 'OUT'
+     WHERE t.project_id = ? AND t.phase = 'CONSTRUCTION'
        AND t.is_void = 0 AND t.labor_id IS NULL
      GROUP BY COALESCE(t.category_id, '__other__')
+     HAVING total > 0
      ORDER BY total DESC`,
     projectId
   );
 
   const month = await db.getFirstAsync<{ s: number }>(
-    `SELECT COALESCE(SUM(amount), 0) AS s
+    `SELECT COALESCE(SUM(CASE direction WHEN 'OUT' THEN amount ELSE -amount END), 0) AS s
      FROM transactions
-     WHERE project_id = ? AND phase = 'CONSTRUCTION' AND direction = 'OUT'
+     WHERE project_id = ? AND phase = 'CONSTRUCTION'
        AND is_void = 0 AND labor_id IS NULL AND date LIKE ?`,
     projectId,
     `${monthPrefix}%`
   );
 
   const labor = await getProjectLaborTotals(projectId);
-  const cashSpend = byCategory.reduce((s, c) => s + c.total, 0);
+  // Hero comes from the full netted construction spend (not the HAVING-filtered
+  // bars) so it always equals getProjectCost's construction figure.
+  const cash = await db.getFirstAsync<{ s: number }>(
+    `SELECT COALESCE(SUM(CASE direction WHEN 'OUT' THEN amount ELSE -amount END), 0) AS s
+     FROM transactions
+     WHERE project_id = ? AND phase = 'CONSTRUCTION' AND is_void = 0 AND labor_id IS NULL`,
+    projectId
+  );
+  const cashSpend = cash?.s ?? 0;
 
   return {
     total: cashSpend + labor.accrued,

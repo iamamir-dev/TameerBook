@@ -256,13 +256,17 @@ export interface ProjectCost {
  */
 export async function getProjectCost(projectId: string): Promise<ProjectCost> {
   const db = await getDatabase();
+  // Plot/Sale count OUT only. Construction NETS direction so a cross-project
+  // material cost-transfer (an OUT on the receiver + a netting IN on the source)
+  // moves cost correctly between projects.
   const row = await db.getFirstAsync<{ plotCost: number; saleCost: number; constructionCash: number }>(
     `SELECT
-       COALESCE(SUM(CASE WHEN phase = 'PLOT' THEN amount ELSE 0 END), 0) AS plotCost,
-       COALESCE(SUM(CASE WHEN phase = 'SALE' THEN amount ELSE 0 END), 0) AS saleCost,
-       COALESCE(SUM(CASE WHEN phase = 'CONSTRUCTION' AND labor_id IS NULL THEN amount ELSE 0 END), 0) AS constructionCash
+       COALESCE(SUM(CASE WHEN phase = 'PLOT' AND direction = 'OUT' THEN amount ELSE 0 END), 0) AS plotCost,
+       COALESCE(SUM(CASE WHEN phase = 'SALE' AND direction = 'OUT' THEN amount ELSE 0 END), 0) AS saleCost,
+       COALESCE(SUM(CASE WHEN phase = 'CONSTRUCTION' AND labor_id IS NULL
+                         THEN (CASE direction WHEN 'OUT' THEN amount ELSE -amount END) ELSE 0 END), 0) AS constructionCash
      FROM transactions
-     WHERE project_id = ? AND direction = 'OUT' AND is_void = 0`,
+     WHERE project_id = ? AND is_void = 0`,
     projectId
   );
   const labor = await db.getFirstAsync<{ s: number }>(
