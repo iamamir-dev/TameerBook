@@ -1,45 +1,36 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AmountInput,
   AppButton,
-  StickyFooter,
   AppHeader,
   AppIcon,
   AppText,
   DateField,
+  MaterialItemPicker,
+  QtyUnitRow,
   SelectSheet,
+  StickyFooter,
   type IconKey,
+  type MaterialSelection,
   type SelectOption,
 } from '@/components/ui';
 import {
   addDocument,
   addParty,
   addTransaction,
-  type AccountWithBalance,
-  type CategoryRow,
   listAccountsWithBalance,
-  listSubcategories,
   listParties,
+  type AccountWithBalance,
   type PartyRow,
 } from '@/db';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
-
-import { useAccountOptions, useCategoryLabel, useSaveAction, useToast } from '@/hooks';
+import { useAccountOptions, useSaveAction, useToast } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useEntryStore } from '@/stores/useEntryStore';
@@ -50,10 +41,12 @@ import { todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
+import type { UnitDef } from '@/utils/units';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const ADD_PARTY_ID = '__add__';
+const EMPTY_MATERIAL: MaterialSelection = { categoryId: null, name: '', unit: { primary: null, secondary: null, factor: null } };
 
 export function MaterialEntryScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -69,24 +62,21 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const lastAccountId = useEntryStore((s) => s.lastAccountId);
   const setLastAccountId = useEntryStore((s) => s.setLastAccountId);
 
-  const [items, setItems] = useState<CategoryRow[]>([]);
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  // `undefined` = user hasn't chosen yet (fall back to last-used below).
-  // Keeping the distinction in state (instead of effects that write defaults
-  // back) means a refresh can never clobber a deliberate selection.
   const [projectChoice, setProjectChoice] = useState<string | undefined>(undefined);
-  const [itemId, setItemId] = useState<string | null>(null);
-  const [qty, setQty] = useState('');
-  const [unit, setUnit] = useState('');
+  const [material, setMaterial] = useState<MaterialSelection>(EMPTY_MATERIAL);
+  const [qty, setQty] = useState(0); // primary unit
   const [rate, setRate] = useState('');
   const [accountChoice, setAccountChoice] = useState<string | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [totalOverride, setTotalOverride] = useState(0);
+  // Bumped after each save to reset the QtyUnitRow field (rapid-log).
+  const [formNonce, setFormNonce] = useState(0);
 
   const [projectSheet, setProjectSheet] = useState(false);
-  const [itemSheet, setItemSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
   const [partySheet, setPartySheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
@@ -98,9 +88,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const loadParties = useCallback(async () => setParties(await listParties()), []);
 
   useEffect(() => {
-    // Materials are the sub-categories under the "Materials" heading (Settings
-    // → Categories) — the single managed source.
-    listSubcategories('Materials').then(setItems).catch(swallow('material:categories'));
     loadParties().catch(swallow('material:parties'));
     listAccountsWithBalance().then(setAccounts).catch(swallow('material:accounts'));
   }, [loadParties]);
@@ -111,27 +98,19 @@ export function MaterialEntryScreen(): React.JSX.Element {
     }, [refreshProjects])
   );
 
-  // Defaults are computed, not written back by effects: last-used project (or
-  // the first one), last-used account (or the first one).
   const projectId =
     projectChoice ??
     (projects.find((p) => p.project.id === lastProjectId) ?? projects[0])?.project.id ??
     null;
   const accountId =
-    accountChoice ??
-    (accounts.some((a) => a.id === lastAccountId) ? lastAccountId : accounts[0]?.id ?? null);
+    accountChoice ?? (accounts.some((a) => a.id === lastAccountId) ? lastAccountId : accounts[0]?.id ?? null);
 
-  // Total = qty × rate, OR typed directly (bills are often known as one figure
-  // without a per-unit rate). Editing qty/rate clears a manual override.
-  const [totalOverride, setTotalOverride] = useState(0);
-  const computedTotal = (Number(qty) || 0) * (Number(rate) || 0);
+  const computedTotal = qty * (Number(rate) || 0);
   const total = totalOverride > 0 ? totalOverride : computedTotal;
   const selectedProject = projects.find((p) => p.project.id === projectId)?.project ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
-  const catName = useCategoryLabel();
-  const itemLabel = (c: CategoryRow) => (c.name_en === 'Misc' ? t('feeOther') : catName(c));
-  const selectedItem = items.find((c) => c.id === itemId) ?? null;
   const selectedParty = parties.find((p) => p.id === partyId) ?? null;
+  const unit: UnitDef = material.unit;
 
   const partyOptions: SelectOption[] = useMemo(
     () => [
@@ -140,19 +119,17 @@ export function MaterialEntryScreen(): React.JSX.Element {
     ],
     [parties, t]
   );
-
   const accountOptions = useAccountOptions(accounts);
 
   const onSave = async () => {
-    if (!projectId || !itemId || total <= 0) return;
+    if (!projectId || !material.categoryId || total <= 0) return;
     if (!accountId) {
       setAccountSheet(true);
       return;
     }
+    const unitLabel = unit.primary ? ` ${unit.primary}` : '';
     const ok = await runSave(async () => {
-      const desc = `${selectedItem ? itemLabel(selectedItem) : ''} ${qty}${unit ? ' ' + unit : ''}${
-        Number(rate) > 0 ? ` @ ${rate}` : ''
-      }`.trim();
+      const desc = `${material.name} ${qty || ''}${unitLabel}${Number(rate) > 0 ? ` @ ${rate}` : ''}`.trim();
       const txn = await addTransaction({
         direction: 'OUT',
         amount: total,
@@ -160,9 +137,9 @@ export function MaterialEntryScreen(): React.JSX.Element {
         accountId,
         projectId,
         phase: 'CONSTRUCTION',
-        categoryId: itemId,
+        categoryId: material.categoryId,
         partyId,
-        qty: Number(qty) > 0 ? Number(qty) : null,
+        qty: qty > 0 ? qty : null,
         description: desc,
       });
       if (receiptUri) {
@@ -173,14 +150,13 @@ export function MaterialEntryScreen(): React.JSX.Element {
       await refreshProjects();
     });
     if (!ok) return;
-    // Rapid-log: stay open for the next item of the same bill — reset only the
-    // item fields; project, supplier and account are kept.
-    setItemId(null);
-    setQty('');
-    setUnit('');
+    // Rapid-log: keep project/supplier/account; reset the item fields.
+    setMaterial(EMPTY_MATERIAL);
+    setQty(0);
     setRate('');
     setTotalOverride(0);
     setReceiptUri(null);
+    setFormNonce((n) => n + 1);
     showToast(t('savedToast'));
   };
 
@@ -203,11 +179,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
         <AppHeader
           title={t('material')}
           onBack={() => navigation.goBack()}
-          rightAction={{
-            icon: 'ledger',
-            onPress: () => navigation.navigate('Bookings'),
-            accessibilityLabel: t('bookingsTitle'),
-          }}
+          rightAction={{ icon: 'ledger', onPress: () => navigation.navigate('Bookings'), accessibilityLabel: t('bookingsTitle') }}
         />
         <View style={styles.empty}>
           <AppText size="md" color="textSecondary" center>
@@ -224,11 +196,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
       <AppHeader
         title={t('material')}
         onBack={() => navigation.goBack()}
-        rightAction={{
-          icon: 'ledger',
-          onPress: () => navigation.navigate('Bookings'),
-          accessibilityLabel: t('bookingsTitle'),
-        }}
+        rightAction={{ icon: 'ledger', onPress: () => navigation.navigate('Bookings'), accessibilityLabel: t('bookingsTitle') }}
       />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
@@ -244,41 +212,17 @@ export function MaterialEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          <Pressable onPress={() => setItemSheet(true)} style={styles.chip} accessibilityRole="button">
-            <AppIcon name="material" size={18} color="primary" />
-            <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={selectedItem ? 'textPrimary' : 'textSecondary'}>
-              {selectedItem ? itemLabel(selectedItem) : t('selectOne')}
-            </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
-          </Pressable>
+          <MaterialItemPicker value={material} onChange={setMaterial} />
 
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <FloatingLabelInput
-                label={t('qtyLabel')}
-                value={qty}
-                onChangeText={(v) => {
-                  setQty(v);
-                  setTotalOverride(0);
-                }}
-                keyboardType="number-pad"
-              />
-            </View>
-            <View style={styles.flex}>
-              <FloatingLabelInput label={t('unitLabel')} value={unit} onChangeText={setUnit} />
-            </View>
-          </View>
+          <QtyUnitRow unit={unit} resetToken={formNonce} onQty={(v) => { setQty(v); setTotalOverride(0); }} />
+
           <FloatingLabelInput
             label={t('rateLabel')}
             value={rate}
-            onChangeText={(v) => {
-              setRate(v);
-              setTotalOverride(0); // qty × rate takes over again
-            }}
+            onChangeText={(v) => { setRate(v); setTotalOverride(0); }}
             keyboardType="number-pad"
           />
 
-          {/* Total: auto from qty × rate, or typed directly (bill total). */}
           <AmountInput
             label={t('totalLabel')}
             value={total}
@@ -288,7 +232,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
             error={total > 0 && !!selectedAccount && total > selectedAccount.balance ? t('insufficientFunds') : null}
           />
 
-          {/* Supplier */}
           <Pressable onPress={() => setPartySheet(true)} style={styles.chip} accessibilityRole="button">
             <AppIcon name="investor" size={18} color="primary" />
             <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={selectedParty ? 'textPrimary' : 'textSecondary'}>
@@ -297,7 +240,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          {/* Account  where the money moves */}
           <Pressable onPress={() => setAccountSheet(true)} style={styles.chip} accessibilityRole="button">
             <AppIcon name={selectedAccount?.type === 'BANK' ? 'bank' : 'balance'} size={18} color="primary" />
             <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
@@ -306,10 +248,8 @@ export function MaterialEntryScreen(): React.JSX.Element {
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
 
-          {/* Date */}
           <DateField value={date} onChange={setDate} />
 
-          {/* Bill photo */}
           {receiptUri ? (
             <Pressable onPress={() => setReceiptUri(null)} style={styles.chip} accessibilityRole="button">
               <Image source={{ uri: receiptUri }} style={styles.thumb} />
@@ -329,7 +269,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
               }}
             />
           )}
-
         </ScrollView>
 
         <StickyFooter>
@@ -338,12 +277,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
             icon="check"
             onPress={onSave}
             loading={saving}
-            disabled={
-              !projectId ||
-              !itemId ||
-              total <= 0 ||
-              (!!selectedAccount && total > selectedAccount.balance)
-            }
+            disabled={!projectId || !material.categoryId || total <= 0 || (!!selectedAccount && total > selectedAccount.balance)}
           />
         </StickyFooter>
       </KeyboardAvoidingView>
@@ -355,18 +289,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
         selectedId={projectId ?? undefined}
         title={t('selectProject')}
         onSelect={(o) => setProjectChoice(o.id)}
-      />
-      <SelectSheet
-        visible={itemSheet}
-        onClose={() => setItemSheet(false)}
-        options={items.map((c) => ({ id: c.id, label: itemLabel(c), icon: 'material' as IconKey }))}
-        selectedId={itemId ?? undefined}
-        title={t('material')}
-        onSelect={(o) => {
-          setItemId(o.id);
-          const m = items.find((x) => x.id === o.id);
-          if (m?.default_unit) setUnit(m.default_unit);
-        }}
       />
       <SelectSheet
         visible={accountSheet}
@@ -386,29 +308,21 @@ export function MaterialEntryScreen(): React.JSX.Element {
         onSelect={(o) => (o.id === ADD_PARTY_ID ? setAddPartyOpen(true) : setPartyId(o.id))}
       />
       <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          <AppText size="lg" weight="bold">
-            {t('addNew')}
-          </AppText>
-          <FloatingLabelInput label={t('supplier')} value={newPartyName} onChangeText={setNewPartyName} />
-          <AppButton label={t('save')} icon="check" onPress={onAddParty} />
-        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+            <View style={styles.grabber} />
+            <AppText size="lg" weight="bold">
+              {t('addNew')}
+            </AppText>
+            <FloatingLabelInput label={t('supplier')} value={newPartyName} onChangeText={setNewPartyName} />
+            <AppButton label={t('save')} icon="check" onPress={onAddParty} />
+          </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Saved toast (rapid-log stays on this screen) */}
       {toast ? (
-        <Animated.View
-          entering={FadeInDown}
-          exiting={FadeOutDown}
-          style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}
-        >
+        <Animated.View entering={FadeInDown} exiting={FadeOutDown} style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}>
           <AppIcon name="checkCircle" size={20} color="onPrimary" />
           <AppText size="sm" weight="bold" color="onPrimary">
             {toast}
@@ -448,7 +362,6 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
-    row: { flexDirection: 'row', gap: theme.spacing.md },
     thumb: { width: 40, height: 40, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
     sheet: {
