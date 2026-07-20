@@ -82,6 +82,9 @@ export function BookingDetailScreen(): React.JSX.Element {
   const fmtQty = (n: number) => `${formatPakistaniGrouping(n)}${unitSuffix}`;
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
+  // Any action to offer? If not (a CLOSED or CANCELLED booking), hide the "+"
+  // so it can never open an empty actions drawer.
+  const hasActions = showDelivery || showPay || active;
 
   const onDeleteDelivery = (id: string) => {
     Alert.alert(t('addDelivery'), t('deleteConfirm'), [
@@ -116,7 +119,7 @@ export function BookingDetailScreen(): React.JSX.Element {
       <AppHeader
         title={booking.item_name}
         onBack={() => navigation.goBack()}
-        rightAction={{ icon: 'add', onPress: () => setActionsOpen(true), accessibilityLabel: t('actions') }}
+        rightAction={hasActions ? { icon: 'add', onPress: () => setActionsOpen(true), accessibilityLabel: t('actions') } : undefined}
       />
 
       <ScrollView
