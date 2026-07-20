@@ -309,6 +309,7 @@ export const ur: TranslationKeys = {
 
   projectSummary: 'پروجیکٹ کا خلاصہ',
   statusDone: 'مکمل',
+  statusCancelled: 'منسوخ',
   statusCurrent: 'ابھی',
 
 
@@ -465,6 +466,10 @@ export const ur: TranslationKeys = {
   addDelivery: 'ڈیلیوری شامل کریں',
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',
+  deliverToProject: 'پراجیکٹ میں بھیجیں',
+  actions: 'اعمال',
+  cancelBookingLabel: 'بکنگ منسوخ کریں',
+  cancelBookingConfirm: 'یہ بکنگ بند کریں؟ باقی میٹریل اور ادائیگیاں رک جائیں گی۔',
   noBookings: 'ابھی کوئی بکنگ نہیں',
   itemName: 'چیز',
   sellPlot: 'پلاٹ بیچیں',

@@ -1,26 +1,25 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BookingCard } from '@/components/bookings/BookingCard';
-import { NewBookingSheet } from '@/components/bookings/NewBookingSheet';
-import { AppHeader, EmptyState, HubShortcuts, StatCard } from '@/components/ui';
-import { formatRupees } from '@/utils/money';
-import { listBookingSummaries, type BookingSummary } from '@/db';
-import { useFocusReload } from '@/hooks';
+import { AppHeader, EmptyState, HubShortcuts, LoadErrorState, StatCard } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
+import { formatRupees } from '@/utils/money';
+
+import { BookingCard } from '../components/BookingCard';
+import { NewBookingSheet } from '../components/NewBookingSheet';
+import { useBookings } from '../hooks/useBookings';
+import { makeStyles } from '../styled/BookingsScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * Material bookings home: every booking as a card with its two balances —
- * material still to receive and money still to pay. OPEN bookings float to
- * the top (repo ordering); "+" in the header books new material.
+ * Material bookings home: each booking as a card with its two balances —
+ * material still to receive and money still to pay. OPEN float to the top.
  */
 export function BookingsScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -29,43 +28,30 @@ export function BookingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const [items, setItems] = useState<BookingSummary[]>([]);
+  const { data, loaded, loadFailed, reload } = useBookings();
+  const items = data.items;
   const [createOpen, setCreateOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    setItems(await listBookingSummaries());
-  }, []);
-
-  const { loaded, reload } = useFocusReload(load);
 
   return (
     <View style={styles.screen}>
       <AppHeader
         title={t('bookingsTitle')}
         onBack={() => navigation.goBack()}
-        rightAction={{
-          icon: 'add',
-          onPress: () => setCreateOpen(true),
-          accessibilityLabel: t('newBooking'),
-        }}
+        rightAction={{ icon: 'add', onPress: () => setCreateOpen(true), accessibilityLabel: t('newBooking') }}
       />
 
       <HubShortcuts current="Bookings" />
 
-      {loaded && items.length === 0 ? (
-        <EmptyState
-          icon="material"
-          title={t('noBookings')}
-          actionLabel={t('newBooking')}
-          onAction={() => setCreateOpen(true)}
-        />
+      {loadFailed && items.length === 0 ? (
+        <LoadErrorState onRetry={reload} bottomInset={insets.bottom} />
+      ) : items.length === 0 ? (
+        loaded ? (
+          <EmptyState icon="material" title={t('noBookings')} actionLabel={t('newBooking')} onAction={() => setCreateOpen(true)} />
+        ) : null
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: insets.bottom + theme.spacing.xxxl },
-          ]}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
         >
           <View style={styles.statRow}>
             <StatCard
@@ -95,10 +81,3 @@ export function BookingsScreen(): React.JSX.Element {
     </View>
   );
 }
-
-const makeStyles = (theme: Theme) =>
-  StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.colors.background },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
-    statRow: { flexDirection: 'row', gap: theme.spacing.md },
-  });

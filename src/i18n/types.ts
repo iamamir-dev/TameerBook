@@ -337,6 +337,7 @@ export interface TranslationKeys {
   // Stage validation
   projectSummary: string;
   statusDone: string;
+  statusCancelled: string;
   statusCurrent: string;
 
   // Project pipeline stage names (11)
@@ -505,6 +506,10 @@ export interface TranslationKeys {
   addDelivery: string;
   payBookingLabel: string;
   payRemainingLabel: string;
+  deliverToProject: string;
+  actions: string;
+  cancelBookingLabel: string;
+  cancelBookingConfirm: string;
   noBookings: string;
   itemName: string;
   sellPlot: string;

@@ -306,6 +306,7 @@ export const en: TranslationKeys = {
 
   projectSummary: 'Project Summary',
   statusDone: 'Done',
+  statusCancelled: 'Cancelled',
   statusCurrent: 'Now',
 
 
@@ -462,6 +463,10 @@ export const en: TranslationKeys = {
   addDelivery: 'Add delivery',
   payBookingLabel: 'Pay supplier',
   payRemainingLabel: 'To pay',
+  deliverToProject: 'Deliver to project',
+  actions: 'Actions',
+  cancelBookingLabel: 'Cancel booking',
+  cancelBookingConfirm: 'Close this booking? Remaining material and payments will stop.',
   noBookings: 'No bookings yet',
   itemName: 'Item',
   sellPlot: 'Sell plot',

@@ -6,8 +6,7 @@ import { useTheme } from '@/theme';
 
 import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
 import { AccountsScreen } from '@/screens/AccountsScreen';
-import { BookingDetailScreen } from '@/screens/BookingDetailScreen';
-import { BookingsScreen } from '@/screens/BookingsScreen';
+import { BookingDetailScreen, BookingsScreen } from '@/modules/bookings';
 import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
 import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
