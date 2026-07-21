@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -33,15 +34,13 @@ interface AppSheetProps {
 }
 
 /**
- * The one bottom-sheet shell for the whole app — a single place to get the look
- * and the keyboard behavior right for every drawer. Header is an icon chip +
- * title + subtitle; the body scrolls within a capped height; an optional footer
- * is pinned above the safe area behind a hairline.
+ * The one bottom-sheet shell for the whole app.
  *
- * Keyboard: the sheet does NOT lift — the header stays pinned at the top and
- * the footer sits behind the keyboard. The body ScrollView insets for the
- * keyboard (`automaticallyAdjustKeyboardInsets`) so focused inputs scroll into
- * view. (Lifting the whole sheet pushed the header off the top of the screen.)
+ * Keyboard handling (precise, no gaps): the sheet is lifted to sit just above
+ * the keyboard (`root` gets bottom padding = keyboard height) AND its max height
+ * shrinks by the same amount, so the header stays pinned on screen, the footer
+ * (Save) sits right above the keyboard, and the body scrolls between them —
+ * with no empty space and nothing pushed off-screen.
  */
 export function AppSheet({
   visible,
@@ -59,14 +58,21 @@ export function AppSheet({
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
 
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const body = scroll ? (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
-      // iOS: inset the scroll for the keyboard so a focused input lifts above it
-      // (no permanent gap). Android: the modal resizes via `adjustResize`.
-      automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
       bounces={false}
     >
@@ -76,12 +82,15 @@ export function AppSheet({
     <View style={styles.staticBody}>{children}</View>
   );
 
+  // When the keyboard is up, its area already covers the bottom safe inset.
+  const footerPadBottom = kb > 0 ? theme.spacing.md : insets.bottom + theme.spacing.md;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.root}>
+      <View style={[styles.root, { paddingBottom: kb }]}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
 
-        <View style={[styles.sheet, { maxHeight: screenHeight * maxHeightRatio }]}>
+        <View style={[styles.sheet, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>
@@ -102,9 +111,9 @@ export function AppSheet({
           {body}
 
           {footer ? (
-            <View style={[styles.footer, { paddingBottom: insets.bottom + theme.spacing.md }]}>{footer}</View>
+            <View style={[styles.footer, { paddingBottom: footerPadBottom }]}>{footer}</View>
           ) : (
-            <View style={{ height: insets.bottom + theme.spacing.md }} />
+            <View style={{ height: footerPadBottom }} />
           )}
         </View>
       </View>

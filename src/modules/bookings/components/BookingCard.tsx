@@ -1,7 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppIcon, AppText, LabelValueRow } from '@/components/ui';
 import type { BookingSummary } from '@/db';
@@ -30,13 +29,11 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
 
   const { booking, qtyReceived, paid, payRemaining, projectName } = summary;
   const { tone, labelKey } = bookingStatusMeta(booking.status);
-  const percent = booking.qty > 0 ? (qtyReceived / booking.qty) * 100 : 0;
   const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
-  const deal = `${formatPakistaniGrouping(booking.qty)}${unitSuffix} @ ${formatRupees(booking.rate)}`;
 
   return (
     <AppCard onPress={onPress} style={styles.card}>
-      {/* Item + the deal, with the status badge */}
+      {/* Item + status badge */}
       <View style={styles.header}>
         <View style={[styles.iconChip, { backgroundColor: softToneColor(theme, tone) }]}>
           <AppIcon name="material" size={22} color={tone} />
@@ -45,44 +42,50 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
           <AppText size="md" weight="bold" numberOfLines={1}>
             {booking.item_name}
           </AppText>
-          <AppText size="xs" color="textSecondary" numberOfLines={1} tabular>
-            {deal}
-          </AppText>
         </View>
         <StageBadge tone={tone} label={t(labelKey)} />
       </View>
 
-      {/* Supplier / project as separate, readable pills */}
-      {booking.supplier_name || projectName ? (
-        <View style={styles.metaRow}>
-          {booking.supplier_name ? (
-            <View style={styles.pill}>
-              <AppIcon name="investor" size={12} color="textSecondary" />
-              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
-                {booking.supplier_name}
-              </AppText>
-            </View>
-          ) : null}
-          {projectName ? (
-            <View style={styles.pill}>
-              <AppIcon name="project" size={12} color="textSecondary" />
-              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
-                {projectName}
-              </AppText>
-            </View>
-          ) : null}
+      {/* The deal + parties as separate, readable pills */}
+      <View style={styles.metaRow}>
+        <View style={styles.pill}>
+          <AppIcon name="material" size={12} color="textSecondary" />
+          <AppText size="xs" weight="semibold" color="textSecondary" tabular>
+            {`${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
+          </AppText>
         </View>
-      ) : null}
+        <View style={styles.pill}>
+          <AppIcon name="rupee" size={12} color="textSecondary" />
+          <AppText size="xs" weight="semibold" color="textSecondary" tabular>
+            {`${formatRupees(booking.rate)}`}
+          </AppText>
+        </View>
+        {booking.supplier_name ? (
+          <View style={styles.pill}>
+            <AppIcon name="investor" size={12} color="textSecondary" />
+            <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+              {booking.supplier_name}
+            </AppText>
+          </View>
+        ) : null}
+        {projectName ? (
+          <View style={styles.pill}>
+            <AppIcon name="project" size={12} color="textSecondary" />
+            <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+              {projectName}
+            </AppText>
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.divider} />
 
-      {/* Material side: received / booked with a slim progress bar */}
+      {/* Material side: received / booked */}
       <View style={styles.block}>
         <LabelValueRow
           label={t('receivedQty')}
           value={`${formatPakistaniGrouping(qtyReceived)} / ${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
         />
-        <ProgressBar percent={percent} tone={tone} />
       </View>
 
       {/* Money side: paid vs total, with what is still owed in danger */}

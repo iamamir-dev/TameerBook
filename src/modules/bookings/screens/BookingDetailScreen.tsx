@@ -10,6 +10,7 @@ import {
   ActionsDrawer,
   AppCard,
   AppHeader,
+  AppIcon,
   AppText,
   LabelValueRow,
   LedgerTable,
@@ -127,20 +128,43 @@ export function BookingDetailScreen(): React.JSX.Element {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
         <AppCard style={styles.hero}>
-          <AppText size="overline" weight="bold" color="textSecondary" uppercase>
-            {t('totalLabel')}
-          </AppText>
-          <AppText size="display" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
-            {formatRupees(booking.total)}
-          </AppText>
-          <AppText size="sm" color="textSecondary" numberOfLines={1}>
-            {[`${fmtQty(booking.qty)} @ ${formatRupees(booking.rate)}`, booking.supplier_name, summary.projectName]
-              .filter(Boolean)
-              .join(' · ')}
-          </AppText>
-          <View style={styles.badgeWrap}>
+          <View style={styles.heroTop}>
+            <View style={styles.flex}>
+              <AppText size="overline" weight="bold" color="textSecondary" uppercase>
+                {t('totalLabel')}
+              </AppText>
+              <AppText size="display" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
+                {formatRupees(booking.total)}
+              </AppText>
+              <AppText size="sm" color="textSecondary" numberOfLines={1} tabular>
+                {`${fmtQty(booking.qty)} @ ${formatRupees(booking.rate)}`}
+              </AppText>
+            </View>
             <StageBadge tone={tone} label={t(labelKey)} />
           </View>
+
+          {/* Supplier / project as separate, readable pills */}
+          {booking.supplier_name || summary.projectName ? (
+            <View style={styles.metaRow}>
+              {booking.supplier_name ? (
+                <View style={styles.pill}>
+                  <AppIcon name="investor" size={12} color="textSecondary" />
+                  <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                    {booking.supplier_name}
+                  </AppText>
+                </View>
+              ) : null}
+              {summary.projectName ? (
+                <View style={styles.pill}>
+                  <AppIcon name="project" size={12} color="textSecondary" />
+                  <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                    {summary.projectName}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={styles.divider} />
           <View style={styles.columns}>
             <View style={styles.col}>
