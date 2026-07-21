@@ -33,13 +33,31 @@ export function useKhataStatement(khata: LaborerKhata | null): KhataStatementAct
       if (!khata || !company) return;
       setBusy(true);
       try {
+        // One section per participation (active first, as ordered by the query),
+        // each with its own entries + totals so the worker reads it per job.
+        const projects = khata.participations.map((p) => ({
+          name: p.projectName,
+          dailyWage: p.projectLaborer.daily_wage,
+          daysFull: p.balance.daysFull,
+          daysHalf: p.balance.daysHalf,
+          daysAbsent: p.balance.daysAbsent,
+          earned: p.balance.accrued,
+          taken: p.balance.paid,
+          balance: p.balance.balance,
+          entries: khata.history.filter((e) => e.projectLaborerId === p.projectLaborer.id),
+        }));
+        const totalPresentDays = projects.reduce((s, p) => s + p.daysFull + p.daysHalf, 0);
+        const totalAbsentDays = projects.reduce((s, p) => s + p.daysAbsent, 0);
+
         const doc = laborKhataDoc({
           company: { name: company.name, ownerName: company.owner_name, phone: company.phone },
           workerName: khata.laborer.name,
           earned: khata.totals.earned,
           taken: khata.totals.taken,
           balance: khata.totals.balance,
-          history: khata.history,
+          totalPresentDays,
+          totalAbsentDays,
+          projects,
           dateText: dayjs().format('DD MMM YYYY'),
           L: {
             khataStatement: t('workerKhata'),
@@ -48,8 +66,11 @@ export function useKhataStatement(khata: LaborerKhata | null): KhataStatementAct
             balance: t('wageBalance'),
             date: t('date'),
             type: t('category'),
-            projects: t('projects'),
             amount: t('amount'),
+            note: t('note'),
+            dailyWage: t('dailyWage'),
+            presentDays: t('presentDays'),
+            absentDays: t('absentDays'),
             madeWith: t('madeWith'),
             payment: t('takenLabel'),
             attendance: { FULL: t('attFull'), HALF: t('attHalf'), ABSENT: t('attAbsent') },

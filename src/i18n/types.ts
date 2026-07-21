@@ -409,6 +409,8 @@ export interface TranslationKeys {
   attFull: string;
   attHalf: string;
   attAbsent: string;
+  presentDays: string;
+  absentDays: string;
   wageBalance: string;
   earnedLabel: string;
   takenLabel: string;

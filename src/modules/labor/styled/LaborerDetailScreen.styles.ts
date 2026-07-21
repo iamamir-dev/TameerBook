@@ -11,4 +11,5 @@ export const makeStyles = (theme: Theme) =>
     flexGrow: { flex: 1 },
     workerAvatar: { width: 56, height: 56, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     footerRow: { flexDirection: 'row', gap: theme.spacing.md },
+    historyGroup: { gap: theme.spacing.sm },
   });

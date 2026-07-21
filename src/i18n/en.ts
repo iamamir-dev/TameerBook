@@ -376,6 +376,8 @@ export const en: TranslationKeys = {
   attFull: 'Full',
   attHalf: 'Half',
   attAbsent: 'Absent',
+  presentDays: 'Present days',
+  absentDays: 'Absent days',
   wageBalance: 'Balance',
   earnedLabel: 'Earned',
   takenLabel: 'Taken',

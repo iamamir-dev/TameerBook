@@ -64,6 +64,18 @@ export function LaborerDetailScreen(): React.JSX.Element {
 
   const canPay = (khata?.participations ?? []).some((p) => p.balance.balance > 0);
 
+  // History grouped by project (each already date+time sorted by the query);
+  // projects appear in order of their most recent activity.
+  const historyGroups = useMemo(() => {
+    const map = new Map<string, { plId: string; name: string; entries: LaborerKhataEntry[] }>();
+    for (const e of khata?.history ?? []) {
+      const g = map.get(e.projectLaborerId) ?? { plId: e.projectLaborerId, name: e.projectName, entries: [] };
+      g.entries.push(e);
+      map.set(e.projectLaborerId, g);
+    }
+    return [...map.values()];
+  }, [khata]);
+
   const attachableProjects = useMemo(() => {
     const attached = new Set(
       (khata?.participations ?? [])
@@ -154,7 +166,19 @@ export function LaborerDetailScreen(): React.JSX.Element {
             />
           ))}
 
-          <KhataHistoryList history={khata.history} onSelect={onSelectHistory} />
+          {khata.history.length > 0 ? (
+            <AppText size="lg" weight="bold">
+              {t('historyTitle')}
+            </AppText>
+          ) : null}
+          {historyGroups.map((g) => (
+            <View key={g.plId} style={styles.historyGroup}>
+              <AppText size="md" weight="bold" color="accent" numberOfLines={1}>
+                {g.name}
+              </AppText>
+              <KhataHistoryList history={g.entries} hideTitle hideProject onSelect={onSelectHistory} />
+            </View>
+          ))}
         </ScrollView>
       ) : (
         <View style={styles.flex} />

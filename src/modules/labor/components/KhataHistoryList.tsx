@@ -16,6 +16,8 @@ interface KhataHistoryListProps {
   hideTitle?: boolean;
   /** Unified attendance + payment history across projects, newest first. */
   history: LaborerKhataEntry[];
+  /** Hide the per-row project name (when the list is already grouped by project). */
+  hideProject?: boolean;
   /** Tap a row to open it (payment → detail/edit, attendance → re-mark). */
   onSelect?: (entry: LaborerKhataEntry) => void;
 }
@@ -25,7 +27,7 @@ interface KhataHistoryListProps {
  * wage earned) and wage payments, mixed by date across projects. Accruals read
  * as + (green), payments as − (red) — the two directions of a khata.
  */
-export function KhataHistoryList({ history, hideTitle, onSelect }: KhataHistoryListProps): React.JSX.Element {
+export function KhataHistoryList({ history, hideTitle, hideProject, onSelect }: KhataHistoryListProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -64,12 +66,20 @@ export function KhataHistoryList({ history, hideTitle, onSelect }: KhataHistoryL
                     </AppText>
                   </View>
                   <View style={styles.flex}>
-                    <AppText size="sm" weight="semibold" numberOfLines={1}>
-                      {e.projectName}
-                    </AppText>
-                    <AppText size="xs" color="textSecondary">
-                      {formatDisplayDate(e.date)}
-                    </AppText>
+                    {hideProject ? (
+                      <AppText size="sm" weight="semibold">
+                        {formatDisplayDate(e.date)}
+                      </AppText>
+                    ) : (
+                      <>
+                        <AppText size="sm" weight="semibold" numberOfLines={1}>
+                          {e.projectName}
+                        </AppText>
+                        <AppText size="xs" color="textSecondary">
+                          {formatDisplayDate(e.date)}
+                        </AppText>
+                      </>
+                    )}
                   </View>
                   <AppText size="sm" weight="bold" color={absent ? 'textSecondary' : tone} tabular>
                     {absent ? '—' : `${payment ? '− ' : '+ '}${formatRupees(e.amount)}`}

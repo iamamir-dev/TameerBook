@@ -379,6 +379,8 @@ export const ur: TranslationKeys = {
   attFull: 'پورا دن',
   attHalf: 'آدھا دن',
   attAbsent: 'غیر حاضر',
+  presentDays: 'حاضر دن',
+  absentDays: 'غیر حاضر دن',
   wageBalance: 'بقایا',
   earnedLabel: 'کمایا',
   takenLabel: 'لیا',

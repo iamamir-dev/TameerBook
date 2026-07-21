@@ -563,6 +563,8 @@ export interface LaborerKhataEntry {
   attendanceId: string | null;
   /** Payment description / attendance note. */
   note: string | null;
+  /** created_at timestamp — the tie-breaker for same-date ordering. */
+  ts: string;
 }
 
 export interface LaborerKhata {
@@ -610,7 +612,8 @@ export async function getLaborerKhata(laborerId: string): Promise<LaborerKhata> 
   const history = await db.getAllAsync<LaborerKhataEntry>(
     `SELECT la.date, COALESCE(pr.name, '') AS projectName, 'ATTENDANCE' AS kind,
             la.status AS attendanceStatus, la.wage_accrued AS amount,
-            pl.id AS projectLaborerId, NULL AS txnId, la.id AS attendanceId, la.note AS note
+            pl.id AS projectLaborerId, NULL AS txnId, la.id AS attendanceId, la.note AS note,
+            la.created_at AS ts
      FROM labor_attendance la
      JOIN project_laborers pl ON pl.id = la.project_laborer_id
      JOIN projects pr ON pr.id = pl.project_id
@@ -618,12 +621,13 @@ export async function getLaborerKhata(laborerId: string): Promise<LaborerKhata> 
      UNION ALL
      SELECT t.date, COALESCE(pr.name, '') AS projectName, 'PAYMENT' AS kind,
             NULL AS attendanceStatus, t.amount AS amount,
-            pl.id AS projectLaborerId, t.id AS txnId, NULL AS attendanceId, t.description AS note
+            pl.id AS projectLaborerId, t.id AS txnId, NULL AS attendanceId, t.description AS note,
+            t.created_at AS ts
      FROM transactions t
      JOIN project_laborers pl ON pl.id = t.labor_id
      JOIN projects pr ON pr.id = pl.project_id
      WHERE pl.laborer_id = ? AND t.direction = 'OUT' AND t.is_void = 0
-     ORDER BY date DESC`,
+     ORDER BY date DESC, ts DESC`,
     laborerId,
     laborerId
   );
