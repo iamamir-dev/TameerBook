@@ -36,6 +36,8 @@ interface Props {
   accounts: AccountWithBalance[];
   /** Active projects (for the cross-project receiving picker). */
   projects: ProjectRow[];
+  /** Show the "deliver to another project" picker (off by default → simple). */
+  allowProject?: boolean;
   onSaved: () => Promise<void> | void;
 }
 
@@ -64,6 +66,7 @@ export function AddDeliverySheet({
   payRemaining,
   accounts,
   projects,
+  allowProject = false,
   onSaved,
 }: Props): React.JSX.Element {
   const theme = useTheme();
@@ -97,8 +100,9 @@ export function AddDeliverySheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Cross-project only offered when the booking belongs to a project.
-  const otherProjects = bookingProjectId ? projects.filter((p) => p.status === 'ACTIVE') : [];
+  // Cross-project picker only when explicitly enabled and the booking belongs
+  // to a project (with others to route to).
+  const otherProjects = allowProject && bookingProjectId ? projects.filter((p) => p.status === 'ACTIVE') : [];
   const showProjectPicker = otherProjects.length > 1;
   const [projectSheet, setProjectSheet] = useState(false);
   const receiving = projects.find((p) => p.id === form.receivingProjectId) ?? null;

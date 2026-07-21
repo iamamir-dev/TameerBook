@@ -31,12 +31,6 @@ interface AppSheetProps {
   scroll?: boolean;
   /** Fraction of screen height the sheet may grow to (default 0.9). */
   maxHeightRatio?: number;
-  /**
-   * Take a FIXED tall height (maxHeightRatio) instead of hugging content, so
-   * the header + footer stay anchored and only the body scrolls — for long,
-   * growing forms (e.g. a multi-line booking).
-   */
-  fill?: boolean;
 }
 
 /**
@@ -58,7 +52,6 @@ export function AppSheet({
   footer,
   scroll = true,
   maxHeightRatio = 0.9,
-  fill = false,
 }: AppSheetProps): React.JSX.Element {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -68,7 +61,7 @@ export function AppSheet({
 
   const body = scroll ? (
     <ScrollView
-      style={[styles.scroll, fill && styles.scrollFill]}
+      style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -85,7 +78,7 @@ export function AppSheet({
       <KeyboardAvoidingView style={styles.root} behavior="padding">
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
 
-        <View style={[styles.sheet, fill ? { height: screenHeight * maxHeightRatio } : { maxHeight: screenHeight * maxHeightRatio }]}>
+        <View style={[styles.sheet, { maxHeight: screenHeight * maxHeightRatio }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>
@@ -131,9 +124,6 @@ const makeStyles = (theme: Theme) =>
     grabber: { width: 40, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     header: { alignItems: 'center', gap: 2, marginBottom: theme.spacing.md },
     scroll: { flexGrow: 0, flexShrink: 1 },
-    // `fill` mode: the body takes all the space between the pinned header and
-    // footer so only it scrolls.
-    scrollFill: { flexGrow: 1, flexShrink: 1 },
     scrollContent: { gap: theme.spacing.md, paddingBottom: theme.spacing.sm },
     staticBody: { gap: theme.spacing.md },
     footer: {
