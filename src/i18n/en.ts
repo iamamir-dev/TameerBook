@@ -305,8 +305,12 @@ export const en: TranslationKeys = {
   savedToDevice: 'Saved to device',
 
   projectSummary: 'Project Summary',
-  statusDone: 'Done',
+  statusDone: 'Completed',
   statusCancelled: 'Cancelled',
+  statusOrdered: 'Ordered',
+  statusPartial: 'Receiving',
+  statusToPay: 'Payment due',
+  statusAwaitingDelivery: 'Awaiting delivery',
   statusCurrent: 'Now',
 
 

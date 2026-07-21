@@ -310,6 +310,10 @@ export const ur: TranslationKeys = {
   projectSummary: 'پروجیکٹ کا خلاصہ',
   statusDone: 'مکمل',
   statusCancelled: 'منسوخ',
+  statusOrdered: 'آرڈر ہوا',
+  statusPartial: 'موصول ہو رہا',
+  statusToPay: 'ادائیگی باقی',
+  statusAwaitingDelivery: 'ڈیلیوری باقی',
   statusCurrent: 'ابھی',
 
 

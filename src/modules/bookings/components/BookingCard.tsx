@@ -28,7 +28,7 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
   const styles = makeStyles(theme);
 
   const { booking, qtyReceived, paid, payRemaining, projectName } = summary;
-  const { tone, labelKey } = bookingStatusMeta(booking.status);
+  const { tone, labelKey } = bookingStatusMeta(summary);
   const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
 
   return (

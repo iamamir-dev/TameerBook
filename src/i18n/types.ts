@@ -338,6 +338,10 @@ export interface TranslationKeys {
   projectSummary: string;
   statusDone: string;
   statusCancelled: string;
+  statusOrdered: string;
+  statusPartial: string;
+  statusToPay: string;
+  statusAwaitingDelivery: string;
   statusCurrent: string;
 
   // Project pipeline stage names (11)

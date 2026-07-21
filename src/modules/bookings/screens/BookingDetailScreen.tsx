@@ -77,7 +77,7 @@ export function BookingDetailScreen(): React.JSX.Element {
   }
 
   const { booking, qtyReceived, qtyRemaining, paid, payRemaining } = summary;
-  const { tone, labelKey } = bookingStatusMeta(booking.status);
+  const { tone, labelKey } = bookingStatusMeta(summary);
   const active = booking.status === 'OPEN';
   const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
   const fmtQty = (n: number) => `${formatPakistaniGrouping(n)}${unitSuffix}`;
