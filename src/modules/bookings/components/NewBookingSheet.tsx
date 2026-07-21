@@ -25,7 +25,6 @@ import type { UnitDef } from '@/utils/units';
 
 import { makeStyles } from '../styled/NewBookingSheet.styles';
 
-const NO_PROJECT_ID = '__none__';
 const EMPTY_UNIT: UnitDef = { primary: null, secondary: null, factor: null };
 
 interface Props {
@@ -80,11 +79,10 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
 
   const total = form.qty * form.rate;
   const selectedProject = projects.find((p) => p.id === form.projectId) ?? null;
-  const projectOptions: SelectOption[] = [
-    { id: NO_PROJECT_ID, label: t('noProject'), icon: 'empty' as IconKey },
-    ...projects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey })),
-  ];
-  const canSave = form.material.name.trim().length > 0 && form.qty > 0 && form.rate >= 0;
+  const projectOptions: SelectOption[] = projects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));
+  const hasSupplier = !!form.partyId || form.supplierName.trim().length > 0;
+  const canSave =
+    form.material.name.trim().length > 0 && form.qty > 0 && form.rate > 0 && !!form.projectId && hasSupplier;
 
   const onSave = () => {
     if (!canSave || saving) return;
@@ -176,7 +174,7 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
       <Pressable onPress={() => setProjectSheet(true)} style={styles.chip} accessibilityRole="button">
         <AppIcon name="project" size={18} color="primary" />
         <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={selectedProject ? 'textPrimary' : 'textSecondary'}>
-          {selectedProject?.name ?? t('noProject')}
+          {selectedProject?.name ?? t('selectProject')}
         </AppText>
         <AppIcon name="forward" size={18} color="textSecondary" />
       </Pressable>
@@ -185,10 +183,10 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
         visible={projectSheet}
         onClose={() => setProjectSheet(false)}
         options={projectOptions}
-        selectedId={form.projectId ?? NO_PROJECT_ID}
+        selectedId={form.projectId ?? ''}
         title={t('selectProject')}
         searchable={false}
-        onSelect={(o) => patch({ projectId: o.id === NO_PROJECT_ID ? null : o.id })}
+        onSelect={(o) => patch({ projectId: o.id })}
       />
     </AppSheet>
   );

@@ -39,8 +39,6 @@ interface Props {
   onSaved: () => Promise<void> | void;
 }
 
-const NO_PROJECT_ID = '__none__';
-
 interface Form {
   qty: number;
   date: string;
@@ -104,11 +102,10 @@ export function AddDeliverySheet({
   // project). A general booking can attribute to a project or stay unassigned.
   const [projectSheet, setProjectSheet] = useState(false);
   const activeProjects = projects.filter((p) => p.status === 'ACTIVE');
-  const projectOptions: SelectOption[] = [
-    ...(bookingProjectId ? [] : [{ id: NO_PROJECT_ID, label: t('noProject'), icon: 'empty' as IconKey }]),
-    ...activeProjects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey })),
-  ];
-  const showProjectPicker = projectOptions.length > 1;
+  const projectOptions: SelectOption[] = activeProjects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));
+  // A destination is required; show the picker when there's a choice OR nothing
+  // is selected yet (e.g. a general booking delivering into a project).
+  const showProjectPicker = projectOptions.length > 1 || !form.receivingProjectId;
   const receiving = projects.find((p) => p.id === form.receivingProjectId) ?? null;
 
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
@@ -121,7 +118,11 @@ export function AddDeliverySheet({
         : account && form.payAmount > account.balance
           ? t('insufficientFunds')
           : null;
-  const canSave = form.qty > 0 && !over && (!form.paidNow || (form.payAmount > 0 && !!form.accountId && !payError));
+  const canSave =
+    form.qty > 0 &&
+    !over &&
+    !!form.receivingProjectId &&
+    (!form.paidNow || (form.payAmount > 0 && !!form.accountId && !payError));
   const remainingText = `${formatQty(qtyRemaining)}${unit ? ` ${unit}` : ''}`;
 
   // project_id sent only when it differs from the booking's own project.
@@ -177,8 +178,8 @@ export function AddDeliverySheet({
           </AppText>
           <Pressable onPress={() => setProjectSheet(true)} style={styles.chip} accessibilityRole="button">
             <AppIcon name="project" size={18} color="primary" />
-            <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex}>
-              {receiving?.name ?? t('noProject')}
+            <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={receiving ? 'textPrimary' : 'textSecondary'}>
+              {receiving?.name ?? t('selectProject')}
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
@@ -217,10 +218,10 @@ export function AddDeliverySheet({
         visible={projectSheet}
         onClose={() => setProjectSheet(false)}
         options={projectOptions}
-        selectedId={form.receivingProjectId ?? NO_PROJECT_ID}
+        selectedId={form.receivingProjectId ?? ''}
         title={t('deliverToProject')}
         searchable={false}
-        onSelect={(o) => patch({ receivingProjectId: o.id === NO_PROJECT_ID ? null : o.id })}
+        onSelect={(o) => patch({ receivingProjectId: o.id })}
       />
     </AppSheet>
   );
