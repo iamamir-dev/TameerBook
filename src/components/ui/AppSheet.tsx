@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
-  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -60,23 +59,14 @@ export function AppSheet({
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
 
-  // Track keyboard height so the scroll area can gain enough bottom room to
-  // lift a focused input above the keyboard — without moving the header/footer.
-  const [kb, setKb] = useState(0);
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
   const body = scroll ? (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.spacing.sm + kb }]}
+      contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
+      // iOS: inset the scroll for the keyboard so a focused input lifts above it
+      // (no permanent gap). Android: the modal resizes via `adjustResize`.
+      automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
       bounces={false}
     >
