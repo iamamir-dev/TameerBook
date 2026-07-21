@@ -16,7 +16,7 @@ import {
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
-import { addDelivery, receiveAndPay, type AccountWithBalance, type ProjectRow } from '@/db';
+import { addDelivery, receiveAndPay, updateDelivery, type AccountWithBalance, type MaterialDeliveryRow, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -36,6 +36,8 @@ interface Props {
   accounts: AccountWithBalance[];
   /** Active projects (for the receiving-project picker). */
   projects: ProjectRow[];
+  /** Pass a delivery to edit in place; omit/null to record a new one. */
+  editing?: MaterialDeliveryRow | null;
   onSaved: () => Promise<void> | void;
 }
 
@@ -64,6 +66,7 @@ export function AddDeliverySheet({
   payRemaining,
   accounts,
   projects,
+  editing,
   onSaved,
 }: Props): React.JSX.Element {
   const theme = useTheme();
@@ -86,10 +89,10 @@ export function AddDeliverySheet({
   useEffect(() => {
     if (!visible) return;
     setForm({
-      qty: 0,
-      date: today,
-      note: '',
-      receivingProjectId: bookingProjectId,
+      qty: editing?.qty ?? 0,
+      date: editing?.date ?? today,
+      note: editing?.note ?? '',
+      receivingProjectId: editing ? editing.project_id ?? bookingProjectId : bookingProjectId,
       paidNow: false,
       payAmount: 0,
       accountId: accounts[0]?.id ?? null,
@@ -109,7 +112,9 @@ export function AddDeliverySheet({
   const receiving = projects.find((p) => p.id === form.receivingProjectId) ?? null;
 
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
-  const over = form.qty > qtyRemaining + 0.001;
+  // Editing frees the edited row's own qty back into the remaining cap.
+  const qtyCap = qtyRemaining + (editing?.qty ?? 0);
+  const over = form.qty > qtyCap + 0.001;
   const payError =
     !form.paidNow || form.payAmount <= 0
       ? null
@@ -123,7 +128,7 @@ export function AddDeliverySheet({
     !over &&
     !!form.receivingProjectId &&
     (!form.paidNow || (form.payAmount > 0 && !!form.accountId && !payError));
-  const remainingText = `${formatQty(qtyRemaining)}${unit ? ` ${unit}` : ''}`;
+  const remainingText = `${formatQty(qtyCap)}${unit ? ` ${unit}` : ''}`;
 
   // project_id sent only when it differs from the booking's own project.
   const deliveryProjectId =
@@ -133,7 +138,14 @@ export function AddDeliverySheet({
     if (!canSave || saving) return;
     void (async () => {
       const ok = await runSave(async () => {
-        if (form.paidNow && form.accountId) {
+        if (editing) {
+          await updateDelivery(editing.id, {
+            qty: form.qty,
+            date: form.date,
+            projectId: deliveryProjectId,
+            note: form.note.trim() || null,
+          });
+        } else if (form.paidNow && form.accountId) {
           await receiveAndPay({
             bookingId,
             qty: form.qty,
@@ -156,7 +168,7 @@ export function AddDeliverySheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
-      title={t('addDelivery')}
+      title={editing ? t('editDelivery') : t('addDelivery')}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />}
     >
       <AppText size="sm" weight="semibold" color="accent">
@@ -195,22 +207,28 @@ export function AddDeliverySheet({
 
       <FloatingLabelInput label={t('note')} value={form.note} onChangeText={(v) => patch({ note: v })} />
 
-      <View style={styles.toggleRow}>
-        <AppText size="sm" weight="semibold" style={styles.flex}>
-          {t('alsoPaidNow')}
-        </AppText>
-        <AppToggle value={form.paidNow} onValueChange={(paidNow) => patch({ paidNow })} accessibilityLabel={t('alsoPaidNow')} />
-      </View>
-
-      {form.paidNow ? (
+      {/* Paying now only makes sense for a NEW delivery; editing a delivery
+          leaves the supplier payment to its own edit flow. */}
+      {!editing ? (
         <>
-          <Pressable onPress={() => patch({ payAmount: Math.round(payRemaining) })} accessibilityRole="button">
-            <AppText size="sm" weight="semibold" color="accent">
-              {`${t('payRemainingLabel')}: ${formatRupees(payRemaining)}`}
+          <View style={styles.toggleRow}>
+            <AppText size="sm" weight="semibold" style={styles.flex}>
+              {t('alsoPaidNow')}
             </AppText>
-          </Pressable>
-          <AmountInput label={t('amount')} value={form.payAmount} onChange={(payAmount) => patch({ payAmount })} floating surface={theme.colors.card} error={payError} />
-          <AccountPickerRow accounts={accounts} selectedId={form.accountId} onSelect={(accountId) => patch({ accountId })} />
+            <AppToggle value={form.paidNow} onValueChange={(paidNow) => patch({ paidNow })} accessibilityLabel={t('alsoPaidNow')} />
+          </View>
+
+          {form.paidNow ? (
+            <>
+              <Pressable onPress={() => patch({ payAmount: Math.round(payRemaining) })} accessibilityRole="button">
+                <AppText size="sm" weight="semibold" color="accent">
+                  {`${t('payRemainingLabel')}: ${formatRupees(payRemaining)}`}
+                </AppText>
+              </Pressable>
+              <AmountInput label={t('amount')} value={form.payAmount} onChange={(payAmount) => patch({ payAmount })} floating surface={theme.colors.card} error={payError} />
+              <AccountPickerRow accounts={accounts} selectedId={form.accountId} onSelect={(accountId) => patch({ accountId })} />
+            </>
+          ) : null}
         </>
       ) : null}
 

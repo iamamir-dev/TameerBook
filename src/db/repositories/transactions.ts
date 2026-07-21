@@ -250,13 +250,27 @@ export async function updateTransaction(id: string, patch: TransactionPatch): Pr
   );
   if (receipt) throw new Error('updateTransaction: sale-receipt transaction is not directly editable');
 
-  const amount = patch.amount ?? t.amount;
-  if (amount <= 0) throw new Error('updateTransaction: amount must be positive');
-  const accountId = patch.accountId !== undefined ? patch.accountId : t.account_id;
+  await applyTransactionPatch(t, patch);
+}
+
+/**
+ * The shared in-place patch (amount/date/category/account/description) with the
+ * OUT overdraw guard, computed excluding this row's own effect. Used by
+ * `updateTransaction` (after its linked-row guards) AND by module editors that
+ * own their linked-row validation — booking / labor payments, where the derived
+ * remaining is re-checked by the caller before this runs.
+ */
+export async function applyTransactionPatch(existing: TransactionRow, patch: TransactionPatch): Promise<void> {
+  const db = await getDatabase();
+  if (existing.is_void === 1) throw new Error('applyTransactionPatch: cannot edit a void row');
+
+  const amount = patch.amount ?? existing.amount;
+  if (amount <= 0) throw new Error('applyTransactionPatch: amount must be positive');
+  const accountId = patch.accountId !== undefined ? patch.accountId : existing.account_id;
 
   // Overdraw guard for OUT rows: the new amount must fit the account balance
   // computed WITHOUT this row's current effect.
-  if (t.direction === 'OUT' && accountId) {
+  if (existing.direction === 'OUT' && accountId) {
     const row = await db.getFirstAsync<{ balance: number }>(
       `SELECT a.opening_balance + COALESCE(SUM(
          CASE WHEN tx.direction = 'IN' THEN tx.amount
@@ -266,7 +280,7 @@ export async function updateTransaction(id: string, patch: TransactionPatch): Pr
        LEFT JOIN transactions tx ON tx.account_id = a.id AND tx.is_void = 0 AND tx.id != ?
        WHERE a.id = ?
        GROUP BY a.id`,
-      id,
+      existing.id,
       accountId
     );
     const balance = row?.balance ?? 0;
@@ -276,11 +290,11 @@ export async function updateTransaction(id: string, patch: TransactionPatch): Pr
   await db.runAsync(
     'UPDATE transactions SET amount = ?, date = ?, category_id = ?, account_id = ?, description = ? WHERE id = ?',
     amount,
-    patch.date ?? t.date,
-    patch.categoryId !== undefined ? patch.categoryId : t.category_id,
+    patch.date ?? existing.date,
+    patch.categoryId !== undefined ? patch.categoryId : existing.category_id,
     accountId,
-    patch.description !== undefined ? patch.description : t.description,
-    id
+    patch.description !== undefined ? patch.description : existing.description,
+    existing.id
   );
 }
 

@@ -508,6 +508,8 @@ export interface TranslationKeys {
   receivedQty: string;
   remainingQty: string;
   addDelivery: string;
+  editDelivery: string;
+  editPayment: string;
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;

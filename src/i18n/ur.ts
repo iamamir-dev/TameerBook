@@ -468,6 +468,8 @@ export const ur: TranslationKeys = {
   receivedQty: 'ملا',
   remainingQty: 'باقی',
   addDelivery: 'ڈیلیوری شامل کریں',
+  editDelivery: 'ڈیلیوری تبدیل کریں',
+  editPayment: 'ادائیگی تبدیل کریں',
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',
   deliverToProject: 'پراجیکٹ میں بھیجیں',

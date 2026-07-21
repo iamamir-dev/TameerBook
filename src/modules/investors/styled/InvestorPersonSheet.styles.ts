@@ -4,7 +4,6 @@ import type { Theme } from '@/theme/theme';
 
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    flex: { flex: 1 },
     photoPicker: { alignSelf: 'center', marginBottom: theme.spacing.xs },
     sectionLabel: { marginTop: theme.spacing.xs },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginVertical: theme.spacing.xs },
@@ -20,16 +19,5 @@ export const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
       borderWidth: 2,
       borderColor: theme.colors.card,
-    },
-    bankChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.background,
-      borderRadius: theme.radius.md,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-      paddingHorizontal: theme.spacing.lg,
-      minHeight: theme.touch.minTarget,
     },
   });

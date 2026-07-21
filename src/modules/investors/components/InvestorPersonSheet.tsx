@@ -11,9 +11,6 @@ import {
   AppText,
   Avatar,
   DateField,
-  SelectSheet,
-  type IconKey,
-  type SelectOption,
 } from '@/components/ui';
 import {
   addInvestor,
@@ -28,7 +25,6 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
-import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 
 import { makeStyles } from '../styled/InvestorPersonSheet.styles';
@@ -84,7 +80,6 @@ export function InvestorPersonSheet({
 
   const [form, setForm] = useState<Form>(EMPTY);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [bankSheet, setBankSheet] = useState(false);
   const patch = (p: Partial<Form>) => setForm((s) => ({ ...s, ...p }));
 
   useEffect(() => {
@@ -112,12 +107,9 @@ export function InvestorPersonSheet({
     if (uri) patch({ photoUri: uri });
   };
 
-  const accountOptions: SelectOption[] = accounts.map((a) => ({
-    id: a.id,
-    label: a.name,
-    subtitle: formatRupees(a.balance),
-    icon: (a.type === 'BANK' ? 'bank' : a.type === 'CASH' ? 'rupee' : 'balance') as IconKey,
-  }));
+  // Which account this investor's money sits in (stored as its name in bankInfo,
+  // shown via the same shared picker used for the cash row below and everywhere).
+  const bankAccountId = accounts.find((a) => a.name === form.bankInfo)?.id ?? null;
 
   const needsAccount = !editing && form.given > 0;
   const canSave = form.name.trim().length > 0 && (!needsAccount || !!form.accountId);
@@ -194,14 +186,13 @@ export function InvestorPersonSheet({
         {t('moneySection')}
       </AppText>
 
-      {/* Bank = pick from the accounts already in the app (no typing). */}
-      <Pressable onPress={() => setBankSheet(true)} style={styles.bankChip} accessibilityRole="button">
-        <AppIcon name="bank" size={18} color="primary" />
-        <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={form.bankInfo ? 'textPrimary' : 'textSecondary'}>
-          {form.bankInfo || t('bankDetails')}
-        </AppText>
-        <AppIcon name="forward" size={18} color="textSecondary" />
-      </Pressable>
+      {/* Bank = the same shared account picker used across every money drawer. */}
+      <AccountPickerRow
+        label={t('bankDetails')}
+        accounts={accounts}
+        selectedId={bankAccountId}
+        onSelect={(id) => patch({ bankInfo: accounts.find((a) => a.id === id)?.name ?? '' })}
+      />
 
       {/* Money: what's handed over now (into an account). */}
       {!editing ? (
@@ -221,18 +212,6 @@ export function InvestorPersonSheet({
           ) : null}
         </>
       ) : null}
-
-      <SelectSheet
-        visible={bankSheet}
-        onClose={() => setBankSheet(false)}
-        options={accountOptions}
-        title={t('bankDetails')}
-        searchable={false}
-        onSelect={(o) => {
-          const acc = accounts.find((a) => a.id === o.id);
-          if (acc) patch({ bankInfo: acc.name });
-        }}
-      />
     </AppSheet>
   );
 }

@@ -4,8 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActivityList, type ActivityItem } from '@/components/ActivityList';
 import { StageBadge } from '@/components/StageBadge';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   ActionsDrawer,
   AppCard,
@@ -13,10 +13,8 @@ import {
   AppIcon,
   AppText,
   LabelValueRow,
-  LedgerTable,
   LoadErrorState,
   PhoneChip,
-  type LedgerRow,
 } from '@/components/ui';
 import { cancelBooking, deleteDelivery, type MaterialDeliveryRow, type TransactionRow } from '@/db';
 import { useSaveAction } from '@/hooks';
@@ -48,13 +46,16 @@ export function BookingDetailScreen(): React.JSX.Element {
   const { summary, deliveries, payments, accounts, projects, supplierPhone } = data;
   const { run: runSave } = useSaveAction();
 
-  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [deliveryDetail, setDeliveryDetail] = useState<MaterialDeliveryRow | null>(null);
+  const [editDelivery, setEditDelivery] = useState<MaterialDeliveryRow | null>(null);
   const [deliverySheet, setDeliverySheet] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [paySheet, setPaySheet] = useState(false);
+  const [editPayment, setEditPayment] = useState<TransactionRow | null>(null);
 
-  const ledgerRows: LedgerRow[] = useMemo(
+  // Supplier payments → the shared ActivityList (tap → detail → Edit), the same
+  // component the Investors module uses for its capital history.
+  const activityItems: ActivityItem[] = useMemo(
     () =>
       payments.map((txn) => ({
         id: txn.id,
@@ -63,7 +64,8 @@ export function BookingDetailScreen(): React.JSX.Element {
         amount: txn.amount,
         direction: 'out' as const,
         typeLabel: t('payBookingLabel'),
-        onPress: () => setTxnDetail(txn),
+        txn,
+        editable: true,
       })),
     [payments, t]
   );
@@ -237,13 +239,13 @@ export function BookingDetailScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        {ledgerRows.length > 0 ? (
+        {activityItems.length > 0 ? (
           <>
             <AppText size="lg" weight="bold">
               {t('paidLabel')}
             </AppText>
             <AppCard compact>
-              <LedgerTable rows={ledgerRows} />
+              <ActivityList items={activityItems} onEdit={(txn) => setEditPayment(txn)} />
             </AppCard>
           </>
         ) : null}
@@ -261,8 +263,11 @@ export function BookingDetailScreen(): React.JSX.Element {
       />
 
       <AddDeliverySheet
-        visible={deliverySheet}
-        onClose={() => setDeliverySheet(false)}
+        visible={deliverySheet || !!editDelivery}
+        onClose={() => {
+          setDeliverySheet(false);
+          setEditDelivery(null);
+        }}
         bookingId={booking.id}
         bookingProjectId={booking.project_id}
         qtyRemaining={qtyRemaining}
@@ -270,17 +275,21 @@ export function BookingDetailScreen(): React.JSX.Element {
         payRemaining={payRemaining}
         accounts={accounts}
         projects={projects}
+        editing={editDelivery}
         onSaved={reload}
       />
       <PayBookingSheet
-        visible={paySheet}
-        onClose={() => setPaySheet(false)}
+        visible={paySheet || !!editPayment}
+        onClose={() => {
+          setPaySheet(false);
+          setEditPayment(null);
+        }}
         bookingId={booking.id}
         payRemaining={payRemaining}
         accounts={accounts}
+        editing={editPayment}
         onSaved={reload}
       />
-      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
       <DeliveryDetailSheet
         visible={!!deliveryDetail}
         onClose={() => setDeliveryDetail(null)}
@@ -291,6 +300,11 @@ export function BookingDetailScreen(): React.JSX.Element {
             ? projectName(deliveryDetail.project_id)
             : null
         }
+        onEdit={() => {
+          const d = deliveryDetail;
+          setDeliveryDetail(null);
+          setEditDelivery(d);
+        }}
         onDelete={() => {
           const id = deliveryDetail?.id;
           setDeliveryDetail(null);

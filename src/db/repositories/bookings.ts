@@ -10,7 +10,7 @@ import { nowISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { assertProjectActive } from './guards';
-import { addTransaction, insertTransaction, LimitExceededError, type SQLiteExecutor, voidTransaction } from './transactions';
+import { addTransaction, applyTransactionPatch, getTransaction, insertTransaction, LimitExceededError, type SQLiteExecutor, voidTransaction } from './transactions';
 
 /**
  * MATERIAL BOOKINGS — order material ahead (5000 bricks @ Rs 10), then track
@@ -402,4 +402,82 @@ export async function payBooking(input: BookingPaymentInput): Promise<void> {
     createdBy: input.createdBy,
   });
   await refreshStatus(input.bookingId);
+}
+
+export interface BookingPaymentPatch {
+  amount?: number;
+  date?: string;
+  accountId?: string;
+  note?: string | null;
+}
+
+/**
+ * Edit a supplier payment IN PLACE. The linked `booking_id` makes it off-limits
+ * to the generic `updateTransaction`, so this re-checks the booking-specific
+ * rule (can't pay more than is owed, this row's own amount freed) and then
+ * applies the shared patch (which re-runs the account overdraw guard).
+ */
+export async function updateBookingPayment(id: string, patch: BookingPaymentPatch): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) throw new Error(`updateBookingPayment: ${id} not found`);
+  if (!t.booking_id) throw new Error('updateBookingPayment: not a booking payment');
+
+  const s = await getBookingSummary(t.booking_id);
+  const amount = patch.amount ?? t.amount;
+  // Owed excluding this row = current remaining + what this row already pays.
+  const maxAllowed = s.payRemaining + t.amount;
+  if (amount > maxAllowed + 0.001) throw new LimitExceededError(maxAllowed, amount);
+  if ((patch.date ?? t.date) < s.booking.created_at.slice(0, 10)) {
+    throw new Error('updateBookingPayment: date is before the booking was created');
+  }
+
+  await applyTransactionPatch(t, {
+    amount,
+    date: patch.date,
+    accountId: patch.accountId,
+    description: patch.note,
+  });
+  await refreshStatus(t.booking_id);
+}
+
+export interface DeliveryEditInput {
+  qty: number;
+  date: string;
+  /** Receiving project (null = the booking's own project). */
+  projectId?: string | null;
+  note?: string | null;
+  createdBy?: string;
+}
+
+/**
+ * Edit a delivery IN PLACE (qty / date / destination / note). Because a delivery
+ * can carry paired cost-transfer legs, editing = remove-then-re-add: the new
+ * values are validated FIRST (against the booking, treating this row's own qty as
+ * free capacity) so a bad edit is rejected before anything is removed.
+ */
+export async function updateDelivery(deliveryId: string, input: DeliveryEditInput): Promise<void> {
+  const db = await getDatabase();
+  const d = await db.getFirstAsync<MaterialDeliveryRow>('SELECT * FROM material_deliveries WHERE id = ?', deliveryId);
+  if (!d) throw new Error(`updateDelivery: ${deliveryId} not found`);
+
+  const s = await getBookingSummary(d.booking_id);
+  if (input.qty <= 0) throw new Error('updateDelivery: qty must be positive');
+  const remainingExcl = s.qtyRemaining + d.qty; // free this row's qty back
+  if (input.qty > remainingExcl + 0.001) throw new LimitExceededError(remainingExcl, input.qty);
+  if (input.date < s.booking.created_at.slice(0, 10)) {
+    throw new Error('updateDelivery: date is before the booking was created');
+  }
+  if (s.booking.project_id) await assertProjectActive(s.booking.project_id);
+  if (input.projectId && input.projectId !== s.booking.project_id) await assertProjectActive(input.projectId);
+
+  // Validated — replace it (deleteDelivery voids any old cost-transfer legs).
+  await deleteDelivery(deliveryId);
+  await addDelivery({
+    bookingId: d.booking_id,
+    qty: input.qty,
+    date: input.date,
+    projectId: input.projectId ?? null,
+    note: input.note ?? null,
+    createdBy: input.createdBy,
+  });
 }
