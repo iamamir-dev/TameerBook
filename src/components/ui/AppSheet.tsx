@@ -82,8 +82,11 @@ export function AppSheet({
     <View style={styles.staticBody}>{children}</View>
   );
 
-  // When the keyboard is up, its area already covers the bottom safe inset.
-  const footerPadBottom = kb > 0 ? theme.spacing.md : insets.bottom + theme.spacing.md;
+  // Keep the button clear of the bottom: the reported keyboard height excludes
+  // the Android nav-bar strip, so without this the button slightly overlaps the
+  // keyboard. `insets.bottom + md` lifts it clear (and is the safe gap when the
+  // keyboard is closed too).
+  const footerPadBottom = insets.bottom + theme.spacing.md;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
