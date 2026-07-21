@@ -15,6 +15,7 @@ import {
   LabelValueRow,
   LedgerTable,
   LoadErrorState,
+  PhoneChip,
   type LedgerRow,
 } from '@/components/ui';
 import { cancelBooking, deleteDelivery, type TransactionRow } from '@/db';
@@ -43,7 +44,7 @@ export function BookingDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = useBookingDetail(bookingId);
-  const { summary, deliveries, payments, accounts, projects } = data;
+  const { summary, deliveries, payments, accounts, projects, supplierPhone } = data;
   const { run: runSave } = useSaveAction();
 
   const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
@@ -171,6 +172,13 @@ export function BookingDetailScreen(): React.JSX.Element {
               </View>
             ) : null}
           </View>
+
+          {/* Supplier phone — tap to call. */}
+          {supplierPhone ? (
+            <View style={styles.metaRow}>
+              <PhoneChip phone={supplierPhone} />
+            </View>
+          ) : null}
 
           <View style={styles.divider} />
           <View style={styles.columns}>

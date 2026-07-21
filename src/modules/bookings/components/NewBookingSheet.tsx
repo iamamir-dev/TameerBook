@@ -39,6 +39,7 @@ interface Form {
   qty: number; // primary unit
   rate: number;
   supplierName: string;
+  supplierPhone: string;
   partyId: string | null;
   projectId: string | null;
 }
@@ -47,6 +48,7 @@ const emptyForm = (): Form => ({
   qty: 0,
   rate: 0,
   supplierName: '',
+  supplierPhone: '',
   partyId: null,
   projectId: null,
 });
@@ -88,12 +90,15 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
     if (!canSave || saving) return;
     void (async () => {
       const ok = await runSave(async () => {
-        // Persist a typed supplier as a party so it's reusable next time.
+        // Persist a typed supplier (with phone) as a party so it's reusable and
+        // callable next time.
         let partyId = form.partyId;
         const name = form.supplierName.trim();
         if (!partyId && name) {
           const existing = parties.find((p) => p.name.toLowerCase() === name.toLowerCase());
-          partyId = existing ? existing.id : (await addParty({ type: 'SUPPLIER', name })).id;
+          partyId = existing
+            ? existing.id
+            : (await addParty({ type: 'SUPPLIER', name, phone: form.supplierPhone.trim() || null })).id;
         }
         await createBooking({
           itemName: form.material.name.trim(),
@@ -132,12 +137,21 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
         </AppText>
       </View>
 
-      {/* Supplier — one control: a name field + saved-supplier quick-fill. */}
+      {/* Supplier — a name field + saved-supplier quick-fill; a new supplier's
+          phone is saved too so they're callable later. */}
       <FloatingLabelInput
         label={t('supplier')}
         value={form.supplierName}
         onChangeText={(v) => patch({ supplierName: v, partyId: null })}
       />
+      {!form.partyId && form.supplierName.trim() ? (
+        <FloatingLabelInput
+          label={`${t('phone')} (${t('optional')})`}
+          value={form.supplierPhone}
+          onChangeText={(v) => patch({ supplierPhone: v })}
+          mask="phone"
+        />
+      ) : null}
       {parties.length > 0 ? (
         <View style={styles.suggestWrap}>
           {parties.map((p) => {
@@ -145,7 +159,7 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
             return (
               <Pressable
                 key={p.id}
-                onPress={() => patch({ partyId: p.id, supplierName: p.name })}
+                onPress={() => patch({ partyId: p.id, supplierName: p.name, supplierPhone: p.phone ?? '' })}
                 accessibilityRole="button"
                 style={[styles.suggestChip, on && styles.suggestChipOn]}
               >
