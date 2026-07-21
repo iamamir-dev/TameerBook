@@ -47,7 +47,6 @@ export function BookingDetailScreen(): React.JSX.Element {
 
   const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [deliverySheet, setDeliverySheet] = useState(false);
-  const [crossDeliver, setCrossDeliver] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [paySheet, setPaySheet] = useState(false);
 
@@ -83,11 +82,6 @@ export function BookingDetailScreen(): React.JSX.Element {
   const fmtQty = (n: number) => `${formatPakistaniGrouping(n)}${unitSuffix}`;
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
-  // Cross-project delivery is a separate, deliberate action (kept out of the
-  // simple Add-Delivery drawer) — available whenever there's another active
-  // project to receive it (including a general/no-project booking).
-  const otherActive = projects.filter((p) => p.status === 'ACTIVE' && p.id !== booking.project_id);
-  const showCrossDeliver = showDelivery && otherActive.length > 0;
   // Any action to offer? If not (a CLOSED or CANCELLED booking), hide the "+"
   // so it can never open an empty actions drawer.
   const hasActions = showDelivery || showPay || active;
@@ -215,12 +209,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         onClose={() => setActionsOpen(false)}
         title={booking.item_name}
         actions={[
-          ...(showDelivery
-            ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => { setCrossDeliver(false); setDeliverySheet(true); } }]
-            : []),
-          ...(showCrossDeliver
-            ? [{ icon: 'project' as const, label: t('deliverToProject'), onPress: () => { setCrossDeliver(true); setDeliverySheet(true); } }]
-            : []),
+          ...(showDelivery ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => setDeliverySheet(true) }] : []),
           ...(showPay ? [{ icon: 'moneyOut' as const, label: t('payBookingLabel'), onPress: () => setPaySheet(true) }] : []),
           ...(active ? [{ icon: 'trash' as const, label: t('cancelBookingLabel'), onPress: onCancelBooking }] : []),
         ]}
@@ -236,7 +225,6 @@ export function BookingDetailScreen(): React.JSX.Element {
         payRemaining={payRemaining}
         accounts={accounts}
         projects={projects}
-        allowProject={crossDeliver}
         onSaved={reload}
       />
       <PayBookingSheet

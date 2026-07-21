@@ -34,12 +34,12 @@ interface Props {
   unit: string | null;
   payRemaining: number;
   accounts: AccountWithBalance[];
-  /** Active projects (for the cross-project receiving picker). */
+  /** Active projects (for the receiving-project picker). */
   projects: ProjectRow[];
-  /** Show the "deliver to another project" picker (off by default → simple). */
-  allowProject?: boolean;
   onSaved: () => Promise<void> | void;
 }
+
+const NO_PROJECT_ID = '__none__';
 
 interface Form {
   qty: number;
@@ -66,7 +66,6 @@ export function AddDeliverySheet({
   payRemaining,
   accounts,
   projects,
-  allowProject = false,
   onSaved,
 }: Props): React.JSX.Element {
   const theme = useTheme();
@@ -100,14 +99,17 @@ export function AddDeliverySheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Cross-project picker (when enabled): any active project other than the
-  // booking's own is a valid destination — incl. delivering a general booking
-  // into a project.
-  const otherProjects = allowProject ? projects.filter((p) => p.status === 'ACTIVE' && p.id !== bookingProjectId) : [];
-  const showProjectPicker = otherProjects.length > 0;
+  // Destination: choose which project this delivery lands in. Default is the
+  // booking's own project; picking another moves the cost there (project-to-
+  // project). A general booking can attribute to a project or stay unassigned.
   const [projectSheet, setProjectSheet] = useState(false);
+  const activeProjects = projects.filter((p) => p.status === 'ACTIVE');
+  const projectOptions: SelectOption[] = [
+    ...(bookingProjectId ? [] : [{ id: NO_PROJECT_ID, label: t('noProject'), icon: 'empty' as IconKey }]),
+    ...activeProjects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey })),
+  ];
+  const showProjectPicker = projectOptions.length > 1;
   const receiving = projects.find((p) => p.id === form.receivingProjectId) ?? null;
-  const projectOptions: SelectOption[] = otherProjects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));
 
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
   const over = form.qty > qtyRemaining + 0.001;
@@ -176,7 +178,7 @@ export function AddDeliverySheet({
           <Pressable onPress={() => setProjectSheet(true)} style={styles.chip} accessibilityRole="button">
             <AppIcon name="project" size={18} color="primary" />
             <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex}>
-              {receiving?.name ?? t('selectProject')}
+              {receiving?.name ?? t('noProject')}
             </AppText>
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
@@ -215,10 +217,10 @@ export function AddDeliverySheet({
         visible={projectSheet}
         onClose={() => setProjectSheet(false)}
         options={projectOptions}
-        selectedId={form.receivingProjectId ?? undefined}
+        selectedId={form.receivingProjectId ?? NO_PROJECT_ID}
         title={t('deliverToProject')}
         searchable={false}
-        onSelect={(o) => patch({ receivingProjectId: o.id })}
+        onSelect={(o) => patch({ receivingProjectId: o.id === NO_PROJECT_ID ? null : o.id })}
       />
     </AppSheet>
   );
