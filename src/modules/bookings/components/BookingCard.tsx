@@ -46,32 +46,32 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
         <StageBadge tone={tone} label={t(labelKey)} />
       </View>
 
-      {/* The deal + parties as separate, readable pills */}
+      {/* The deal + parties as separate badges (wrap to the next line). */}
       <View style={styles.metaRow}>
         <View style={styles.pill}>
-          <AppIcon name="material" size={12} color="textSecondary" />
-          <AppText size="xs" weight="semibold" color="textSecondary" tabular>
+          <AppIcon name="material" size={12} color="primary" />
+          <AppText size="xs" weight="bold" color="textPrimary" tabular>
             {`${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
           </AppText>
         </View>
         <View style={styles.pill}>
-          <AppIcon name="rupee" size={12} color="textSecondary" />
-          <AppText size="xs" weight="semibold" color="textSecondary" tabular>
+          <AppIcon name="rupee" size={12} color="primary" />
+          <AppText size="xs" weight="bold" color="textPrimary" tabular>
             {`${formatRupees(booking.rate)}`}
           </AppText>
         </View>
         {booking.supplier_name ? (
           <View style={styles.pill}>
-            <AppIcon name="investor" size={12} color="textSecondary" />
-            <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+            <AppIcon name="investor" size={12} color="primary" />
+            <AppText size="xs" weight="semibold" color="textPrimary" style={styles.pillText}>
               {booking.supplier_name}
             </AppText>
           </View>
         ) : null}
         {projectName ? (
           <View style={styles.pill}>
-            <AppIcon name="project" size={12} color="textSecondary" />
-            <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+            <AppIcon name="project" size={12} color="primary" />
+            <AppText size="xs" weight="semibold" color="textPrimary" style={styles.pillText}>
               {projectName}
             </AppText>
           </View>

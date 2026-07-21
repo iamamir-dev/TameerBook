@@ -188,7 +188,7 @@ export const ur: TranslationKeys = {
   bankDetails: 'بینک کی تفصیلات',
   optional: 'اختیاری',
   notMarkedToday: 'آج حاضری نہیں لگی',
-  owedToSuppliers: 'سپلائرز کو واجب الادا',
+  owedToSuppliers: 'سپلائر کو دینا',
   openBookings: 'کھلی بکنگز',
   daysLeftSuffix: 'دن باقی',
   deadlineSoon: 'ٹرانسفر جلد متوقع',

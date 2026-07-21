@@ -20,10 +20,12 @@ export const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
+      maxWidth: '100%',
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: 4,
       borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.background,
+      backgroundColor: theme.colors.primarySoft,
     },
+    pillText: { flexShrink: 1 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
   });

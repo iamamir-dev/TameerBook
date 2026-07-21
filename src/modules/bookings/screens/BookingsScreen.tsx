@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppHeader, EmptyState, HubShortcuts, LoadErrorState, StatCard } from '@/components/ui';
+import { AppHeader, EmptyState, LoadErrorState, StatCard } from '@/components/ui';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -39,8 +39,6 @@ export function BookingsScreen(): React.JSX.Element {
         onBack={() => navigation.goBack()}
         rightAction={{ icon: 'add', onPress: () => setCreateOpen(true), accessibilityLabel: t('newBooking') }}
       />
-
-      <HubShortcuts current="Bookings" />
 
       {loadFailed && items.length === 0 ? (
         <LoadErrorState onRetry={reload} bottomInset={insets.bottom} />

@@ -185,7 +185,7 @@ export const en: TranslationKeys = {
   bankDetails: 'Bank details',
   optional: 'Optional',
   notMarkedToday: 'Not marked today',
-  owedToSuppliers: 'Owed to suppliers',
+  owedToSuppliers: 'To pay suppliers',
   openBookings: 'Open bookings',
   daysLeftSuffix: 'days left',
   deadlineSoon: 'Transfer due soon',
