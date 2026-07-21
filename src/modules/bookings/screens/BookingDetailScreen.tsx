@@ -84,9 +84,10 @@ export function BookingDetailScreen(): React.JSX.Element {
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
   // Cross-project delivery is a separate, deliberate action (kept out of the
-  // simple Add-Delivery drawer) — only when there's another active project.
+  // simple Add-Delivery drawer) — available whenever there's another active
+  // project to receive it (including a general/no-project booking).
   const otherActive = projects.filter((p) => p.status === 'ACTIVE' && p.id !== booking.project_id);
-  const showCrossDeliver = showDelivery && !!booking.project_id && otherActive.length > 0;
+  const showCrossDeliver = showDelivery && otherActive.length > 0;
   // Any action to offer? If not (a CLOSED or CANCELLED booking), hide the "+"
   // so it can never open an empty actions drawer.
   const hasActions = showDelivery || showPay || active;

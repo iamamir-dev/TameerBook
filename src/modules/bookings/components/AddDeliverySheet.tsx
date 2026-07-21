@@ -100,10 +100,11 @@ export function AddDeliverySheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Cross-project picker only when explicitly enabled and the booking belongs
-  // to a project (with others to route to).
-  const otherProjects = allowProject && bookingProjectId ? projects.filter((p) => p.status === 'ACTIVE') : [];
-  const showProjectPicker = otherProjects.length > 1;
+  // Cross-project picker (when enabled): any active project other than the
+  // booking's own is a valid destination — incl. delivering a general booking
+  // into a project.
+  const otherProjects = allowProject ? projects.filter((p) => p.status === 'ACTIVE' && p.id !== bookingProjectId) : [];
+  const showProjectPicker = otherProjects.length > 0;
   const [projectSheet, setProjectSheet] = useState(false);
   const receiving = projects.find((p) => p.id === form.receivingProjectId) ?? null;
   const projectOptions: SelectOption[] = otherProjects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));

@@ -203,8 +203,7 @@ async function insertDeliveryRows(
   tx: SQLiteExecutor,
   s: BookingSummary,
   input: DeliveryInput,
-  transferId: string | null,
-  materialCatId: string | null
+  xfer: { transferId: string; materialCatId: string; receivingName: string; sourceName: string } | null
 ): Promise<void> {
   await tx.runAsync(
     `INSERT INTO material_deliveries (id, created_at, created_by, booking_id, date, qty, project_id, transfer_id, note)
@@ -216,46 +215,77 @@ async function insertDeliveryRows(
     input.date,
     input.qty,
     input.projectId ?? null,
-    transferId,
+    xfer?.transferId ?? null,
     input.note ?? null
   );
 
-  const receiving = input.projectId ?? s.booking.project_id ?? null;
-  if (transferId && materialCatId && s.booking.project_id && receiving && receiving !== s.booking.project_id) {
-    const value = input.qty * s.booking.rate;
-    await insertTransaction(tx, {
-      direction: 'OUT',
-      amount: value,
-      date: input.date,
-      projectId: receiving,
-      phase: 'CONSTRUCTION',
-      categoryId: materialCatId,
-      bookingId: input.bookingId,
-      qty: input.qty,
-      counterpartyName: s.booking.supplier_name,
-      description: s.booking.item_name,
-      transferId,
-      createdBy: input.createdBy,
-    });
+  if (!xfer) return;
+  const receiving = input.projectId ?? s.booking.project_id!;
+  const value = input.qty * s.booking.rate;
+
+  // Cost lands on the RECEIVING project (cash-less OUT — no account), with a
+  // self-explanatory record: item, supplier, and where it came from.
+  await insertTransaction(tx, {
+    direction: 'OUT',
+    amount: value,
+    date: input.date,
+    projectId: receiving,
+    phase: 'CONSTRUCTION',
+    categoryId: xfer.materialCatId,
+    bookingId: input.bookingId,
+    qty: input.qty,
+    counterpartyName: s.booking.supplier_name,
+    description: xfer.sourceName ? `${s.booking.item_name} (from ${xfer.sourceName})` : s.booking.item_name,
+    transferId: xfer.transferId,
+    createdBy: input.createdBy,
+  });
+
+  // Credit removes it from the BOOKING's project (only if it had one), so its
+  // construction breakdown nets down — recorded as "sent to <receiving>".
+  if (s.booking.project_id) {
     await insertTransaction(tx, {
       direction: 'IN',
       amount: value,
       date: input.date,
       projectId: s.booking.project_id,
       phase: 'CONSTRUCTION',
-      categoryId: materialCatId,
+      categoryId: xfer.materialCatId,
       bookingId: input.bookingId,
-      description: s.booking.item_name,
-      transferId,
+      description: `${s.booking.item_name} (to ${xfer.receivingName})`,
+      transferId: xfer.transferId,
       createdBy: input.createdBy,
     });
   }
 }
 
-/** True when a delivery to `receivingProjectId` crosses the booking's project. */
+/** Resolve the cross-project transfer context (names + ids) before the tx. */
+async function resolveXfer(
+  s: BookingSummary,
+  input: DeliveryInput
+): Promise<{ transferId: string; materialCatId: string; receivingName: string; sourceName: string } | null> {
+  if (!isCrossProject(s, input.projectId)) return null;
+  const receiving = input.projectId ?? s.booking.project_id!;
+  return {
+    transferId: uuid(),
+    materialCatId: await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true),
+    receivingName: await projectNameOf(receiving),
+    sourceName: await projectNameOf(s.booking.project_id),
+  };
+}
+
+/** True when a delivery goes to a project OTHER than the booking's own (incl.
+ *  a general/no-project booking delivered into a project). */
 function isCrossProject(s: BookingSummary, receivingProjectId: string | null | undefined): boolean {
   const receiving = receivingProjectId ?? s.booking.project_id ?? null;
-  return !!receiving && !!s.booking.project_id && receiving !== s.booking.project_id;
+  return !!receiving && receiving !== s.booking.project_id;
+}
+
+/** Project name for a description (empty string if none). */
+async function projectNameOf(id: string | null): Promise<string> {
+  if (!id) return '';
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ name: string }>('SELECT name FROM projects WHERE id = ?', id);
+  return row?.name ?? '';
 }
 
 /**
@@ -267,15 +297,14 @@ export async function addDelivery(input: DeliveryInput): Promise<void> {
   const s = await getBookingSummary(input.bookingId);
   if (s.booking.project_id) await assertProjectActive(s.booking.project_id);
   assertDeliverable(s, input.qty, input.date);
+  if (input.projectId && input.projectId !== s.booking.project_id) await assertProjectActive(input.projectId);
 
-  const cross = isCrossProject(s, input.projectId);
-  if (cross && input.projectId) await assertProjectActive(input.projectId);
-  // find-or-create BEFORE the exclusive tx (it opens its own connection).
-  const transferId = cross ? uuid() : null;
-  const materialCatId = cross ? await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true) : null;
+  // Resolve the cross-project transfer BEFORE the exclusive tx (find-or-create
+  // + name lookups open their own connections and must not nest).
+  const xfer = await resolveXfer(s, input);
 
   const db = await getDatabase();
-  await db.withExclusiveTransactionAsync((tx) => insertDeliveryRows(tx, s, input, transferId, materialCatId));
+  await db.withExclusiveTransactionAsync((tx) => insertDeliveryRows(tx, s, input, xfer));
   await refreshStatus(input.bookingId);
 }
 
@@ -290,15 +319,14 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
   assertDeliverable(s, input.qty, input.date);
   if (input.payAmount <= 0) throw new Error('receiveAndPay: amount must be positive');
   if (input.payAmount > s.payRemaining + 0.001) throw new LimitExceededError(s.payRemaining, input.payAmount);
+  if (input.projectId && input.projectId !== s.booking.project_id) await assertProjectActive(input.projectId);
 
-  const cross = isCrossProject(s, input.projectId);
-  if (cross && input.projectId) await assertProjectActive(input.projectId);
-  const transferId = cross ? uuid() : null;
-  const materialCatId = await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true);
+  const xfer = await resolveXfer(s, input);
+  const payCatId = await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true);
 
   const db = await getDatabase();
   await db.withExclusiveTransactionAsync(async (tx) => {
-    await insertDeliveryRows(tx, s, input, transferId, materialCatId);
+    await insertDeliveryRows(tx, s, input, xfer);
     // Supplier payment (its own balance guard aborts the whole tx on overdraw).
     await insertTransaction(tx, {
       direction: 'OUT',
@@ -307,7 +335,7 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
       accountId: input.accountId,
       projectId: s.booking.project_id,
       phase: s.booking.project_id ? 'CONSTRUCTION' : 'GENERAL',
-      categoryId: materialCatId,
+      categoryId: payCatId,
       partyId: s.booking.party_id,
       counterpartyName: s.booking.supplier_name,
       bookingId: input.bookingId,
