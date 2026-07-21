@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -39,9 +39,10 @@ interface AppSheetProps {
  * title + subtitle; the body scrolls within a capped height; an optional footer
  * is pinned above the safe area behind a hairline.
  *
- * Keyboard: `behavior="padding"` on BOTH platforms. Inside a bottom-anchored
- * Modal, padding lifts the sheet above the keyboard and resets cleanly on
- * dismiss — 'height' left a residual gap on Android after the keyboard closed.
+ * Keyboard: the sheet does NOT lift — the header stays pinned at the top and
+ * the footer sits behind the keyboard. The body ScrollView insets for the
+ * keyboard (`automaticallyAdjustKeyboardInsets`) so focused inputs scroll into
+ * view. (Lifting the whole sheet pushed the header off the top of the screen.)
  */
 export function AppSheet({
   visible,
@@ -59,10 +60,22 @@ export function AppSheet({
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
 
+  // Track keyboard height so the scroll area can gain enough bottom room to
+  // lift a focused input above the keyboard — without moving the header/footer.
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const body = scroll ? (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: theme.spacing.sm + kb }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       bounces={false}
@@ -75,7 +88,7 @@ export function AppSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={styles.root} behavior="padding">
+      <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
 
         <View style={[styles.sheet, { maxHeight: screenHeight * maxHeightRatio }]}>
@@ -104,7 +117,7 @@ export function AppSheet({
             <View style={{ height: insets.bottom + theme.spacing.md }} />
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
