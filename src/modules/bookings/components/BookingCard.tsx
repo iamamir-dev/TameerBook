@@ -6,7 +6,7 @@ import { AppCard, AppIcon, AppText, LabelValueRow } from '@/components/ui';
 import type { BookingSummary } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
-import { formatPakistaniGrouping, formatRupees } from '@/utils/money';
+import { formatQty, formatRupees } from '@/utils/money';
 import { softToneColor } from '@/utils/tones';
 
 import { bookingStatusMeta } from '../utils/status';
@@ -51,7 +51,7 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
         <View style={[styles.pill, { backgroundColor: theme.colors.accentSoft }]}>
           <AppIcon name="material" size={12} color="accent" />
           <AppText size="xs" weight="bold" color="accent" tabular>
-            {`${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
+            {`${formatQty(booking.qty)}${unitSuffix}`}
           </AppText>
         </View>
         <View style={[styles.pill, { backgroundColor: theme.colors.goldSoft }]}>
@@ -84,7 +84,7 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
       <View style={styles.block}>
         <LabelValueRow
           label={t('receivedQty')}
-          value={`${formatPakistaniGrouping(qtyReceived)} / ${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
+          value={`${formatQty(qtyReceived)} / ${formatQty(booking.qty)}${unitSuffix}`}
         />
       </View>
 

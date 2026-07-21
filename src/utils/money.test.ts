@@ -4,6 +4,7 @@ import {
   CRORE,
   digitsOnly,
   formatPakistaniGrouping,
+  formatQty,
   formatRupees,
   LAKH,
   toReadableAmount,
@@ -38,6 +39,26 @@ describe('formatPakistaniGrouping', () => {
   it('uses the absolute integer part of numbers', () => {
     expect(formatPakistaniGrouping(-2_500_000)).toBe('25,00,000');
     expect(formatPakistaniGrouping(1234.99)).toBe('1,234');
+  });
+});
+
+describe('formatQty', () => {
+  it('keeps fractional units visible (unlike money truncation)', () => {
+    expect(formatQty(10.6)).toBe('10.6');
+    expect(formatQty(0.6)).toBe('0.6');
+    expect(formatQty(0.25)).toBe('0.25');
+    expect(formatQty(0.05)).toBe('0.05');
+  });
+
+  it('groups the whole part and drops trailing/zero decimals', () => {
+    expect(formatQty(10)).toBe('10');
+    expect(formatQty(1_234.5)).toBe('1,234.5');
+    expect(formatQty(0)).toBe('0');
+    expect(formatQty(2_500_000)).toBe('25,00,000');
+  });
+
+  it('handles negatives', () => {
+    expect(formatQty(-3.5)).toBe('-3.5');
   });
 });
 

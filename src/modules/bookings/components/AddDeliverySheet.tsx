@@ -21,7 +21,7 @@ import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
-import { formatPakistaniGrouping, formatRupees } from '@/utils/money';
+import { formatQty, formatRupees } from '@/utils/money';
 
 import { makeStyles } from '../styled/AddDeliverySheet.styles';
 
@@ -122,7 +122,7 @@ export function AddDeliverySheet({
           ? t('insufficientFunds')
           : null;
   const canSave = form.qty > 0 && !over && (!form.paidNow || (form.payAmount > 0 && !!form.accountId && !payError));
-  const remainingText = `${formatPakistaniGrouping(qtyRemaining)}${unit ? ` ${unit}` : ''}`;
+  const remainingText = `${formatQty(qtyRemaining)}${unit ? ` ${unit}` : ''}`;
 
   // project_id sent only when it differs from the booking's own project.
   const deliveryProjectId =

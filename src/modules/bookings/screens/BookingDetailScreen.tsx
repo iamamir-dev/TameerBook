@@ -18,15 +18,16 @@ import {
   PhoneChip,
   type LedgerRow,
 } from '@/components/ui';
-import { cancelBooking, deleteDelivery, type TransactionRow } from '@/db';
+import { cancelBooking, deleteDelivery, type MaterialDeliveryRow, type TransactionRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import { formatDisplayDate } from '@/utils/date';
-import { formatPakistaniGrouping, formatRupees } from '@/utils/money';
+import { formatQty, formatRupees } from '@/utils/money';
 
 import { AddDeliverySheet } from '../components/AddDeliverySheet';
+import { DeliveryDetailSheet } from '../components/DeliveryDetailSheet';
 import { PayBookingSheet } from '../components/PayBookingSheet';
 import { useBookingDetail } from '../hooks/useBookings';
 import { bookingStatusMeta } from '../utils/status';
@@ -48,6 +49,7 @@ export function BookingDetailScreen(): React.JSX.Element {
   const { run: runSave } = useSaveAction();
 
   const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
+  const [deliveryDetail, setDeliveryDetail] = useState<MaterialDeliveryRow | null>(null);
   const [deliverySheet, setDeliverySheet] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [paySheet, setPaySheet] = useState(false);
@@ -81,7 +83,7 @@ export function BookingDetailScreen(): React.JSX.Element {
   const { tone, labelKey } = bookingStatusMeta(summary);
   const active = booking.status === 'OPEN';
   const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
-  const fmtQty = (n: number) => `${formatPakistaniGrouping(n)}${unitSuffix}`;
+  const fmtQty = (n: number) => `${formatQty(n)}${unitSuffix}`;
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
   // Any action to offer? If not (a CLOSED or CANCELLED booking), hide the "+"
@@ -206,9 +208,8 @@ export function BookingDetailScreen(): React.JSX.Element {
                 return (
                   <Pressable
                     key={d.id}
-                    onLongPress={() => onDeleteDelivery(d.id)}
+                    onPress={() => setDeliveryDetail(d)}
                     accessibilityRole="button"
-                    accessibilityLabel={t('delete')}
                     style={({ pressed }) => [styles.deliveryRow, i > 0 && styles.ruled, pressed && styles.pressed]}
                   >
                     <View style={styles.deliveryLeft}>
@@ -218,6 +219,11 @@ export function BookingDetailScreen(): React.JSX.Element {
                       {toOther ? (
                         <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
                           {`→ ${projectName(d.project_id)}`}
+                        </AppText>
+                      ) : null}
+                      {d.note ? (
+                        <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                          {d.note}
                         </AppText>
                       ) : null}
                     </View>
@@ -275,6 +281,22 @@ export function BookingDetailScreen(): React.JSX.Element {
         onSaved={reload}
       />
       <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
+      <DeliveryDetailSheet
+        visible={!!deliveryDetail}
+        onClose={() => setDeliveryDetail(null)}
+        delivery={deliveryDetail}
+        unit={booking.unit}
+        destinationName={
+          deliveryDetail && deliveryDetail.project_id && deliveryDetail.project_id !== booking.project_id
+            ? projectName(deliveryDetail.project_id)
+            : null
+        }
+        onDelete={() => {
+          const id = deliveryDetail?.id;
+          setDeliveryDetail(null);
+          if (id) onDeleteDelivery(id);
+        }}
+      />
     </View>
   );
 }

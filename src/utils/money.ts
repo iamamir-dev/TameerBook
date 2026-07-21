@@ -58,6 +58,24 @@ export const toReadableAmount = (
 export const formatRupees = (value: number): string =>
   `Rs ${formatPakistaniGrouping(value)}`;
 
+/**
+ * Quantity display: Pakistani-grouped integer part plus up to two decimals
+ * (trailing zeros trimmed). Unlike {@link formatPakistaniGrouping} — which is
+ * money-oriented and truncates to whole units — this keeps fractional units
+ * (e.g. 10.6 bori, 0.25 ton) visible, so a partial remainder is never hidden
+ * and a booking can't silently look "fully received" while a sliver remains.
+ */
+export const formatQty = (value: number): string => {
+  const neg = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  const whole = Math.trunc(abs);
+  const intStr = formatPakistaniGrouping(whole);
+  const frac = Math.round((abs - whole) * 100) / 100;
+  if (frac === 0) return `${neg}${intStr}`;
+  const fracStr = frac.toFixed(2).slice(2).replace(/0+$/, '');
+  return `${neg}${intStr}.${fracStr}`;
+};
+
 /** Quick-add chip amounts surfaced in AmountInput. */
 export const QUICK_ADD_AMOUNTS = {
   tenK: 10_000,

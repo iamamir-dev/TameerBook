@@ -14,7 +14,7 @@ export function bookingStatusMeta(s: BookingSummary): { tone: ColorKey; labelKey
   if (booking.status === 'CANCELLED') return { tone: 'danger', labelKey: 'statusCancelled' };
   if (gotAll && paidAll) return { tone: 'success', labelKey: 'statusDone' }; // Completed
   if (gotAll && !paidAll) return { tone: 'gold', labelKey: 'statusToPay' }; // received, money owed
-  if (paidAll && !gotAll) return { tone: 'accent', labelKey: 'statusAwaitingDelivery' }; // paid, awaiting material
-  if (qtyReceived > 0) return { tone: 'accent', labelKey: 'statusPartial' }; // some received
+  if (qtyReceived > 0) return { tone: 'accent', labelKey: 'statusPartial' }; // some in, more to come
+  if (paidAll) return { tone: 'accent', labelKey: 'statusAwaitingDelivery' }; // paid up front, nothing in yet
   return { tone: 'accent', labelKey: 'statusOrdered' }; // nothing received/paid yet
 }

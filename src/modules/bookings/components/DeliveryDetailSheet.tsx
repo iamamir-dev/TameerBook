@@ -1,0 +1,51 @@
+import React from 'react';
+import { View } from 'react-native';
+
+import { AppButton, AppSheet, AppText, LabelValueRow } from '@/components/ui';
+import type { MaterialDeliveryRow } from '@/db';
+import { useTranslation } from '@/i18n';
+import { useTheme } from '@/theme';
+import { formatDisplayDate } from '@/utils/date';
+import { formatQty } from '@/utils/money';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+  delivery: MaterialDeliveryRow | null;
+  unit: string | null;
+  /** Receiving project name when the delivery went to a different project. */
+  destinationName: string | null;
+  onDelete: () => void;
+}
+
+/**
+ * One delivery's detail: quantity received, date, where it landed and any note —
+ * with a Remove action for a wrong entry (mirrors the payment detail drawer).
+ */
+export function DeliveryDetailSheet({ visible, onClose, delivery, unit, destinationName, onDelete }: Props): React.JSX.Element | null {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  if (!delivery) return null;
+  const unitSuffix = unit ? ` ${unit}` : '';
+
+  return (
+    <AppSheet
+      visible={visible}
+      onClose={onClose}
+      title={t('receivedQty')}
+      footer={<AppButton label={t('delete')} icon="trash" variant="danger" onPress={onDelete} />}
+    >
+      <LabelValueRow label={t('receivedQty')} value={`${formatQty(delivery.qty)}${unitSuffix}`} valueColor="success" />
+      <LabelValueRow label={t('date')} value={formatDisplayDate(delivery.date)} />
+      {destinationName ? <LabelValueRow label={t('deliverToProject')} value={destinationName} /> : null}
+      {delivery.note ? (
+        <View style={{ gap: theme.spacing.xs }}>
+          <AppText size="xs" weight="semibold" color="textSecondary">
+            {t('note')}
+          </AppText>
+          <AppText size="sm">{delivery.note}</AppText>
+        </View>
+      ) : null}
+    </AppSheet>
+  );
+}
