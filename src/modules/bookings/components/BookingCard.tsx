@@ -19,8 +19,9 @@ interface BookingCardProps {
 }
 
 /**
- * One material booking, read the way the owner reads it: "5000 bricks booked,
- * 1000 aa gayi (progress bar), Rs 3,000 diye — Rs 47,000 baqi."
+ * One material booking. Reads top-down: item + the deal (qty @ rate), then the
+ * supplier / project as separate pills, then the two balances — material still
+ * to receive (with a bar) and money still to pay.
  */
 export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.Element {
   const theme = useTheme();
@@ -28,13 +29,14 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
   const styles = makeStyles(theme);
 
   const { booking, qtyReceived, paid, payRemaining, projectName } = summary;
-  const subtitle = [booking.supplier_name, projectName].filter(Boolean).join(' · ');
   const { tone, labelKey } = bookingStatusMeta(booking.status);
   const percent = booking.qty > 0 ? (qtyReceived / booking.qty) * 100 : 0;
   const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
+  const deal = `${formatPakistaniGrouping(booking.qty)}${unitSuffix} @ ${formatRupees(booking.rate)}`;
 
   return (
     <AppCard onPress={onPress} style={styles.card}>
+      {/* Item + the deal, with the status badge */}
       <View style={styles.header}>
         <View style={[styles.iconChip, { backgroundColor: softToneColor(theme, tone) }]}>
           <AppIcon name="material" size={22} color={tone} />
@@ -43,15 +45,36 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
           <AppText size="md" weight="bold" numberOfLines={1}>
             {booking.item_name}
           </AppText>
-          {subtitle ? (
-            <AppText size="xs" color="textSecondary" numberOfLines={1}>
-              {subtitle}
-            </AppText>
-          ) : null}
+          <AppText size="xs" color="textSecondary" numberOfLines={1} tabular>
+            {deal}
+          </AppText>
         </View>
         <StageBadge tone={tone} label={t(labelKey)} />
-        <AppIcon name="forward" size={20} color="textSecondary" />
       </View>
+
+      {/* Supplier / project as separate, readable pills */}
+      {booking.supplier_name || projectName ? (
+        <View style={styles.metaRow}>
+          {booking.supplier_name ? (
+            <View style={styles.pill}>
+              <AppIcon name="investor" size={12} color="textSecondary" />
+              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                {booking.supplier_name}
+              </AppText>
+            </View>
+          ) : null}
+          {projectName ? (
+            <View style={styles.pill}>
+              <AppIcon name="project" size={12} color="textSecondary" />
+              <AppText size="xs" weight="semibold" color="textSecondary" numberOfLines={1}>
+                {projectName}
+              </AppText>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.divider} />
 
       {/* Material side: received / booked with a slim progress bar */}
       <View style={styles.block}>

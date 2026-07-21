@@ -15,4 +15,15 @@ export const makeStyles = (theme: Theme) =>
     },
     title: { flex: 1, gap: 2 },
     block: { gap: theme.spacing.xs },
+    metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 4,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.background,
+    },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
   });
