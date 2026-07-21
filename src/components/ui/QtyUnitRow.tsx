@@ -17,6 +17,8 @@ interface QtyUnitRowProps {
   label?: string;
   /** Change this (e.g. the sheet's visible flag) to reset the fields. */
   resetToken?: unknown;
+  /** Prefill the primary field on reset (e.g. when editing an existing row). */
+  initialPrimary?: number;
   /** Inline error (red borders + message), like AmountInput. */
   error?: string | null;
 }
@@ -67,16 +69,18 @@ function UnitCell({
  * combines them into the canonical PRIMARY value and shows the total. Without a
  * secondary unit it's a single field with its unit shown.
  */
-export function QtyUnitRow({ onQty, unit, label, resetToken, error }: QtyUnitRowProps): React.JSX.Element {
+export function QtyUnitRow({ onQty, unit, label, resetToken, initialPrimary, error }: QtyUnitRowProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
 
-  const [primaryRaw, setPrimaryRaw] = useState('');
+  const [primaryRaw, setPrimaryRaw] = useState(initialPrimary ? String(initialPrimary) : '');
   const [secondaryRaw, setSecondaryRaw] = useState('');
   useEffect(() => {
-    setPrimaryRaw('');
+    setPrimaryRaw(initialPrimary ? String(initialPrimary) : '');
     setSecondaryRaw('');
+    if (initialPrimary) onQty(initialPrimary);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetToken]);
 
   const secondary = hasSecondary(unit);

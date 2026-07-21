@@ -15,7 +15,7 @@ import {
   type MaterialSelection,
   type SelectOption,
 } from '@/components/ui';
-import { addParty, createBooking, listParties, listProjects, type PartyRow, type ProjectRow } from '@/db';
+import { addParty, createBooking, listParties, listProjects, updateBooking, type BookingSummary, type PartyRow, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -30,6 +30,8 @@ const EMPTY_UNIT: UnitDef = { primary: null, secondary: null, factor: null };
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** Pass a booking to edit its record in place; omit/null to create a new one. */
+  editing?: BookingSummary | null;
   onSaved: () => Promise<void> | void;
 }
 
@@ -58,7 +60,7 @@ const emptyForm = (): Form => ({
  * (secondary-unit aware) + rate + supplier + project. A typed supplier is saved
  * so it's reusable next time.
  */
-export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX.Element {
+export function NewBookingSheet({ visible, onClose, editing, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -72,17 +74,42 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
 
   useEffect(() => {
     if (!visible) return;
-    setForm(emptyForm());
+    const b = editing?.booking;
+    setForm(
+      b
+        ? {
+            material: { categoryId: null, name: b.item_name, unit: { primary: b.unit, secondary: null, factor: null } },
+            qty: b.qty,
+            rate: b.rate,
+            supplierName: b.supplier_name ?? '',
+            supplierPhone: '',
+            partyId: b.party_id,
+            projectId: b.project_id,
+          }
+        : emptyForm()
+    );
     listProjects().then((r) => setProjects(r.filter((p) => p.status === 'ACTIVE'))).catch(swallow('bookings:projects'));
     listParties('SUPPLIER').then(setParties).catch(swallow('bookings:parties'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // A booking with deliveries/payments can't move project or drop below what's
+  // already received (cost is posted against the current project).
+  const locked = !!editing && (editing.qtyReceived > 0.001 || editing.paid > 0.001);
+  const minQty = editing?.qtyReceived ?? 0;
 
   const total = form.qty * form.rate;
   const selectedProject = projects.find((p) => p.id === form.projectId) ?? null;
   const projectOptions: SelectOption[] = projects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));
   const hasSupplier = !!form.partyId || form.supplierName.trim().length > 0;
   const canSave =
-    form.material.name.trim().length > 0 && form.qty > 0 && form.rate > 0 && !!form.projectId && hasSupplier;
+    form.material.name.trim().length > 0 &&
+    form.qty > 0 &&
+    form.qty >= minQty - 0.001 &&
+    form.rate > 0 &&
+    form.qty * form.rate >= (editing?.paid ?? 0) - 0.001 &&
+    !!form.projectId &&
+    hasSupplier;
 
   const onSave = () => {
     if (!canSave || saving) return;
@@ -98,7 +125,7 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
             ? existing.id
             : (await addParty({ type: 'SUPPLIER', name, phone: form.supplierPhone.trim() || null })).id;
         }
-        await createBooking({
+        const fields = {
           itemName: form.material.name.trim(),
           qty: form.qty,
           rate: form.rate,
@@ -106,7 +133,12 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
           projectId: form.projectId,
           supplierName: name || null,
           partyId,
-        });
+        };
+        if (editing) {
+          await updateBooking(editing.booking.id, fields);
+        } else {
+          await createBooking(fields);
+        }
         await onSaved();
       });
       if (ok) onClose();
@@ -117,12 +149,18 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
     <AppSheet
       visible={visible}
       onClose={onClose}
-      title={t('newBooking')}
+      title={editing ? t('editBooking') : t('newBooking')}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />}
     >
       <MaterialItemPicker value={form.material} onChange={(material) => patch({ material })} />
 
-      <QtyUnitRow unit={form.material.unit} resetToken={visible} onQty={(qty) => patch({ qty })} />
+      <QtyUnitRow
+        unit={form.material.unit}
+        resetToken={visible}
+        initialPrimary={editing?.booking.qty}
+        onQty={(qty) => patch({ qty })}
+        error={form.qty > 0 && form.qty < minQty - 0.001 ? `${t('receivedQty')}: ${minQty}` : null}
+      />
 
       <AmountInput label={t('rateLabel')} value={form.rate} onChange={(rate) => patch({ rate })} floating surface={theme.colors.card} />
 
@@ -171,12 +209,17 @@ export function NewBookingSheet({ visible, onClose, onSaved }: Props): React.JSX
         </View>
       ) : null}
 
-      <Pressable onPress={() => setProjectSheet(true)} style={styles.chip} accessibilityRole="button">
+      <Pressable
+        onPress={() => !locked && setProjectSheet(true)}
+        disabled={locked}
+        style={styles.chip}
+        accessibilityRole="button"
+      >
         <AppIcon name="project" size={18} color="primary" />
         <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={selectedProject ? 'textPrimary' : 'textSecondary'}>
           {selectedProject?.name ?? t('selectProject')}
         </AppText>
-        <AppIcon name="forward" size={18} color="textSecondary" />
+        {!locked ? <AppIcon name="forward" size={18} color="textSecondary" /> : null}
       </Pressable>
 
       <SelectSheet

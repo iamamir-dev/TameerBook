@@ -469,6 +469,7 @@ export const en: TranslationKeys = {
   addDelivery: 'Add delivery',
   editDelivery: 'Edit delivery',
   editPayment: 'Edit payment',
+  editBooking: 'Edit booking',
   payBookingLabel: 'Pay supplier',
   payRemainingLabel: 'To pay',
   deliverToProject: 'Deliver to project',

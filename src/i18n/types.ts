@@ -512,6 +512,7 @@ export interface TranslationKeys {
   addDelivery: string;
   editDelivery: string;
   editPayment: string;
+  editBooking: string;
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;

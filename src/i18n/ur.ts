@@ -472,6 +472,7 @@ export const ur: TranslationKeys = {
   addDelivery: 'ڈیلیوری شامل کریں',
   editDelivery: 'ڈیلیوری تبدیل کریں',
   editPayment: 'ادائیگی تبدیل کریں',
+  editBooking: 'بکنگ تبدیل کریں',
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',
   deliverToProject: 'پراجیکٹ میں بھیجیں',

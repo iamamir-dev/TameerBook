@@ -62,6 +62,56 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
   ))!;
 }
 
+export interface BookingPatch {
+  itemName: string;
+  qty: number;
+  rate: number;
+  unit?: string | null;
+  projectId?: string | null;
+  partyId?: string | null;
+  supplierName?: string | null;
+}
+
+/**
+ * Edit the booking record itself (item, qty, rate, supplier, project). Guarded
+ * so it can't contradict what already happened: the new quantity can't drop
+ * below what's been received, and the new order value can't drop below what's
+ * already been paid. The project can only change while the booking has no
+ * activity (deliveries/payments post cost against the current project).
+ */
+export async function updateBooking(id: string, patch: BookingPatch): Promise<void> {
+  if (patch.qty <= 0) throw new Error('updateBooking: qty must be positive');
+  if (patch.rate < 0) throw new Error('updateBooking: rate cannot be negative');
+
+  const s = await getBookingSummary(id);
+  if (s.booking.status === 'CANCELLED') throw new Error('updateBooking: cannot edit a cancelled booking');
+  if (patch.qty < s.qtyReceived - 0.001) throw new LimitExceededError(s.qtyReceived, patch.qty);
+
+  const total = patch.qty * patch.rate;
+  if (total < s.paid - 0.001) throw new LimitExceededError(s.paid, total);
+
+  const hasActivity = s.qtyReceived > 0.001 || s.paid > 0.001;
+  const nextProjectId = hasActivity ? s.booking.project_id : patch.projectId ?? null;
+  if (nextProjectId && nextProjectId !== s.booking.project_id) await assertProjectActive(nextProjectId);
+
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE material_bookings
+       SET item_name = ?, unit = ?, qty = ?, rate = ?, total = ?, project_id = ?, party_id = ?, supplier_name = ?
+     WHERE id = ?`,
+    patch.itemName,
+    patch.unit ?? null,
+    patch.qty,
+    patch.rate,
+    total,
+    nextProjectId,
+    patch.partyId ?? null,
+    patch.supplierName ?? null,
+    id
+  );
+  await refreshStatus(id);
+}
+
 export interface BookingSummary {
   booking: MaterialBookingRow;
   /** Σ delivered qty. */

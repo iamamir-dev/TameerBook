@@ -26,6 +26,7 @@ import { formatQty, formatRupees } from '@/utils/money';
 
 import { AddDeliverySheet } from '../components/AddDeliverySheet';
 import { DeliveryDetailSheet } from '../components/DeliveryDetailSheet';
+import { NewBookingSheet } from '../components/NewBookingSheet';
 import { PayBookingSheet } from '../components/PayBookingSheet';
 import { useBookingDetail } from '../hooks/useBookings';
 import { bookingStatusMeta } from '../utils/status';
@@ -52,6 +53,7 @@ export function BookingDetailScreen(): React.JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [paySheet, setPaySheet] = useState(false);
   const [editPayment, setEditPayment] = useState<TransactionRow | null>(null);
+  const [editBookingOpen, setEditBookingOpen] = useState(false);
 
   // Supplier payments → the shared ActivityList (tap → detail → Edit), the same
   // component the Investors module uses for its capital history.
@@ -88,9 +90,12 @@ export function BookingDetailScreen(): React.JSX.Element {
   const fmtQty = (n: number) => `${formatQty(n)}${unitSuffix}`;
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
-  // Any action to offer? If not (a CLOSED or CANCELLED booking), hide the "+"
-  // so it can never open an empty actions drawer.
-  const hasActions = showDelivery || showPay || active;
+  // The booking record can be edited unless it's cancelled (fix a typo, qty or
+  // rate) — the repo guards against dropping below what's received/paid.
+  const canEdit = booking.status !== 'CANCELLED';
+  // Any action to offer? If not (a CANCELLED booking), hide the "+" so it can
+  // never open an empty actions drawer.
+  const hasActions = showDelivery || showPay || active || canEdit;
 
   const onDeleteDelivery = (id: string) => {
     Alert.alert(t('addDelivery'), t('deleteConfirm'), [
@@ -258,6 +263,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         actions={[
           ...(showDelivery ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => setDeliverySheet(true) }] : []),
           ...(showPay ? [{ icon: 'moneyOut' as const, label: t('payBookingLabel'), onPress: () => setPaySheet(true) }] : []),
+          ...(canEdit ? [{ icon: 'edit' as const, label: t('editBooking'), onPress: () => setEditBookingOpen(true) }] : []),
           ...(active ? [{ icon: 'trash' as const, label: t('cancelBookingLabel'), onPress: onCancelBooking }] : []),
         ]}
       />
@@ -276,6 +282,12 @@ export function BookingDetailScreen(): React.JSX.Element {
         accounts={accounts}
         projects={projects}
         editing={editDelivery}
+        onSaved={reload}
+      />
+      <NewBookingSheet
+        visible={editBookingOpen}
+        onClose={() => setEditBookingOpen(false)}
+        editing={summary}
         onSaved={reload}
       />
       <PayBookingSheet
