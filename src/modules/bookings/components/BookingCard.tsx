@@ -46,18 +46,18 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
         <StageBadge tone={tone} label={t(labelKey)} />
       </View>
 
-      {/* The deal + parties as separate badges (wrap to the next line). */}
+      {/* The deal + parties as colour-coded badges (wrap to the next line). */}
       <View style={styles.metaRow}>
-        <View style={styles.pill}>
-          <AppIcon name="material" size={12} color="primary" />
-          <AppText size="xs" weight="bold" color="textPrimary" tabular>
+        <View style={[styles.pill, { backgroundColor: theme.colors.accentSoft }]}>
+          <AppIcon name="material" size={12} color="accent" />
+          <AppText size="xs" weight="bold" color="accent" tabular>
             {`${formatPakistaniGrouping(booking.qty)}${unitSuffix}`}
           </AppText>
         </View>
-        <View style={styles.pill}>
-          <AppIcon name="rupee" size={12} color="primary" />
-          <AppText size="xs" weight="bold" color="textPrimary" tabular>
-            {`${formatRupees(booking.rate)}`}
+        <View style={[styles.pill, { backgroundColor: theme.colors.goldSoft }]}>
+          <AppIcon name="rupee" size={12} color="gold" />
+          <AppText size="xs" weight="bold" color="gold" tabular>
+            {formatRupees(booking.total)}
           </AppText>
         </View>
         {booking.supplier_name ? (
