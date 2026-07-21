@@ -10,7 +10,7 @@ import { nowISO, todayLocalISO, uuid } from '../uuid';
 import { categoryIdByName } from './categories';
 import { requireCompanyId } from './companies';
 import { assertProjectActive } from './guards';
-import { addTransaction, LimitExceededError } from './transactions';
+import { addTransaction, applyTransactionPatch, getTransaction, LimitExceededError } from './transactions';
 
 /**
  * Thrown when a worker already earned a dihari on ANOTHER project that day —
@@ -350,6 +350,37 @@ export async function payLaborer(input: PayLaborerInput): Promise<void> {
   });
 }
 
+export interface LaborPaymentPatch {
+  amount?: number;
+  date?: string;
+  accountId?: string;
+  note?: string | null;
+}
+
+/**
+ * Edit a wage payment IN PLACE. The linked `labor_id` puts it off-limits to the
+ * generic `updateTransaction`, so this re-checks the worker-owed cap (freeing
+ * this row's own amount back) and applies the shared patch (account overdraw
+ * guard). Kept on the SAME participation — reassigning projects isn't allowed.
+ */
+export async function updateLaborPayment(id: string, patch: LaborPaymentPatch): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) throw new Error(`updateLaborPayment: ${id} not found`);
+  if (!t.labor_id) throw new Error('updateLaborPayment: not a labor payment');
+
+  const { balance } = await getLaborBalance(t.labor_id);
+  const amount = patch.amount ?? t.amount;
+  const maxAllowed = balance + t.amount; // owed excluding this row
+  if (amount > maxAllowed + 0.001) throw new LimitExceededError(maxAllowed, amount);
+
+  await applyTransactionPatch(t, {
+    amount,
+    date: patch.date,
+    accountId: patch.accountId,
+    description: patch.note,
+  });
+}
+
 export interface LaborBalance {
   /** Σ wage_accrued over all attendance. */
   accrued: number;
@@ -524,6 +555,14 @@ export interface LaborerKhataEntry {
   attendanceStatus: AttendanceStatus | null;
   /** Positive accrual for attendance, positive payment amount for payments. */
   amount: number;
+  /** Which participation this row belongs to (for editing either kind). */
+  projectLaborerId: string;
+  /** The backing OUT transaction id — payments only (for edit in place). */
+  txnId: string | null;
+  /** The attendance row id — attendance only (for re-mark editing). */
+  attendanceId: string | null;
+  /** Payment description / attendance note. */
+  note: string | null;
 }
 
 export interface LaborerKhata {
@@ -570,14 +609,16 @@ export async function getLaborerKhata(laborerId: string): Promise<LaborerKhata> 
 
   const history = await db.getAllAsync<LaborerKhataEntry>(
     `SELECT la.date, COALESCE(pr.name, '') AS projectName, 'ATTENDANCE' AS kind,
-            la.status AS attendanceStatus, la.wage_accrued AS amount
+            la.status AS attendanceStatus, la.wage_accrued AS amount,
+            pl.id AS projectLaborerId, NULL AS txnId, la.id AS attendanceId, la.note AS note
      FROM labor_attendance la
      JOIN project_laborers pl ON pl.id = la.project_laborer_id
      JOIN projects pr ON pr.id = pl.project_id
      WHERE pl.laborer_id = ?
      UNION ALL
      SELECT t.date, COALESCE(pr.name, '') AS projectName, 'PAYMENT' AS kind,
-            NULL AS attendanceStatus, t.amount AS amount
+            NULL AS attendanceStatus, t.amount AS amount,
+            pl.id AS projectLaborerId, t.id AS txnId, NULL AS attendanceId, t.description AS note
      FROM transactions t
      JOIN project_laborers pl ON pl.id = t.labor_id
      JOIN projects pr ON pr.id = pl.project_id

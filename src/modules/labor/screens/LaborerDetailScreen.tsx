@@ -3,8 +3,17 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 
+import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { AppButton, AppHeader, AppText, ContactRow, LoadErrorState, StickyFooter } from '@/components/ui';
-import { markAttendance, type AttendanceStatus, type LaborerProjectParticipation } from '@/db';
+import {
+  getTransaction,
+  markAttendance,
+  type AttendanceStatus,
+  type LaborerKhataEntry,
+  type LaborerProjectParticipation,
+  type TransactionRow,
+} from '@/db';
+import { swallow } from '@/utils/log';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -47,6 +56,8 @@ export function LaborerDetailScreen(): React.JSX.Element {
   const [attachOpen, setAttachOpen] = useState(false);
   const [wageFor, setWageFor] = useState<LaborerProjectParticipation | null>(null);
   const [calendarFor, setCalendarFor] = useState<LaborerProjectParticipation | null>(null);
+  const [detailTxn, setDetailTxn] = useState<TransactionRow | null>(null);
+  const [editPayment, setEditPayment] = useState<TransactionRow | null>(null);
   // Optimistic today-status overlay per participation (instant pill feedback).
   const [optimistic, setOptimistic] = useState<Record<string, AttendanceStatus>>({});
   const [savingPlId, setSavingPlId] = useState<string | null>(null);
@@ -61,6 +72,19 @@ export function LaborerDetailScreen(): React.JSX.Element {
     );
     return projects.filter((p) => p.status === 'ACTIVE' && !attached.has(p.id));
   }, [projects, khata]);
+
+  // Tap a history row: a payment opens the shared detail sheet (→ Edit), an
+  // attendance row opens that project's calendar to re-mark the day.
+  const onSelectHistory = (e: LaborerKhataEntry) => {
+    if (e.kind === 'PAYMENT' && e.txnId) {
+      void getTransaction(e.txnId)
+        .then((txn) => txn && setDetailTxn(txn))
+        .catch(swallow('labor:txn'));
+      return;
+    }
+    const p = (khata?.participations ?? []).find((x) => x.projectLaborer.id === e.projectLaborerId);
+    if (p) setCalendarFor(p);
+  };
 
   const onMarkAttendance = (p: LaborerProjectParticipation, status: AttendanceStatus) => {
     const plId = p.projectLaborer.id;
@@ -130,7 +154,7 @@ export function LaborerDetailScreen(): React.JSX.Element {
             />
           ))}
 
-          <KhataHistoryList history={khata.history} />
+          <KhataHistoryList history={khata.history} onSelect={onSelectHistory} />
         </ScrollView>
       ) : (
         <View style={styles.flex} />
@@ -154,11 +178,35 @@ export function LaborerDetailScreen(): React.JSX.Element {
       </StickyFooter>
 
       <PayWorkerSheet
-        visible={payOpen}
-        onClose={() => setPayOpen(false)}
+        visible={payOpen || !!editPayment}
+        onClose={() => {
+          setPayOpen(false);
+          setEditPayment(null);
+        }}
         participations={khata?.participations ?? []}
         accounts={accounts}
+        editing={editPayment}
         onSaved={reload}
+      />
+
+      {/* Payment detail (shared sheet) → Edit reopens PayWorkerSheet in edit mode. */}
+      <TransactionDetailSheet
+        txn={detailTxn}
+        onClose={() => setDetailTxn(null)}
+        footer={
+          detailTxn ? (
+            <AppButton
+              label={t('edit')}
+              icon="edit"
+              variant="secondary"
+              onPress={() => {
+                const txn = detailTxn;
+                setDetailTxn(null);
+                setEditPayment(txn);
+              }}
+            />
+          ) : undefined
+        }
       />
 
       <AttachProjectSheet

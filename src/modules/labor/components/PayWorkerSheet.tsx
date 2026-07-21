@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AppText, MoneyEntrySheet } from '@/components/ui';
-import { payLaborer, type AccountWithBalance, type LaborerProjectParticipation } from '@/db';
+import { payLaborer, updateLaborPayment, type AccountWithBalance, type LaborerProjectParticipation, type TransactionRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -17,6 +17,8 @@ interface PayWorkerSheetProps {
   /** All of the worker's participations; only those still owed are payable. */
   participations: LaborerProjectParticipation[];
   accounts: AccountWithBalance[];
+  /** Pass a payment to edit in place; omit/null to add a new one. */
+  editing?: TransactionRow | null;
   /** Reload the khata after the payment lands. */
   onSaved: () => Promise<void>;
 }
@@ -26,19 +28,21 @@ interface Form {
   amount: number;
   accountId: string | null;
   date: string;
+  note: string;
 }
 
 /**
- * Pay a worker from their khata — on the shared `MoneyEntrySheet`. A payment
- * always books to ONE participation (that project's cost); when owed on several,
- * the header chips pick which. Owed hint quick-fills and caps the amount (V-9),
- * and the date is back-datable.
+ * Pay a worker — or edit a wage payment in place — on the shared `MoneyEntrySheet`.
+ * A payment always books to ONE participation (that project's cost); the header
+ * chips pick which when adding. Editing fixes the participation to the payment's
+ * own and frees its amount back into the owed cap.
  */
 export function PayWorkerSheet({
   visible,
   onClose,
   participations,
   accounts,
+  editing,
   onSaved,
 }: PayWorkerSheetProps): React.JSX.Element {
   const theme = useTheme();
@@ -47,7 +51,7 @@ export function PayWorkerSheet({
   const { saving, run } = useSaveAction();
 
   const payables = participations.filter((p) => p.balance.balance > 0);
-  const [form, setForm] = useState<Form>({ plId: null, amount: 0, accountId: null, date: todayISO().slice(0, 10) });
+  const [form, setForm] = useState<Form>({ plId: null, amount: 0, accountId: null, date: todayISO().slice(0, 10), note: '' });
   const patch = (p: Partial<Form>) => setForm((s) => ({ ...s, ...p }));
 
   // Reset ONLY when the sheet opens. Keying on participations/accounts (which
@@ -56,38 +60,48 @@ export function PayWorkerSheet({
   useEffect(() => {
     if (!visible) return;
     setForm({
-      plId: payables[0]?.projectLaborer.id ?? null,
-      amount: 0,
-      accountId: accounts[0]?.id ?? null,
-      date: todayISO().slice(0, 10),
+      plId: editing?.labor_id ?? payables[0]?.projectLaborer.id ?? null,
+      amount: editing?.amount ?? 0,
+      accountId: editing?.account_id ?? accounts[0]?.id ?? null,
+      date: editing?.date ?? todayISO().slice(0, 10),
+      note: editing?.description ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const selected = payables.find((p) => p.projectLaborer.id === form.plId) ?? null;
-  const owed = selected?.balance.balance ?? 0;
+  // Editing fixes the participation to the payment's own (even if now fully paid).
+  const selected = editing
+    ? participations.find((p) => p.projectLaborer.id === editing.labor_id) ?? null
+    : payables.find((p) => p.projectLaborer.id === form.plId) ?? null;
+  const ownAmount = editing?.amount ?? 0;
+  const owed = (selected?.balance.balance ?? 0) + ownAmount;
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
+  const accountCap = account ? account.balance + (editing && editing.account_id === account.id ? ownAmount : 0) : 0;
 
   const amountError =
     form.amount <= 0
       ? null
       : form.amount > owed
         ? t('exceedsRemaining')
-        : account && form.amount > account.balance
+        : account && form.amount > accountCap
           ? t('insufficientFunds')
           : null;
 
-  const canSave =
-    form.amount > 0 &&
-    form.plId !== null &&
-    form.accountId !== null &&
-    form.amount <= owed &&
-    (!account || form.amount <= account.balance);
+  const canSave = form.amount > 0 && form.plId !== null && form.accountId !== null && !amountError;
 
   const onSave = (): void => {
     if (!canSave || saving || !form.plId || !form.accountId) return;
     void run(async () => {
-      await payLaborer({ projectLaborerId: form.plId!, amount: form.amount, date: form.date, accountId: form.accountId! });
+      if (editing) {
+        await updateLaborPayment(editing.id, {
+          amount: form.amount,
+          date: form.date,
+          accountId: form.accountId!,
+          note: form.note.trim() || null,
+        });
+      } else {
+        await payLaborer({ projectLaborerId: form.plId!, amount: form.amount, date: form.date, accountId: form.accountId!, note: form.note.trim() || null });
+      }
       onClose();
       await onSaved();
     });
@@ -95,7 +109,7 @@ export function PayWorkerSheet({
 
   const header = (
     <>
-      {payables.length > 1 ? (
+      {!editing && payables.length > 1 ? (
         <View style={styles.chipWrap}>
           {payables.map((p) => {
             const sel = form.plId === p.projectLaborer.id;
@@ -131,7 +145,7 @@ export function PayWorkerSheet({
     <MoneyEntrySheet
       visible={visible}
       onClose={onClose}
-      title={t('payWorker')}
+      title={editing ? t('editPayment') : t('payWorker')}
       header={header}
       amount={form.amount}
       onAmountChange={(v) => patch({ amount: v })}
@@ -141,9 +155,11 @@ export function PayWorkerSheet({
       onAccountChange={(id) => patch({ accountId: id })}
       date={form.date}
       onDateChange={(d) => patch({ date: d })}
+      note={form.note}
+      onNoteChange={(note) => patch({ note })}
       onSave={onSave}
       saving={saving}
-      saveLabel={t('payWorker')}
+      saveLabel={editing ? t('save') : t('payWorker')}
       saveDisabled={!canSave}
     />
   );

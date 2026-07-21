@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AppCard, AppText } from '@/components/ui';
 import type { LaborerKhataEntry } from '@/db';
@@ -16,6 +16,8 @@ interface KhataHistoryListProps {
   hideTitle?: boolean;
   /** Unified attendance + payment history across projects, newest first. */
   history: LaborerKhataEntry[];
+  /** Tap a row to open it (payment → detail/edit, attendance → re-mark). */
+  onSelect?: (entry: LaborerKhataEntry) => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface KhataHistoryListProps {
  * wage earned) and wage payments, mixed by date across projects. Accruals read
  * as + (green), payments as − (red) — the two directions of a khata.
  */
-export function KhataHistoryList({ history, hideTitle }: KhataHistoryListProps): React.JSX.Element {
+export function KhataHistoryList({ history, hideTitle, onSelect }: KhataHistoryListProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -50,7 +52,12 @@ export function KhataHistoryList({ history, hideTitle }: KhataHistoryListProps):
             return (
               <View key={`${e.kind}-${e.date}-${i}`}>
                 {i > 0 ? <View style={styles.divider} /> : null}
-                <View style={styles.row}>
+                <Pressable
+                  onPress={onSelect ? () => onSelect(e) : undefined}
+                  disabled={!onSelect}
+                  accessibilityRole={onSelect ? 'button' : undefined}
+                  style={({ pressed }) => [styles.row, pressed && onSelect ? styles.pressed : null]}
+                >
                   <View style={[styles.chip, { backgroundColor: chipBg }]}>
                     <AppText size="xs" weight="bold" color={tone}>
                       {chipLabel}
@@ -67,7 +74,7 @@ export function KhataHistoryList({ history, hideTitle }: KhataHistoryListProps):
                   <AppText size="sm" weight="bold" color={absent ? 'textSecondary' : tone} tabular>
                     {absent ? '—' : `${payment ? '− ' : '+ '}${formatRupees(e.amount)}`}
                   </AppText>
-                </View>
+                </Pressable>
               </View>
             );
           })
