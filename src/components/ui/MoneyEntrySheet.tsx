@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import type { AccountWithBalance } from '@/db';
 import { useTranslation } from '@/i18n';
@@ -12,6 +12,7 @@ import { AmountInput } from './AmountInput';
 import { AppButton } from './AppButton';
 import { AppSheet } from './AppSheet';
 import { AppText } from './AppText';
+import { FloatingLabelInput } from '../FloatingLabelInput';
 import { DateField } from './DateField';
 
 interface MoneyEntrySheetProps {
@@ -145,19 +146,7 @@ export function MoneyEntrySheet({
       ) : null}
 
       {showNote ? (
-        <View style={styles.field}>
-          <AppText size="sm" weight="semibold" color="textSecondary">
-            {t('note')}
-          </AppText>
-          <TextInput
-            value={note}
-            onChangeText={onNoteChange}
-            placeholder={t('note')}
-            placeholderTextColor={theme.colors.textSecondary}
-            style={styles.noteInput}
-            multiline
-          />
-        </View>
+        <FloatingLabelInput label={t('note')} value={note ?? ''} onChangeText={onNoteChange!} multiline />
       ) : null}
 
       {extra}
@@ -168,15 +157,4 @@ export function MoneyEntrySheet({
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     field: { gap: theme.spacing.xs },
-    noteInput: {
-      fontFamily: theme.typography.weights.regular,
-      fontSize: theme.typography.sizes.md,
-      color: theme.colors.textPrimary,
-      backgroundColor: theme.colors.background,
-      borderRadius: theme.radius.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.md,
-      minHeight: theme.touch.minTarget,
-      textAlignVertical: 'top',
-    },
   });

@@ -25,6 +25,8 @@ interface FloatingLabelInputProps {
    * `####-#######`). Forces a numeric keypad and stores the formatted string.
    */
   mask?: MaskType;
+  /** Render as a growing multi-line text area (label floats to the top line). */
+  multiline?: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export function FloatingLabelInput({
   keyboardType,
   hint,
   mask,
+  multiline,
 }: FloatingLabelInputProps): React.JSX.Element {
   // A masked field re-formats every keystroke and always types on a numpad.
   const handleChange = (text: string) => onChangeText(mask ? applyMask(mask, text) : text);
@@ -58,8 +61,11 @@ export function FloatingLabelInput({
     active.value = withTiming(focused || value.length > 0 ? 1 : 0, { duration: 160 });
   }, [focused, value, active]);
 
-  // Active: lift the centered label up onto the top border line.
-  const floatTo = -(theme.touch.minTarget / 2);
+  // Single-line: lift the vertically-centered label onto the border. Multi-line:
+  // the label sits on the first text line, so lift it from there instead.
+  const floatTo = multiline
+    ? -(theme.spacing.md + theme.typography.sizes.md / 2 + 2)
+    : -(theme.touch.minTarget / 2);
 
   const labelStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: interpolate(active.value, [0, 1], [0, floatTo]) }],
@@ -73,19 +79,20 @@ export function FloatingLabelInput({
 
   return (
     <View>
-      <View style={[styles.box, focused && styles.boxFocused]}>
+      <View style={[styles.box, multiline && styles.boxMultiline, focused && styles.boxFocused]}>
         <TextInput
           value={value}
           onChangeText={handleChange}
           keyboardType={mask ? 'number-pad' : keyboardType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          style={styles.input}
+          style={[styles.input, multiline && styles.inputMultiline]}
           accessibilityLabel={label}
+          multiline={multiline}
         />
         {/* Overlay that fills the box and vertically centers the label; it's
             non-interactive so taps still reach the input beneath. */}
-        <View pointerEvents="none" style={styles.labelWrap}>
+        <View pointerEvents="none" style={[styles.labelWrap, multiline && styles.labelWrapMultiline]}>
           <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
             {label}
           </Animated.Text>
@@ -114,6 +121,12 @@ const makeStyles = (theme: Theme) =>
     boxFocused: {
       borderColor: theme.colors.accent,
     },
+    boxMultiline: {
+      height: undefined,
+      minHeight: 92,
+      paddingVertical: theme.spacing.md,
+      justifyContent: 'flex-start',
+    },
     /* fills the box; flexbox centers the label exactly like the input text */
     labelWrap: {
       position: 'absolute',
@@ -123,6 +136,12 @@ const makeStyles = (theme: Theme) =>
       right: theme.spacing.md,
       justifyContent: 'center',
       alignItems: 'flex-start',
+    },
+    /* Multi-line: pin the label to the first text line instead of centering. */
+    labelWrapMultiline: {
+      bottom: undefined,
+      justifyContent: 'flex-start',
+      paddingTop: theme.spacing.md,
     },
     label: {
       // background matches the field/screen so it notches the border cleanly
@@ -140,6 +159,10 @@ const makeStyles = (theme: Theme) =>
       fontSize: theme.typography.sizes.md,
       color: theme.colors.textPrimary,
       includeFontPadding: false,
+    },
+    inputMultiline: {
+      flex: 1,
+      textAlignVertical: 'top',
     },
     hint: {
       marginTop: theme.spacing.xs,

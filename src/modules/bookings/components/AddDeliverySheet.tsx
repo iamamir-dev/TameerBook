@@ -205,7 +205,7 @@ export function AddDeliverySheet({
         <DateField value={form.date} onChange={(d) => patch({ date: d })} maxDate={today} />
       </View>
 
-      <FloatingLabelInput label={t('note')} value={form.note} onChangeText={(v) => patch({ note: v })} />
+      <FloatingLabelInput label={t('note')} value={form.note} onChangeText={(v) => patch({ note: v })} multiline />
 
       {/* Paying now only makes sense for a NEW delivery; editing a delivery
           leaves the supplier payment to its own edit flow. */}
