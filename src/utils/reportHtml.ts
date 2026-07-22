@@ -58,12 +58,17 @@ export type ReportBlock =
       kind: 'table';
       /** Uppercase section heading with the accent side-bar. */
       title?: string;
+      /** Value shown on the right of the heading (e.g. a per-section rate). */
+      titleRight?: string;
       columns: ReportColumn[];
       rows: ReportCell[][];
       /** Totals row — separated by the accounting double rule. */
       totals?: ReportCell[];
+      /** Right-aligned label/value strip under the table (e.g. earned/taken). */
+      summary?: { label: string; value: string; tone?: 'green' | 'red' | 'gold' }[];
     }
   | { kind: 'notes'; lines: { label: string; value: string }[] }
+  | { kind: 'divider' }
   | { kind: 'signatures'; title: string; names: string[] };
 
 /** A complete branded document. */
@@ -133,14 +138,22 @@ function renderBlock(b: ReportBlock): string {
             .map((cell, i) => `<td class="${cellClass(b.columns[i], cell)}">${cellHtml(cell)}</td>`)
             .join('')}</tr>`
         : '';
+      const heading = b.title
+        ? `<h3 class="${b.titleRight ? 'withright' : ''}">${b.title}${b.titleRight ? `<span class="titleright">${b.titleRight}</span>` : ''}</h3>`
+        : '';
+      const summary = b.summary
+        ? `\n    <div class="tsummary">${b.summary
+            .map((s) => `<span class="ts"><span class="tsk">${s.label}</span><span class="tsv ${s.tone ?? ''}">${s.value}</span></span>`)
+            .join('')}</div>`
+        : '';
       return `
-    ${b.title ? `<h3>${b.title}</h3>` : ''}
+    ${heading}
     <table>
       <thead><tr>${head}</tr></thead>
       <tbody>
         ${body}${totals}
       </tbody>
-    </table>`;
+    </table>${summary}`;
     }
     case 'notes':
       if (b.lines.length === 0) return '';
@@ -148,6 +161,8 @@ function renderBlock(b: ReportBlock): string {
     <div class="notes">
       ${b.lines.map((l) => `<div class="note">${l.label}: <b>${l.value}</b></div>`).join('\n      ')}
     </div>`;
+    case 'divider':
+      return `\n    <div class="rdivider"></div>`;
     case 'signatures':
       return `
     <div class="sigblock">
@@ -164,6 +179,10 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     : `<div class="clogo cfallback">${doc.company.name.charAt(0).toUpperCase()}</div>`;
 
   const sublines = (doc.sublines ?? []).filter((x): x is string => !!x);
+  // Footer content is rendered twice: an invisible copy in <tfoot> reserves its
+  // height on every page (so content never overlaps), and a fixed copy paints it
+  // flush at the physical bottom of every page — including a short last page.
+  const footerInner = `<img class="flogo" src="data:image/png;base64,${assets.wordmark}"/><div class="flegal">${doc.company.name} · ${doc.dateText} · ${doc.madeWith}</div>`;
 
   return `
   <style>
@@ -173,9 +192,21 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { margin: 0; }
     body { font-family: 'AppFont','Naskh',sans-serif; color: ${C.text}; background: #fff; -webkit-print-color-adjust: exact; }
-    /* Brand band across the very top of the sheet. */
-    .band { height: 7px; background: linear-gradient(90deg, ${C.accent} 0%, ${C.accent} 55%, ${C.gold} 100%); }
-    .page { display: flex; flex-direction: column; min-height: calc(100vh - 7px); padding: 26px 36px 18px; }
+    /* Table layout drives pagination: the thead REPEATS on every printed page
+       and the print engine reserves its height, so content never runs under it. */
+    /* The outer layout table has NO borders (separate, not collapse — collapse
+       renders a faint edge-to-edge line at the thead/tbody seam that doubles up
+       with the header's own divider). */
+    .sheet { width: 100%; border-collapse: separate; border-spacing: 0; border: 0; }
+    /* thead/tfoot REPEAT on every printed page; the engine reserves their space
+       so content never overlaps and no blank band is left behind. */
+    .sheet > thead { display: table-header-group; }
+    .sheet > tfoot { display: table-footer-group; }
+    .sheet > thead > tr > td, .sheet > tbody > tr > td, .sheet > tfoot > tr > td { padding: 0; border: 0; }
+    .headpad { padding: 20px 36px 12px; }
+    .bodypad { padding: 14px 36px 18px; }
+    /* Light divider + breathing room between project sections. */
+    .rdivider { height: 0; border-top: 1px solid ${C.border}; margin: 24px 0 4px; }
 
     /* ── Header bar: company brand left · app brand right ─────────────── */
     .header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 1.5px solid ${C.border}; }
@@ -211,7 +242,17 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     .stat.net .v { color: #fff; font-size: 20px; }
 
     /* ── Sections & tables ─────────────────────────────────────────────── */
-    h3 { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: ${C.textMid}; margin: 18px 0 8px; border-left: 3px solid ${C.accent}; padding-left: 9px; }
+    h3 { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: ${C.textMid}; margin: 18px 0 8px; border-left: 3px solid ${C.accent}; padding-left: 9px; break-after: avoid; }
+    h3.withright { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    h3 .titleright { font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: none; color: ${C.textMid}; }
+    /* Right-aligned per-section totals strip. */
+    .tsummary { display: flex; flex-wrap: wrap; gap: 20px; justify-content: flex-end; margin-top: 9px; }
+    .ts { display: flex; align-items: baseline; gap: 6px; }
+    .tsk { font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: ${C.textSoft}; }
+    .tsv { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tsv.green { color: ${C.accent}; }
+    .tsv.red { color: ${C.danger}; }
+    .tsv.gold { color: ${C.gold}; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: ${C.textSoft}; padding: 8px 10px; border-bottom: 1.5px solid ${C.text}; }
     td { font-size: 11.5px; padding: 9px 10px; border-bottom: .8px solid ${C.border}; }
@@ -240,45 +281,57 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     .sigline { border-bottom: 1.2px dashed ${C.textSoft}; height: 26px; }
     .signame { font-size: 10px; font-weight: 700; margin-top: 6px; letter-spacing: .3px; }
 
-    /* ── Footer ────────────────────────────────────────────────────────── */
-    .spacer { flex: 1; }
-    .footer { display: flex; align-items: center; justify-content: space-between; border-top: 1.2px solid ${C.border}; padding-top: 12px; margin-top: 24px; }
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    .footer { display: flex; align-items: center; justify-content: space-between; border-top: 1.2px solid ${C.border}; height: 52px; padding: 0 36px; background: #fff; }
     .flogo { height: 28px; }
     .flegal { font-size: 7.5px; font-weight: 600; letter-spacing: .9px; text-transform: uppercase; color: ${C.textSoft}; }
+    /* Screen (WebView preview): the <tfoot> footer flows normally; the fixed
+       copy is not needed. */
+    .footer-fixed { display: none; }
+    /* Paper: the <tfoot> copy only RESERVES space (invisible, repeated on every
+       page); the fixed copy paints flush at the physical page bottom. */
+    @media print {
+      .sheet > tfoot .footer { visibility: hidden; }
+      .footer-fixed { display: flex; position: fixed; left: 0; right: 0; bottom: 0; }
+    }
   </style>
 
-  <div class="band"></div>
-  <div class="page">
-    <div class="header">
-      <div class="hleft">
-        ${companyMark}
-        <div>
-          <div class="cname">${doc.company.name}</div>
-          <div class="cmeta">${[doc.company.ownerName, doc.company.phone].filter(Boolean).join(' · ')}</div>
+  <table class="sheet">
+    <thead><tr><td>
+      <div class="headpad">
+        <div class="header">
+          <div class="hleft">
+            ${companyMark}
+            <div>
+              <div class="cname">${doc.company.name}</div>
+              <div class="cmeta">${[doc.company.ownerName, doc.company.phone].filter(Boolean).join(' · ')}</div>
+            </div>
+          </div>
+          <div class="hright">
+            <img class="applogo" src="data:image/png;base64,${assets.wordmark}"/>
+          </div>
         </div>
       </div>
-      <div class="hright">
-        <img class="applogo" src="data:image/png;base64,${assets.wordmark}"/>
-      </div>
-    </div>
-
-    <div class="titlerow">
-      <div>
-        <div class="doctype">${doc.title}</div>
-        <div class="project">${doc.subject}</div>
-        ${sublines.map((l) => `<div class="subline">${l}</div>`).join('\n        ')}
-      </div>
-      <div class="meta">
-        ${doc.statusChip ? `<span class="chip">✓ ${doc.statusChip}</span>` : ''}
-        <div class="metadate">${doc.dateText}</div>
-      </div>
-    </div>
+    </td></tr></thead>
+    <tbody><tr><td>
+      <div class="bodypad">
+        <div class="titlerow">
+          <div>
+            <div class="doctype">${doc.title}</div>
+            <div class="project">${doc.subject}</div>
+            ${sublines.map((l) => `<div class="subline">${l}</div>`).join('\n            ')}
+          </div>
+          <div class="meta">
+            ${doc.statusChip ? `<span class="chip">✓ ${doc.statusChip}</span>` : ''}
+            <div class="metadate">${doc.dateText}</div>
+          </div>
+        </div>
 ${doc.blocks.map(renderBlock).join('\n')}
-
-    <div class="spacer"></div>
-    <div class="footer">
-      <img class="flogo" src="data:image/png;base64,${assets.wordmark}"/>
-      <div class="flegal">${doc.company.name} · ${doc.dateText} · ${doc.madeWith}</div>
-    </div>
-  </div>`;
+      </div>
+    </td></tr></tbody>
+    <tfoot><tr><td>
+      <div class="footer">${footerInner}</div>
+    </td></tr></tfoot>
+  </table>
+  <div class="footer footer-fixed">${footerInner}</div>`;
 }

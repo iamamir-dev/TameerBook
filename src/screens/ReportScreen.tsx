@@ -1,7 +1,7 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,10 +29,14 @@ import {
 } from '@/db';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
+import { useCompanyStore } from '@/stores/useCompanyStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
+import { buildReportHtml } from '@/utils/reportPdf';
+import type { ReportCell, ReportDoc } from '@/utils/reportHtml';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type ReportRoute = RouteProp<RootStackParamList, 'Report'>;
@@ -54,6 +58,8 @@ export function ReportScreen(): React.JSX.Element {
   const { type } = useRoute<ReportRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
+  const company = useCompanyStore((st) => st.companies.find((c) => c.id === st.activeCompanyId) ?? null);
+  const fontFamily = useSettingsStore((st) => st.fontFamily);
 
   const [projects, setProjects] = useState<ProjectReportRow[]>([]);
   const [pnl, setPnl] = useState<PnlRow[]>([]);
@@ -114,23 +120,35 @@ export function ReportScreen(): React.JSX.Element {
     return [];
   };
 
-  const sections = buildSections();
-  const reportHtml = `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><style>
-      body{font-family:-apple-system,Roboto,sans-serif;padding:24px;color:#211F1B}
-      h1{color:#1D1C18;margin:0}.sub{color:#9A958B;margin:4px 0 16px}h3{color:#1D1C18;margin:20px 0 4px}
-      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{padding:8px;border-bottom:1px solid #ECE8DF;font-size:13px;text-align:left}
-      th{color:#9A958B;text-transform:uppercase;font-size:11px}</style></head><body>
-      <h1>TameerBook</h1><div class="sub">${t(TITLE[type])} · ${dayjs().format('DD MMM YYYY')}</div>
-      ${sections
-        .map(
-          (s) =>
-            `${s.heading ? `<h3>${s.heading}</h3>` : ''}<table><thead><tr>${s.columns
-              .map((c, i) => `<th${i ? ' style="text-align:right"' : ''}>${c}</th>`)
-              .join('')}</tr></thead><tbody>${s.rows
-              .map((r) => `<tr>${r.map((cell, i) => `<td${i ? ' style="text-align:right"' : ''}>${cell}</td>`).join('')}</tr>`)
-              .join('')}</tbody></table>`
-        )
-        .join('')}</body></html>`;
+  const sections = useMemo(buildSections, [type, projects, pnl, cash, cats, suppliers, udhaar, matrix, roi, accounts, language]);
+
+  // Branded, paginated PDF via the shared report engine — the same one the
+  // labor / investor / settlement reports use, so the header + footer repeat on
+  // every page. Built async (fonts/logo are loaded and embedded as base64).
+  const [reportHtml, setReportHtml] = useState('');
+  useEffect(() => {
+    let alive = true;
+    const doc: ReportDoc = {
+      company: { name: company?.name ?? 'TameerBook', ownerName: company?.owner_name, phone: company?.phone },
+      title: t('reports'),
+      subject: t(TITLE[type]),
+      dateText: dayjs().format('DD MMM YYYY'),
+      madeWith: t('madeWith'),
+      blocks: sections.map((s) => ({
+        kind: 'table' as const,
+        title: s.heading,
+        columns: s.columns.map((label, i) => ({ label, align: i === 0 ? ('left' as const) : ('num' as const) })),
+        rows: s.rows.map((r): ReportCell[] => r.map((text) => ({ text }))),
+      })),
+    };
+    buildReportHtml(doc, fontFamily, company?.logo_uri)
+      .then((h) => alive && setReportHtml(h))
+      .catch(swallow('report:html'));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, company, fontFamily, type]);
   const csvCell = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const reportCsv = sections
     .map((s) => [s.heading ?? '', s.columns.join(','), ...s.rows.map((r) => r.map(csvCell).join(','))].filter(Boolean).join('\n'))

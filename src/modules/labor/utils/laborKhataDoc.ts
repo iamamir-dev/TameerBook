@@ -41,8 +41,10 @@ export interface LaborKhataInput {
     amount: string;
     note: string;
     dailyWage: string;
-    presentDays: string;
-    absentDays: string;
+    present: string;
+    absent: string;
+    day: string;
+    days: string;
     madeWith: string;
     payment: string;
     attendance: Record<AttendanceStatus, string>;
@@ -65,24 +67,18 @@ export function laborKhataDoc(input: LaborKhataInput): ReportDoc {
     { label: L.balance, value: formatRupees(balance), filled: 'accent' },
   ];
 
-  const presentText = (p: LaborKhataProject) =>
-    `${p.daysFull + p.daysHalf} (${p.daysFull} ${L.attendance.FULL}, ${p.daysHalf} ${L.attendance.HALF})`;
+  const daysText = (n: number) => `${n} ${n === 1 ? L.day : L.days}`;
 
-  const blocks: ReportBlock[] = [
-    { kind: 'stats', items: overall },
-    {
-      kind: 'notes',
-      lines: [
-        { label: L.presentDays, value: String(input.totalPresentDays) },
-        { label: L.absentDays, value: String(input.totalAbsentDays) },
-      ],
-    },
-  ];
+  const blocks: ReportBlock[] = [{ kind: 'stats', items: overall }];
 
-  for (const p of projects) {
+  // One section per project: heading (name + daily wage on the right), the dated
+  // rows with notes, then this project's earned/taken/balance at the bottom.
+  projects.forEach((p, i) => {
+    if (i > 0) blocks.push({ kind: 'divider' });
     blocks.push({
       kind: 'table',
       title: p.name,
+      titleRight: `${L.dailyWage}: ${formatRupees(p.dailyWage)}  |  ${L.present}: ${daysText(p.daysFull + p.daysHalf)}  |  ${L.absent}: ${daysText(p.daysAbsent)}`,
       columns: [
         { label: L.date },
         { label: L.type },
@@ -102,24 +98,20 @@ export function laborKhataDoc(input: LaborKhataInput): ReportDoc {
           },
         ];
       }),
-    });
-    blocks.push({
-      kind: 'notes',
-      lines: [
-        { label: L.dailyWage, value: formatRupees(p.dailyWage) },
-        { label: L.presentDays, value: presentText(p) },
-        { label: L.absentDays, value: String(p.daysAbsent) },
-        { label: L.earned, value: formatRupees(p.earned) },
-        { label: L.taken, value: formatRupees(p.taken) },
+      summary: [
+        { label: L.earned, value: formatRupees(p.earned), tone: 'green' },
+        { label: L.taken, value: formatRupees(p.taken), tone: 'red' },
         { label: L.balance, value: formatRupees(p.balance) },
       ],
     });
-  }
+  });
 
   return {
     company: { name: company.name, ownerName: company.ownerName, phone: company.phone },
     title: L.khataStatement,
     subject: workerName,
+    // Present / absent days shown right under the worker's name.
+    sublines: [`${L.present}: ${daysText(input.totalPresentDays)}  |  ${L.absent}: ${daysText(input.totalAbsentDays)}`],
     dateText: input.dateText,
     madeWith: L.madeWith,
     blocks,

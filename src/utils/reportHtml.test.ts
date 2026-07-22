@@ -48,12 +48,12 @@ const DOC: ReportDoc = {
 describe('renderReportHtml', () => {
   const html = renderReportHtml(DOC, ASSETS);
 
-  it('renders the branded chrome (band, company, wordmark, chip, footer)', () => {
-    expect(html).toContain('class="band"');
+  it('renders the branded chrome (company, wordmark, chip, footer)', () => {
     expect(html).toContain('Al-Madina Builders');
     expect(html).toContain('Amir · 0300-1234567');
-    // Wordmark appears twice: header + footer.
-    expect(html.match(/base64,WM/g)).toHaveLength(2);
+    // Wordmark appears 3x: header + the tfoot footer (space reserver) + the
+    // fixed footer (painted at the page bottom on paper).
+    expect(html.match(/base64,WM/g)).toHaveLength(3);
     expect(html).toContain('✓ Project settled');
     expect(html).toContain('Made with TameerBook');
   });

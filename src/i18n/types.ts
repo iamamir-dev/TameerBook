@@ -411,6 +411,10 @@ export interface TranslationKeys {
   attAbsent: string;
   presentDays: string;
   absentDays: string;
+  present: string;
+  absent: string;
+  day: string;
+  days: string;
   wageBalance: string;
   earnedLabel: string;
   takenLabel: string;
@@ -513,6 +517,11 @@ export interface TranslationKeys {
   editDelivery: string;
   editPayment: string;
   editBooking: string;
+  purchaseOrder: string;
+  printLabel: string;
+  item: string;
+  deliveries: string;
+  payments: string;
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;
