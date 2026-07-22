@@ -1,4 +1,4 @@
-import { useNavigation } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
@@ -18,7 +18,18 @@ import {
   type MaterialSelection,
   type SelectOption,
 } from '@/components/ui';
-import { addParty, createPurchaseOrder, listParties, listProjects, type PartyRow, type ProjectRow } from '@/db';
+import {
+  addParty,
+  cancelBooking,
+  createBooking,
+  createPurchaseOrder,
+  getPurchaseOrder,
+  listParties,
+  listProjects,
+  updateBooking,
+  type PartyRow,
+  type ProjectRow,
+} from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -27,13 +38,17 @@ import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import type { UnitDef } from '@/utils/units';
 
+import { bookingUnit } from '../utils/unit';
 import { makeStyles } from '../styled/NewPurchaseOrderScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type PoRoute = RouteProp<RootStackParamList, 'NewPurchaseOrder'>;
 const EMPTY_UNIT: UnitDef = { primary: null, secondary: null, factor: null };
 
 interface ItemRow {
   key: number;
+  /** Set for an item that already exists (edit); absent = a newly added line. */
+  bookingId?: string;
   material: MaterialSelection;
   qty: number;
   rate: number;
@@ -48,6 +63,8 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const poId = useRoute<PoRoute>().params?.poId;
+  const editing = !!poId;
   const styles = makeStyles(theme);
   const { saving, run: runSave } = useSaveAction();
 
@@ -62,11 +79,37 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [projectSheet, setProjectSheet] = useState(false);
+  const poNumberRef = useRef<string | null>(null);
+  const originalIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     listProjects().then((r) => setProjects(r.filter((p) => p.status === 'ACTIVE'))).catch(swallow('po:projects'));
     listParties('SUPPLIER').then(setParties).catch(swallow('po:parties'));
   }, []);
+
+  // Edit mode: prefill supplier / project / existing line-items from the PO.
+  useEffect(() => {
+    if (!poId) return;
+    getPurchaseOrder(poId)
+      .then((po) => {
+        poNumberRef.current = po.poNumber;
+        originalIds.current = new Set(po.items.map((i) => i.booking.id));
+        setSupplierName(po.supplierName ?? '');
+        setPartyId(po.items[0]?.booking.party_id ?? null);
+        setProjectId(po.projectId);
+        setItems(
+          po.items.map((i) => ({
+            key: keyRef.current++,
+            bookingId: i.booking.id,
+            material: { categoryId: null, name: i.booking.item_name, unit: bookingUnit(i.booking) },
+            qty: i.booking.qty,
+            rate: i.booking.rate,
+          }))
+        );
+      })
+      .catch(swallow('po:load'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poId]);
 
   const patchItem = (key: number, p: Partial<ItemRow>) => setItems((l) => l.map((it) => (it.key === key ? { ...it, ...p } : it)));
   const removeItem = (key: number) => setItems((l) => (l.length > 1 ? l.filter((it) => it.key !== key) : l));
@@ -89,19 +132,41 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
           const existing = parties.find((p) => p.name.toLowerCase() === name.toLowerCase());
           pid = existing ? existing.id : (await addParty({ type: 'SUPPLIER', name, phone: supplierPhone.trim() || null })).id;
         }
-        await createPurchaseOrder({
+        const fields = (it: ItemRow) => ({
+          itemName: it.material.name.trim(),
+          qty: it.qty,
+          rate: it.rate,
+          unit: it.material.unit.primary,
+          secondaryUnit: it.material.unit.secondary,
+          secondaryFactor: it.material.unit.factor,
           projectId,
-          partyId: pid,
           supplierName: name || null,
-          items: items.map((it) => ({
-            itemName: it.material.name.trim(),
-            qty: it.qty,
-            rate: it.rate,
-            unit: it.material.unit.primary,
-            secondaryUnit: it.material.unit.secondary,
-            secondaryFactor: it.material.unit.factor,
-          })),
+          partyId: pid,
         });
+
+        if (editing) {
+          const kept = new Set(items.filter((it) => it.bookingId).map((it) => it.bookingId!));
+          // Removed existing items → cancel them.
+          for (const id of originalIds.current) if (!kept.has(id)) await cancelBooking(id);
+          for (const it of items) {
+            if (it.bookingId) await updateBooking(it.bookingId, fields(it));
+            else await createBooking({ ...fields(it), poId, poNumber: poNumberRef.current });
+          }
+        } else {
+          await createPurchaseOrder({
+            projectId,
+            partyId: pid,
+            supplierName: name || null,
+            items: items.map((it) => ({
+              itemName: it.material.name.trim(),
+              qty: it.qty,
+              rate: it.rate,
+              unit: it.material.unit.primary,
+              secondaryUnit: it.material.unit.secondary,
+              secondaryFactor: it.material.unit.factor,
+            })),
+          });
+        }
       });
       if (ok) navigation.goBack();
     })();
@@ -109,7 +174,7 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
-      <AppHeader title={t('newBooking')} onBack={() => navigation.goBack()} />
+      <AppHeader title={editing ? t('editBooking') : t('newBooking')} onBack={() => navigation.goBack()} />
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -173,7 +238,7 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
                 </View>
 
                 <MaterialItemPicker value={it.material} onChange={(material) => patchItem(it.key, { material })} />
-                <QtyUnitRow unit={it.material.unit} resetToken={it.key} onQty={(qty) => patchItem(it.key, { qty })} />
+                <QtyUnitRow unit={it.material.unit} resetToken={it.key} initialPrimary={it.qty} onQty={(qty) => patchItem(it.key, { qty })} />
                 <AmountInput label={t('rateLabel')} value={it.rate} onChange={(rate) => patchItem(it.key, { rate })} floating surface={theme.colors.card} />
               </View>
             );

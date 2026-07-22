@@ -24,21 +24,52 @@ export function usePurchaseOrders() {
   return useFocusData(loader, { items: [] as PurchaseOrderSummary[] });
 }
 
+/** A delivery / payment across the whole PO, tagged with its item name. */
+export type PoDelivery = MaterialDeliveryRow & { itemName: string };
+export type PoPayment = TransactionRow & { itemName: string };
+
 export interface PurchaseOrderDetailData {
   po: PurchaseOrderSummary | null;
   /** The saved supplier's phone (from the linked party), for a call button. */
   supplierPhone: string | null;
+  accounts: AccountWithBalance[];
+  projects: ProjectRow[];
+  /** All deliveries across the PO's items, newest first. */
+  deliveries: PoDelivery[];
+  /** All supplier payments across the PO's items, newest first. */
+  payments: PoPayment[];
 }
 
-/** One purchase order's page data (its item bookings + supplier phone). */
+/** One purchase order's page data (items + PO-level delivery/payment history). */
 export function usePurchaseOrderDetail(poId: string) {
   const loader = useCallback(async (): Promise<PurchaseOrderDetailData> => {
-    const po = await getPurchaseOrder(poId);
+    const [po, accounts, projects] = await Promise.all([getPurchaseOrder(poId), listAccountsWithBalance(), listProjects()]);
     const partyId = po.items[0]?.booking.party_id ?? null;
     const supplierPhone = partyId ? (await getParty(partyId))?.phone ?? null : null;
-    return { po, supplierPhone };
+
+    const perItem = await Promise.all(
+      po.items.map(async (it) => {
+        const [dels, pays] = await Promise.all([listDeliveries(it.booking.id), listBookingPayments(it.booking.id)]);
+        const name = it.booking.item_name;
+        return {
+          deliveries: dels.map((d) => ({ ...d, itemName: name })),
+          payments: pays.map((p) => ({ ...p, itemName: name })),
+        };
+      })
+    );
+    const deliveries = perItem.flatMap((x) => x.deliveries).sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
+    const payments = perItem.flatMap((x) => x.payments).sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
+
+    return { po, supplierPhone, accounts, projects, deliveries, payments };
   }, [poId]);
-  return useFocusData<PurchaseOrderDetailData>(loader, { po: null, supplierPhone: null });
+  return useFocusData<PurchaseOrderDetailData>(loader, {
+    po: null,
+    supplierPhone: null,
+    accounts: [],
+    projects: [],
+    deliveries: [],
+    payments: [],
+  });
 }
 
 export interface BookingDetailData {

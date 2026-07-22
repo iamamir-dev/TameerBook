@@ -15,4 +15,14 @@ export const makeStyles = (theme: Theme) =>
     columns: { flexDirection: 'row', alignItems: 'stretch' },
     col: { flex: 1, gap: theme.spacing.xs },
     vDivider: { width: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginHorizontal: theme.spacing.md },
+
+    /* Items container */
+    itemRow: { paddingVertical: theme.spacing.sm },
+    ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
+    itemTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
+    itemSub: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm, marginTop: 2 },
+
+    /* History rows */
+    histRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
+    histLeft: { flex: 1, gap: 2 },
   });

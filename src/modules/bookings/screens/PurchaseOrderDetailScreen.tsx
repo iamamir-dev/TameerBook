@@ -1,21 +1,27 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReportPreview } from '@/components/ReportPreview';
 import { StageBadge } from '@/components/StageBadge';
-import { AppCard, AppHeader, AppText, LabelValueRow, LoadErrorState, PhoneChip } from '@/components/ui';
+import { ActionsDrawer, AppCard, AppHeader, AppText, LabelValueRow, LoadErrorState, PhoneChip } from '@/components/ui';
+import { cancelPurchaseOrder } from '@/db';
+import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
+import { formatDisplayDate } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
+import { formatSplitQty } from '@/utils/units';
 
-import { BookingCard } from '../components/BookingCard';
+import { MultiDeliverySheet } from '../components/MultiDeliverySheet';
+import { MultiPaySheet } from '../components/MultiPaySheet';
 import { usePurchaseOrder } from '../hooks/usePurchaseOrder';
 import { usePurchaseOrderDetail } from '../hooks/useBookings';
 import { purchaseOrderStatusMeta } from '../utils/status';
+import { bookingUnit } from '../utils/unit';
 import { makeStyles } from '../styled/PurchaseOrderDetailScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -30,7 +36,12 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = usePurchaseOrderDetail(poId);
-  const { po, supplierPhone } = data;
+  const { po, supplierPhone, accounts, deliveries, payments } = data;
+  const { run: runSave } = useSaveAction();
+
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const pdf = usePurchaseOrder(po, supplierPhone);
 
@@ -45,6 +56,23 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
 
   const { tone, labelKey } = purchaseOrderStatusMeta(po);
   const caption = [po.supplierName, po.projectName].filter(Boolean).join(' · ');
+  const active = po.status === 'OPEN';
+  const canReceive = po.items.some((i) => i.qtyRemaining > 0.001);
+  const canPay = po.payRemaining > 0.001;
+
+  const onCancel = () => {
+    Alert.alert(po.poNumber, t('cancelBookingConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('cancelBookingLabel'),
+        style: 'destructive',
+        onPress: () => void runSave(async () => {
+          await cancelPurchaseOrder(po.poId);
+          await reload();
+        }),
+      },
+    ]);
+  };
 
   return (
     <View style={styles.screen}>
@@ -52,7 +80,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
         title={po.poNumber}
         subtitle={t('purchaseOrder')}
         onBack={() => navigation.goBack()}
-        rightAction={{ icon: 'statement', onPress: () => setPreviewOpen(true), accessibilityLabel: t('printLabel') }}
+        rightAction={{ icon: 'add', onPress: () => setActionsOpen(true), accessibilityLabel: t('actions') }}
       />
 
       <ScrollView
@@ -99,17 +127,104 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
           </View>
         </AppCard>
 
+        {/* All items in one container. */}
         <AppText size="lg" weight="bold">
           {t('items')}
         </AppText>
-        {po.items.map((item) => (
-          <BookingCard
-            key={item.booking.id}
-            summary={item}
-            onPress={() => navigation.navigate('BookingDetail', { bookingId: item.booking.id })}
-          />
-        ))}
+        <AppCard compact>
+          {po.items.map((item, i) => {
+            const unit = bookingUnit(item.booking);
+            return (
+              <View key={item.booking.id} style={[styles.itemRow, i > 0 && styles.ruled]}>
+                <View style={styles.itemTop}>
+                  <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                    {item.booking.item_name}
+                  </AppText>
+                  <AppText size="sm" weight="bold" tabular>
+                    {formatRupees(item.booking.total)}
+                  </AppText>
+                </View>
+                <View style={styles.itemSub}>
+                  <AppText size="xs" color="textSecondary">
+                    {`${formatSplitQty(item.booking.qty, unit)} × ${formatRupees(item.booking.rate)}`}
+                  </AppText>
+                  <AppText size="xs" weight="semibold" color={item.qtyRemaining <= 0.001 ? 'success' : 'textSecondary'}>
+                    {`${t('receivedQty')}: ${formatSplitQty(item.qtyReceived, unit)} / ${formatSplitQty(item.booking.qty, unit)}`}
+                  </AppText>
+                </View>
+              </View>
+            );
+          })}
+        </AppCard>
+
+        {/* PO-level delivery history. */}
+        {deliveries.length > 0 ? (
+          <>
+            <AppText size="lg" weight="bold">
+              {t('deliveries')}
+            </AppText>
+            <AppCard compact>
+              {deliveries.map((d, i) => (
+                <View key={d.id} style={[styles.histRow, i > 0 && styles.ruled]}>
+                  <View style={styles.histLeft}>
+                    <AppText size="sm" weight="semibold" numberOfLines={1}>
+                      {d.itemName}
+                    </AppText>
+                    <AppText size="xs" color="textSecondary">
+                      {formatDisplayDate(d.date)}
+                    </AppText>
+                  </View>
+                  <AppText size="sm" weight="bold" color="success" tabular>
+                    {`+ ${formatSplitQty(d.qty, bookingUnit(po.items.find((it) => it.booking.id === d.booking_id)?.booking ?? po.items[0].booking))}`}
+                  </AppText>
+                </View>
+              ))}
+            </AppCard>
+          </>
+        ) : null}
+
+        {/* PO-level payment history. */}
+        {payments.length > 0 ? (
+          <>
+            <AppText size="lg" weight="bold">
+              {t('paidLabel')}
+            </AppText>
+            <AppCard compact>
+              {payments.map((p, i) => (
+                <View key={p.id} style={[styles.histRow, i > 0 && styles.ruled]}>
+                  <View style={styles.histLeft}>
+                    <AppText size="sm" weight="semibold" numberOfLines={1}>
+                      {p.itemName}
+                    </AppText>
+                    <AppText size="xs" color="textSecondary">
+                      {formatDisplayDate(p.date)}
+                    </AppText>
+                  </View>
+                  <AppText size="sm" weight="bold" color="danger" tabular>
+                    {`− ${formatRupees(p.amount)}`}
+                  </AppText>
+                </View>
+              ))}
+            </AppCard>
+          </>
+        ) : null}
       </ScrollView>
+
+      <ActionsDrawer
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={po.poNumber}
+        actions={[
+          ...(canReceive ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => setDeliverOpen(true) }] : []),
+          ...(canPay ? [{ icon: 'moneyOut' as const, label: t('payBookingLabel'), onPress: () => setPayOpen(true) }] : []),
+          ...(active ? [{ icon: 'edit' as const, label: t('editBooking'), onPress: () => navigation.navigate('NewPurchaseOrder', { poId: po.poId }) }] : []),
+          { icon: 'statement' as const, label: t('printLabel'), onPress: () => setPreviewOpen(true) },
+          ...(active ? [{ icon: 'trash' as const, label: t('cancelBookingLabel'), onPress: onCancel }] : []),
+        ]}
+      />
+
+      <MultiDeliverySheet visible={deliverOpen} onClose={() => setDeliverOpen(false)} po={po} accounts={accounts} onSaved={reload} />
+      <MultiPaySheet visible={payOpen} onClose={() => setPayOpen(false)} po={po} accounts={accounts} onSaved={reload} />
 
       <ReportPreview
         visible={previewOpen}

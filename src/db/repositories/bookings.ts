@@ -32,6 +32,9 @@ export interface NewBooking {
   projectId?: string | null;
   partyId?: string | null;
   supplierName?: string | null;
+  /** Attach to an existing purchase order (its shared id + number). */
+  poId?: string | null;
+  poNumber?: string | null;
   createdBy?: string;
 }
 
@@ -43,8 +46,8 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
   const id = uuid();
   await db.runAsync(
     `INSERT INTO material_bookings
-       (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, secondary_unit, secondary_factor, qty, rate, total, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+       (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, secondary_unit, secondary_factor, qty, rate, total, status, po_id, po_number)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -58,7 +61,9 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
     input.secondaryFactor ?? null,
     input.qty,
     input.rate,
-    input.qty * input.rate
+    input.qty * input.rate,
+    input.poId ?? null,
+    input.poNumber ?? null
   );
   return (await db.getFirstAsync<MaterialBookingRow>(
     'SELECT * FROM material_bookings WHERE id = ?',
@@ -344,6 +349,12 @@ export async function getPurchaseOrder(poKey: string): Promise<PurchaseOrderSumm
   );
   if (rows.length === 0) throw new Error(`getPurchaseOrder: ${poKey} not found`);
   return buildPoSummary(poKey, await Promise.all(rows.map(summarize)));
+}
+
+/** Cancel a whole purchase order (every one of its item bookings). */
+export async function cancelPurchaseOrder(poKey: string): Promise<void> {
+  const po = await getPurchaseOrder(poKey);
+  for (const item of po.items) await cancelBooking(item.booking.id);
 }
 
 export async function listDeliveries(bookingId: string): Promise<MaterialDeliveryRow[]> {
