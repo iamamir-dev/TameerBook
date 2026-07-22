@@ -522,6 +522,12 @@ export interface TranslationKeys {
   item: string;
   deliveries: string;
   payments: string;
+  poNo: string;
+  vendor: string;
+  deliverTo: string;
+  subtotal: string;
+  balanceDue: string;
+  authorizedSignature: string;
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;

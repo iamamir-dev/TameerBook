@@ -13,7 +13,8 @@ import * as Print from 'expo-print';
 
 import type { FontKey } from '@/theme/theme';
 
-import { renderReportHtml, type ReportDoc } from './reportHtml';
+import { renderReportHtml, type ReportAssets, type ReportDoc } from './reportHtml';
+import { renderPurchaseOrderHtml, type PurchaseOrder } from './purchaseOrderHtml';
 
 /* Latin app families + Naskh fallback for Urdu glyphs. */
 const FONT_ASSETS: Record<string, { regular: number; bold: number }> = {
@@ -70,12 +71,8 @@ async function fileB64(uri: string | null | undefined): Promise<string> {
   }
 }
 
-/** Build the branded HTML for a report doc (assets embedded as base64). */
-export async function buildReportHtml(
-  doc: ReportDoc,
-  fontKey: FontKey,
-  companyLogoUri?: string | null
-): Promise<string> {
+/** Load the branded assets (fonts + wordmark + company logo) as base64. */
+export async function loadReportAssets(fontKey: FontKey, companyLogoUri?: string | null): Promise<ReportAssets> {
   const fonts = FONT_ASSETS[fontKey] ?? FONT_ASSETS.rounded;
   const [fontRegular, fontBold, naskh, wordmark, companyLogo] = await Promise.all([
     assetB64(fonts.regular),
@@ -84,7 +81,25 @@ export async function buildReportHtml(
     assetB64(APP_WORDMARK),
     fileB64(companyLogoUri),
   ]);
-  return renderReportHtml(doc, { fontRegular, fontBold, naskh, wordmark, companyLogo: companyLogo || null });
+  return { fontRegular, fontBold, naskh, wordmark, companyLogo: companyLogo || null };
+}
+
+/** Build the branded HTML for a report doc (assets embedded as base64). */
+export async function buildReportHtml(
+  doc: ReportDoc,
+  fontKey: FontKey,
+  companyLogoUri?: string | null
+): Promise<string> {
+  return renderReportHtml(doc, await loadReportAssets(fontKey, companyLogoUri));
+}
+
+/** Build the modern Purchase Order HTML (its own template, assets embedded). */
+export async function buildPurchaseOrderHtml(
+  po: PurchaseOrder,
+  fontKey: FontKey,
+  companyLogoUri?: string | null
+): Promise<string> {
+  return renderPurchaseOrderHtml(po, await loadReportAssets(fontKey, companyLogoUri));
 }
 
 /** Render a report doc to a PDF file; returns its uri (+ the html for preview). */
