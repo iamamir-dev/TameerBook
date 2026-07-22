@@ -176,16 +176,162 @@ export async function getBookingSummary(id: string): Promise<BookingSummary> {
 }
 
 /** All bookings for the company (OPEN first, newest first), with balances. */
-export async function listBookingSummaries(): Promise<BookingSummary[]> {
+/* -------------------------------------------------------------------------- */
+/*  Purchase orders (a group of item bookings sharing po_id)                  */
+/* -------------------------------------------------------------------------- */
+
+export interface PurchaseOrderItemInput {
+  itemName: string;
+  qty: number;
+  rate: number;
+  unit?: string | null;
+}
+export interface NewPurchaseOrder {
+  projectId?: string | null;
+  partyId?: string | null;
+  supplierName?: string | null;
+  items: PurchaseOrderItemInput[];
+  createdBy?: string;
+}
+
+/** The group key for a booking: its shared po_id, or its own id when standalone. */
+const poKeyOf = (b: MaterialBookingRow): string => b.po_id ?? b.id;
+
+async function nextPoNumber(): Promise<string> {
   const db = await getDatabase();
-  const rows = await db.getAllAsync<MaterialBookingRow>(
-    'SELECT * FROM material_bookings WHERE company_id = ? ORDER BY created_at DESC',
+  const row = await db.getFirstAsync<{ n: number }>(
+    'SELECT COUNT(DISTINCT po_id) AS n FROM material_bookings WHERE company_id = ? AND po_id IS NOT NULL',
     requireCompanyId()
   );
-  const list = await Promise.all(rows.map(summarize));
-  // Sort on the DERIVED status (OPEN first) so a payment-void that reopens a
-  // booking floats it back up regardless of the stale stored column.
-  return list.sort((a, b) => (a.booking.status === 'OPEN' ? 0 : 1) - (b.booking.status === 'OPEN' ? 0 : 1));
+  return `PO-${String((row?.n ?? 0) + 1).padStart(4, '0')}`;
+}
+
+/**
+ * Create a purchase order = several material line-items for one supplier/project.
+ * Each item is its own booking row (so it keeps per-item deliveries & payments),
+ * tied together by a shared `po_id` + human `po_number`. Returns the po_id.
+ */
+export async function createPurchaseOrder(input: NewPurchaseOrder): Promise<string> {
+  if (input.items.length === 0) throw new Error('createPurchaseOrder: no items');
+  for (const it of input.items) {
+    if (!it.itemName.trim()) throw new Error('createPurchaseOrder: item needs a name');
+    if (it.qty <= 0) throw new Error('createPurchaseOrder: qty must be positive');
+    if (it.rate < 0) throw new Error('createPurchaseOrder: rate cannot be negative');
+  }
+  if (input.projectId) await assertProjectActive(input.projectId);
+
+  const db = await getDatabase();
+  const poId = uuid();
+  const poNumber = await nextPoNumber();
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    for (const it of input.items) {
+      await tx.runAsync(
+        `INSERT INTO material_bookings
+           (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, qty, rate, total, status, po_id, po_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`,
+        uuid(),
+        nowISO(),
+        input.createdBy ?? DEFAULT_USER,
+        requireCompanyId(),
+        input.projectId ?? null,
+        input.partyId ?? null,
+        input.supplierName ?? null,
+        it.itemName.trim(),
+        it.unit ?? null,
+        it.qty,
+        it.rate,
+        it.qty * it.rate,
+        poId,
+        poNumber
+      );
+    }
+  });
+  return poId;
+}
+
+export interface PurchaseOrderSummary {
+  /** Group key (po_id, or the booking id for a standalone legacy item). */
+  poId: string;
+  poNumber: string;
+  supplierName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  itemCount: number;
+  total: number;
+  paid: number;
+  payRemaining: number;
+  /** True once every item is fully received. */
+  fullyReceived: boolean;
+  status: BookingStatus;
+  createdAt: string;
+  /** The item bookings (creation order), each with its own derived balances. */
+  items: BookingSummary[];
+}
+
+/** Roll a PO's item summaries up into one order-level summary. */
+function buildPoSummary(key: string, items: BookingSummary[]): PurchaseOrderSummary {
+  const first = items[0].booking;
+  const total = items.reduce((s, i) => s + i.booking.total, 0);
+  const paid = items.reduce((s, i) => s + i.paid, 0);
+  const payRemaining = items.reduce((s, i) => s + i.payRemaining, 0);
+  const statuses = items.map((i) => i.booking.status);
+  const status: BookingStatus = statuses.some((s) => s === 'OPEN')
+    ? 'OPEN'
+    : statuses.every((s) => s === 'CANCELLED')
+      ? 'CANCELLED'
+      : 'CLOSED';
+  return {
+    poId: key,
+    poNumber: first.po_number ?? `PO-${key.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}`,
+    supplierName: first.supplier_name,
+    projectId: first.project_id,
+    projectName: items[0].projectName,
+    itemCount: items.length,
+    total,
+    paid,
+    payRemaining,
+    fullyReceived: items.every((i) => i.qtyRemaining <= 0.001),
+    status,
+    createdAt: first.created_at,
+    items,
+  };
+}
+
+/** All purchase orders (item bookings grouped by po_id), OPEN first, newest first. */
+export async function listPurchaseOrders(): Promise<PurchaseOrderSummary[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<MaterialBookingRow>(
+    'SELECT * FROM material_bookings WHERE company_id = ? ORDER BY created_at ASC',
+    requireCompanyId()
+  );
+  const groups = new Map<string, MaterialBookingRow[]>();
+  for (const b of rows) {
+    const key = poKeyOf(b);
+    const g = groups.get(key);
+    if (g) g.push(b);
+    else groups.set(key, [b]);
+  }
+  const out: PurchaseOrderSummary[] = [];
+  for (const [key, items] of groups) {
+    out.push(buildPoSummary(key, await Promise.all(items.map(summarize))));
+  }
+  return out.sort((a, b) => {
+    const openDiff = (a.status === 'OPEN' ? 0 : 1) - (b.status === 'OPEN' ? 0 : 1);
+    return openDiff !== 0 ? openDiff : b.createdAt.localeCompare(a.createdAt);
+  });
+}
+
+/** One purchase order with its item bookings (by po_id, or a standalone id). */
+export async function getPurchaseOrder(poKey: string): Promise<PurchaseOrderSummary> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<MaterialBookingRow>(
+    'SELECT * FROM material_bookings WHERE company_id = ? AND (po_id = ? OR id = ?) ORDER BY created_at ASC',
+    requireCompanyId(),
+    poKey,
+    poKey
+  );
+  if (rows.length === 0) throw new Error(`getPurchaseOrder: ${poKey} not found`);
+  return buildPoSummary(poKey, await Promise.all(rows.map(summarize)));
 }
 
 export async function listDeliveries(bookingId: string): Promise<MaterialDeliveryRow[]> {

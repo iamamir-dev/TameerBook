@@ -482,8 +482,6 @@ export const en: TranslationKeys = {
   poNo: 'PO No.',
   vendor: 'Vendor',
   deliverTo: 'Deliver to',
-  subtotal: 'Subtotal',
-  balanceDue: 'Balance due',
   authorizedSignature: 'Authorized signature',
   payBookingLabel: 'Pay supplier',
   payRemainingLabel: 'To pay',

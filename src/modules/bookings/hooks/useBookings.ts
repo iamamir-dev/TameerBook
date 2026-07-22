@@ -3,23 +3,42 @@ import { useCallback } from 'react';
 import {
   getBookingSummary,
   getParty,
+  getPurchaseOrder,
   listAccountsWithBalance,
   listBookingPayments,
-  listBookingSummaries,
   listDeliveries,
   listProjects,
+  listPurchaseOrders,
   type AccountWithBalance,
   type BookingSummary,
   type MaterialDeliveryRow,
   type ProjectRow,
+  type PurchaseOrderSummary,
   type TransactionRow,
 } from '@/db';
 import { useFocusData } from '@/hooks';
 
-/** Bookings-home list (already OPEN-first from the repo). */
-export function useBookings() {
-  const loader = useCallback(async () => ({ items: await listBookingSummaries() }), []);
-  return useFocusData(loader, { items: [] as BookingSummary[] });
+/** Purchase-orders home list (grouped by po_id, OPEN-first from the repo). */
+export function usePurchaseOrders() {
+  const loader = useCallback(async () => ({ items: await listPurchaseOrders() }), []);
+  return useFocusData(loader, { items: [] as PurchaseOrderSummary[] });
+}
+
+export interface PurchaseOrderDetailData {
+  po: PurchaseOrderSummary | null;
+  /** The saved supplier's phone (from the linked party), for a call button. */
+  supplierPhone: string | null;
+}
+
+/** One purchase order's page data (its item bookings + supplier phone). */
+export function usePurchaseOrderDetail(poId: string) {
+  const loader = useCallback(async (): Promise<PurchaseOrderDetailData> => {
+    const po = await getPurchaseOrder(poId);
+    const partyId = po.items[0]?.booking.party_id ?? null;
+    const supplierPhone = partyId ? (await getParty(partyId))?.phone ?? null : null;
+    return { po, supplierPhone };
+  }, [poId]);
+  return useFocusData<PurchaseOrderDetailData>(loader, { po: null, supplierPhone: null });
 }
 
 export interface BookingDetailData {

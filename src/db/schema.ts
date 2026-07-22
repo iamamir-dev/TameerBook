@@ -397,6 +397,10 @@ export interface MaterialBookingRow extends Base {
   /** qty × rate at booking time (the agreed order value). */
   total: number;
   status: BookingStatus;
+  /** Groups the line-items of ONE purchase order (null = a standalone item). */
+  po_id: string | null;
+  /** Human PO number shared by all items in the order (e.g. PO-0007). */
+  po_number: string | null;
 }
 
 export interface MaterialDeliveryRow extends Base {
@@ -1071,6 +1075,17 @@ ALTER TABLE material_deliveries ADD COLUMN transfer_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_deliv_project ON material_deliveries (project_id);
 `;
 
+/**
+ * v26 — a purchase order groups several material line-items: each item is still
+ * its own booking row (keeping per-item deliveries/payments), tied together by a
+ * shared `po_id` + human `po_number`.
+ */
+export const SCHEMA_V26_PURCHASE_ORDER_GROUP = `
+ALTER TABLE material_bookings ADD COLUMN po_id TEXT;
+ALTER TABLE material_bookings ADD COLUMN po_number TEXT;
+CREATE INDEX IF NOT EXISTS idx_bookings_po ON material_bookings (po_id);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1091,6 +1106,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 23, sql: SCHEMA_V23_TXN_QTY },
   { version: 24, sql: SCHEMA_V24_DROP_GIVEN_AMOUNT },
   { version: 25, sql: SCHEMA_V25_MATERIAL_UNITS_XPROJECT },
+  { version: 26, sql: SCHEMA_V26_PURCHASE_ORDER_GROUP },
 ];
 
 /* -------------------------------------------------------------------------- */

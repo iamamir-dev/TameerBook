@@ -157,13 +157,14 @@ const makeStyles = (theme: Theme) =>
     cell: {
       flex: 1,
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'stretch',
       borderRadius: theme.radius.md,
       borderWidth: 1.5,
       backgroundColor: theme.colors.background,
-      paddingLeft: theme.spacing.lg,
-      paddingRight: theme.spacing.xs,
+      paddingLeft: theme.spacing.md,
       minHeight: theme.touch.minTarget,
+      // Clip the flush unit tab to the field's rounded corner.
+      overflow: 'hidden',
     },
     input: {
       flex: 1,
@@ -171,13 +172,16 @@ const makeStyles = (theme: Theme) =>
       fontSize: theme.typography.sizes.md,
       color: theme.colors.textPrimary,
       padding: 0,
+      marginRight: theme.spacing.sm,
+      textAlignVertical: 'center',
       includeFontPadding: false,
     },
+    // Unit tab: attached flush to the top / right / bottom of the field.
     unitChip: {
+      alignSelf: 'stretch',
+      justifyContent: 'center',
+      alignItems: 'center',
       paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.xs,
-      borderRadius: theme.radius.sm,
-      marginLeft: theme.spacing.sm,
     },
     totalRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   });

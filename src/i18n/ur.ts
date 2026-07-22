@@ -485,8 +485,6 @@ export const ur: TranslationKeys = {
   poNo: 'آرڈر نمبر',
   vendor: 'سپلائر',
   deliverTo: 'ڈیلیور کریں',
-  subtotal: 'ذیلی میزان',
-  balanceDue: 'واجب الادا',
   authorizedSignature: 'مجاز دستخط',
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',

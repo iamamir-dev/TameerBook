@@ -525,8 +525,6 @@ export interface TranslationKeys {
   poNo: string;
   vendor: string;
   deliverTo: string;
-  subtotal: string;
-  balanceDue: string;
   authorizedSignature: string;
   payBookingLabel: string;
   payRemainingLabel: string;

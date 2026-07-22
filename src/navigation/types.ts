@@ -58,6 +58,8 @@ export type RootStackParamList = {
   MaterialEntry: undefined;
   // Material bookings
   Bookings: undefined;
+  NewPurchaseOrder: undefined;
+  PurchaseOrderDetail: { poId: string };
   BookingDetail: { bookingId: string };
   Investment: { investorId?: string } | undefined;
   // Udhaar

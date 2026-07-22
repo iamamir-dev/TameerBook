@@ -6,7 +6,7 @@ import { useTheme } from '@/theme';
 
 import { AccountDetailScreen } from '@/screens/AccountDetailScreen';
 import { AccountsScreen } from '@/screens/AccountsScreen';
-import { BookingDetailScreen, BookingsScreen } from '@/modules/bookings';
+import { BookingDetailScreen, BookingsScreen, NewPurchaseOrderScreen, PurchaseOrderDetailScreen } from '@/modules/bookings';
 import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
 import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
@@ -130,6 +130,8 @@ export function RootNavigator(): React.JSX.Element {
 
       {/* Material bookings */}
       <Stack.Screen name="Bookings" component={BookingsScreen} />
+      <Stack.Screen name="NewPurchaseOrder" component={NewPurchaseOrderScreen} />
+      <Stack.Screen name="PurchaseOrderDetail" component={PurchaseOrderDetailScreen} />
       <Stack.Screen name="BookingDetail" component={BookingDetailScreen} />
 
       {/* Udhaar */}
