@@ -130,6 +130,8 @@ export function NewBookingSheet({ visible, onClose, editing, onSaved }: Props): 
           qty: form.qty,
           rate: form.rate,
           unit: form.material.unit.primary,
+          secondaryUnit: form.material.unit.secondary,
+          secondaryFactor: form.material.unit.factor,
           projectId: form.projectId,
           supplierName: name || null,
           partyId,

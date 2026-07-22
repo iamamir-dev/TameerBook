@@ -401,6 +401,10 @@ export interface MaterialBookingRow extends Base {
   po_id: string | null;
   /** Human PO number shared by all items in the order (e.g. PO-0007). */
   po_number: string | null;
+  /** The material's sub-unit at booking time (e.g. g), for split display. */
+  secondary_unit: string | null;
+  /** How many secondary units make one primary (e.g. 1000). */
+  secondary_factor: number | null;
 }
 
 export interface MaterialDeliveryRow extends Base {
@@ -1086,6 +1090,15 @@ ALTER TABLE material_bookings ADD COLUMN po_number TEXT;
 CREATE INDEX IF NOT EXISTS idx_bookings_po ON material_bookings (po_id);
 `;
 
+/**
+ * v27 — store the material's sub-unit + factor on the booking, so quantities
+ * can be shown SPLIT across units (e.g. "10 kg 5 g") without a category lookup.
+ */
+export const SCHEMA_V27_BOOKING_SECONDARY_UNIT = `
+ALTER TABLE material_bookings ADD COLUMN secondary_unit TEXT;
+ALTER TABLE material_bookings ADD COLUMN secondary_factor REAL;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1107,6 +1120,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 24, sql: SCHEMA_V24_DROP_GIVEN_AMOUNT },
   { version: 25, sql: SCHEMA_V25_MATERIAL_UNITS_XPROJECT },
   { version: 26, sql: SCHEMA_V26_PURCHASE_ORDER_GROUP },
+  { version: 27, sql: SCHEMA_V27_BOOKING_SECONDARY_UNIT },
 ];
 
 /* -------------------------------------------------------------------------- */

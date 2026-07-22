@@ -93,7 +93,14 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
           projectId,
           partyId: pid,
           supplierName: name || null,
-          items: items.map((it) => ({ itemName: it.material.name.trim(), qty: it.qty, rate: it.rate, unit: it.material.unit.primary })),
+          items: items.map((it) => ({
+            itemName: it.material.name.trim(),
+            qty: it.qty,
+            rate: it.rate,
+            unit: it.material.unit.primary,
+            secondaryUnit: it.material.unit.secondary,
+            secondaryFactor: it.material.unit.factor,
+          })),
         });
       });
       if (ok) navigation.goBack();

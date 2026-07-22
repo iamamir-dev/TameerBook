@@ -21,7 +21,8 @@ import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
-import { formatQty, formatRupees } from '@/utils/money';
+import { formatRupees } from '@/utils/money';
+import { formatSplitQty, type UnitDef } from '@/utils/units';
 
 import { makeStyles } from '../styled/AddDeliverySheet.styles';
 
@@ -31,7 +32,7 @@ interface Props {
   bookingId: string;
   bookingProjectId: string | null;
   qtyRemaining: number;
-  unit: string | null;
+  unit: UnitDef;
   payRemaining: number;
   accounts: AccountWithBalance[];
   /** Active projects (for the receiving-project picker). */
@@ -128,7 +129,7 @@ export function AddDeliverySheet({
     !over &&
     !!form.receivingProjectId &&
     (!form.paidNow || (form.payAmount > 0 && !!form.accountId && !payError));
-  const remainingText = `${formatQty(qtyCap)}${unit ? ` ${unit}` : ''}`;
+  const remainingText = formatSplitQty(qtyCap, unit);
 
   // project_id sent only when it differs from the booking's own project.
   const deliveryProjectId =
@@ -176,7 +177,7 @@ export function AddDeliverySheet({
       </AppText>
 
       <QtyUnitRow
-        unit={{ primary: unit, secondary: null, factor: null }}
+        unit={unit}
         resetToken={visible}
         onQty={(qty) => patch({ qty })}
         error={over ? t('exceedsRemaining') : null}

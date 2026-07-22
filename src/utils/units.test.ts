@@ -1,10 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatQty, hasSecondary, toPrimaryQty, toSecondaryQty, type UnitDef } from './units';
+import { formatQty, formatSplitQty, hasSecondary, toPrimaryQty, toSecondaryQty, type UnitDef } from './units';
 
 const KG: UnitDef = { primary: 'kg', secondary: 'g', factor: 1000 };
 const BORI: UnitDef = { primary: 'bori', secondary: null, factor: null };
 const NONE: UnitDef = { primary: null, secondary: null, factor: null };
+
+describe('formatSplitQty', () => {
+  it('splits across primary + secondary units', () => {
+    expect(formatSplitQty(10.005, KG)).toBe('10 kg 5 g');
+    expect(formatSplitQty(10, KG)).toBe('10 kg');
+    expect(formatSplitQty(0.005, KG)).toBe('5 g');
+    expect(formatSplitQty(0, KG)).toBe('0 kg');
+  });
+
+  it('carries a secondary that rounds up to a full primary', () => {
+    expect(formatSplitQty(9.9999, KG)).toBe('10 kg');
+  });
+
+  it('shows a plain (decimal) value without a secondary unit', () => {
+    expect(formatSplitQty(10.5, BORI)).toBe('10.5 bori');
+    expect(formatSplitQty(10, BORI)).toBe('10 bori');
+    expect(formatSplitQty(3, NONE)).toBe('3');
+  });
+});
 
 describe('units', () => {
   it('detects a usable secondary unit', () => {

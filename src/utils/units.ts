@@ -47,3 +47,30 @@ export function formatQty(primaryQty: number, u: UnitDef): string {
   if (!hasSecondary(u)) return base;
   return `${base} (${grp(toSecondaryQty(primaryQty, u))} ${u.secondary})`;
 }
+
+const grpNum = (n: number): string => {
+  const rounded = Math.round(n * 100) / 100;
+  return rounded.toLocaleString('en-PK', { maximumFractionDigits: 2 });
+};
+
+/**
+ * Quantity split ACROSS its units for display, e.g. 10.005 kg (factor 1000) →
+ * "10 kg 5 g" — not "10.005 kg". Without a secondary unit it shows the primary
+ * value (with up to 2 decimals). Unitless → just the number.
+ */
+export function formatSplitQty(primaryQty: number, u: UnitDef): string {
+  if (!u.primary) return grpNum(primaryQty);
+  if (!hasSecondary(u)) return `${grpNum(primaryQty)} ${u.primary}`;
+
+  const factor = u.factor as number;
+  let whole = Math.floor(primaryQty + 1e-9);
+  let sec = Math.round((primaryQty - whole) * factor);
+  if (sec >= factor) {
+    whole += Math.floor(sec / factor);
+    sec = sec % factor;
+  }
+  const parts: string[] = [];
+  if (whole > 0) parts.push(`${grpNum(whole)} ${u.primary}`);
+  if (sec > 0) parts.push(`${grpNum(sec)} ${u.secondary}`);
+  return parts.length ? parts.join(' ') : `0 ${u.primary}`;
+}

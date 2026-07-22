@@ -6,10 +6,12 @@ import { AppCard, AppIcon, AppText, LabelValueRow } from '@/components/ui';
 import type { BookingSummary } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
-import { formatQty, formatRupees } from '@/utils/money';
+import { formatRupees } from '@/utils/money';
 import { softToneColor } from '@/utils/tones';
+import { formatSplitQty } from '@/utils/units';
 
 import { bookingStatusMeta } from '../utils/status';
+import { bookingUnit } from '../utils/unit';
 import { makeStyles } from '../styled/BookingCard.styles';
 
 interface BookingCardProps {
@@ -29,7 +31,8 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
 
   const { booking, qtyReceived, paid, payRemaining, projectName } = summary;
   const { tone, labelKey } = bookingStatusMeta(summary);
-  const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
+  const unit = bookingUnit(booking);
+  const fmtQty = (n: number) => formatSplitQty(n, unit);
 
   return (
     <AppCard onPress={onPress} style={styles.card}>
@@ -51,7 +54,7 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
         <View style={[styles.pill, { backgroundColor: theme.colors.accentSoft }]}>
           <AppIcon name="material" size={12} color="accent" />
           <AppText size="xs" weight="bold" color="accent" tabular>
-            {`${formatQty(booking.qty)}${unitSuffix}`}
+            {fmtQty(booking.qty)}
           </AppText>
         </View>
         <View style={[styles.pill, { backgroundColor: theme.colors.goldSoft }]}>
@@ -84,7 +87,7 @@ export function BookingCard({ summary, onPress }: BookingCardProps): React.JSX.E
       <View style={styles.block}>
         <LabelValueRow
           label={t('receivedQty')}
-          value={`${formatQty(qtyReceived)} / ${formatQty(booking.qty)}${unitSuffix}`}
+          value={`${fmtQty(qtyReceived)} / ${fmtQty(booking.qty)}`}
         />
       </View>
 

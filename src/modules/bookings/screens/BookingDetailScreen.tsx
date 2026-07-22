@@ -22,7 +22,8 @@ import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import { formatDisplayDate } from '@/utils/date';
-import { formatQty, formatRupees } from '@/utils/money';
+import { formatRupees } from '@/utils/money';
+import { formatSplitQty } from '@/utils/units';
 
 import { AddDeliverySheet } from '../components/AddDeliverySheet';
 import { DeliveryDetailSheet } from '../components/DeliveryDetailSheet';
@@ -30,6 +31,7 @@ import { NewBookingSheet } from '../components/NewBookingSheet';
 import { PayBookingSheet } from '../components/PayBookingSheet';
 import { useBookingDetail } from '../hooks/useBookings';
 import { bookingStatusMeta } from '../utils/status';
+import { bookingUnit } from '../utils/unit';
 import { makeStyles } from '../styled/BookingDetailScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -86,8 +88,8 @@ export function BookingDetailScreen(): React.JSX.Element {
   const { booking, qtyReceived, qtyRemaining, paid, payRemaining } = summary;
   const { tone, labelKey } = bookingStatusMeta(summary);
   const active = booking.status === 'OPEN';
-  const unitSuffix = booking.unit ? ` ${booking.unit}` : '';
-  const fmtQty = (n: number) => `${formatQty(n)}${unitSuffix}`;
+  const unit = bookingUnit(booking);
+  const fmtQty = (n: number) => formatSplitQty(n, unit);
   const showDelivery = active && qtyRemaining > 0;
   const showPay = active && payRemaining > 0;
   // The booking record can be edited unless it's cancelled (fix a typo, qty or
@@ -275,7 +277,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         bookingId={booking.id}
         bookingProjectId={booking.project_id}
         qtyRemaining={qtyRemaining}
-        unit={booking.unit}
+        unit={unit}
         payRemaining={payRemaining}
         accounts={accounts}
         projects={projects}
@@ -304,7 +306,7 @@ export function BookingDetailScreen(): React.JSX.Element {
         visible={!!deliveryDetail}
         onClose={() => setDeliveryDetail(null)}
         delivery={deliveryDetail}
-        unit={booking.unit}
+        unit={unit}
         destinationName={
           deliveryDetail && deliveryDetail.project_id && deliveryDetail.project_id !== booking.project_id
             ? projectName(deliveryDetail.project_id)

@@ -6,13 +6,13 @@ import type { MaterialDeliveryRow } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { formatDisplayDate } from '@/utils/date';
-import { formatQty } from '@/utils/money';
+import { formatSplitQty, type UnitDef } from '@/utils/units';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   delivery: MaterialDeliveryRow | null;
-  unit: string | null;
+  unit: UnitDef;
   /** Receiving project name when the delivery went to a different project. */
   destinationName: string | null;
   onEdit: () => void;
@@ -27,7 +27,6 @@ export function DeliveryDetailSheet({ visible, onClose, delivery, unit, destinat
   const theme = useTheme();
   const { t } = useTranslation();
   if (!delivery) return null;
-  const unitSuffix = unit ? ` ${unit}` : '';
 
   return (
     <AppSheet
@@ -45,7 +44,7 @@ export function DeliveryDetailSheet({ visible, onClose, delivery, unit, destinat
         </View>
       }
     >
-      <LabelValueRow label={t('receivedQty')} value={`${formatQty(delivery.qty)}${unitSuffix}`} valueColor="success" />
+      <LabelValueRow label={t('receivedQty')} value={formatSplitQty(delivery.qty, unit)} valueColor="success" />
       <LabelValueRow label={t('date')} value={formatDisplayDate(delivery.date)} />
       {destinationName ? <LabelValueRow label={t('deliverToProject')} value={destinationName} /> : null}
       {delivery.note ? (

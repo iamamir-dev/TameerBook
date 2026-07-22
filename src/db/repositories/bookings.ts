@@ -27,6 +27,8 @@ export interface NewBooking {
   qty: number;
   rate: number;
   unit?: string | null;
+  secondaryUnit?: string | null;
+  secondaryFactor?: number | null;
   projectId?: string | null;
   partyId?: string | null;
   supplierName?: string | null;
@@ -41,8 +43,8 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
   const id = uuid();
   await db.runAsync(
     `INSERT INTO material_bookings
-       (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, qty, rate, total, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+       (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, secondary_unit, secondary_factor, qty, rate, total, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -52,6 +54,8 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
     input.supplierName ?? null,
     input.itemName,
     input.unit ?? null,
+    input.secondaryUnit ?? null,
+    input.secondaryFactor ?? null,
     input.qty,
     input.rate,
     input.qty * input.rate
@@ -67,6 +71,8 @@ export interface BookingPatch {
   qty: number;
   rate: number;
   unit?: string | null;
+  secondaryUnit?: string | null;
+  secondaryFactor?: number | null;
   projectId?: string | null;
   partyId?: string | null;
   supplierName?: string | null;
@@ -97,10 +103,12 @@ export async function updateBooking(id: string, patch: BookingPatch): Promise<vo
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE material_bookings
-       SET item_name = ?, unit = ?, qty = ?, rate = ?, total = ?, project_id = ?, party_id = ?, supplier_name = ?
+       SET item_name = ?, unit = ?, secondary_unit = ?, secondary_factor = ?, qty = ?, rate = ?, total = ?, project_id = ?, party_id = ?, supplier_name = ?
      WHERE id = ?`,
     patch.itemName,
     patch.unit ?? null,
+    patch.secondaryUnit ?? null,
+    patch.secondaryFactor ?? null,
     patch.qty,
     patch.rate,
     total,
@@ -185,6 +193,8 @@ export interface PurchaseOrderItemInput {
   qty: number;
   rate: number;
   unit?: string | null;
+  secondaryUnit?: string | null;
+  secondaryFactor?: number | null;
 }
 export interface NewPurchaseOrder {
   projectId?: string | null;
@@ -227,8 +237,8 @@ export async function createPurchaseOrder(input: NewPurchaseOrder): Promise<stri
     for (const it of input.items) {
       await tx.runAsync(
         `INSERT INTO material_bookings
-           (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, qty, rate, total, status, po_id, po_number)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`,
+           (id, created_at, created_by, company_id, project_id, party_id, supplier_name, item_name, unit, secondary_unit, secondary_factor, qty, rate, total, status, po_id, po_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`,
         uuid(),
         nowISO(),
         input.createdBy ?? DEFAULT_USER,
@@ -238,6 +248,8 @@ export async function createPurchaseOrder(input: NewPurchaseOrder): Promise<stri
         input.supplierName ?? null,
         it.itemName.trim(),
         it.unit ?? null,
+        it.secondaryUnit ?? null,
+        it.secondaryFactor ?? null,
         it.qty,
         it.rate,
         it.qty * it.rate,

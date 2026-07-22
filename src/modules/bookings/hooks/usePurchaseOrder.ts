@@ -6,8 +6,11 @@ import { useTranslation } from '@/i18n';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { swallow } from '@/utils/log';
-import { formatQty, formatRupees } from '@/utils/money';
+import { formatRupees } from '@/utils/money';
+import { formatSplitQty } from '@/utils/units';
 import { buildPurchaseOrderHtml } from '@/utils/reportPdf';
+
+import { bookingUnit } from '../utils/unit';
 
 /**
  * Builds the modern multi-item Purchase Order PDF (html + csv) for the preview.
@@ -23,11 +26,11 @@ export function usePurchaseOrder(
   const [html, setHtml] = useState('');
 
   const line = (s: PurchaseOrderSummary['items'][number]) => {
-    const unit = s.booking.unit ? ` ${s.booking.unit}` : '';
+    const unit = bookingUnit(s.booking);
     return {
       name: s.booking.item_name,
-      qtyText: `${formatQty(s.booking.qty)}${unit}`,
-      receivedText: `${formatQty(s.qtyReceived)}${unit}`,
+      qtyText: formatSplitQty(s.booking.qty, unit),
+      receivedText: formatSplitQty(s.qtyReceived, unit),
       rateText: formatRupees(s.booking.rate),
       amountText: formatRupees(s.booking.total),
       fullyReceived: s.qtyRemaining <= 0.001,
