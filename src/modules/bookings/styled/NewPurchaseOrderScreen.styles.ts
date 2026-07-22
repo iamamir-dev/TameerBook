@@ -4,7 +4,7 @@ import type { Theme } from '@/theme/theme';
 
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: theme.colors.card },
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.sm, paddingBottom: theme.spacing.xxxl },
     sectionLabel: { marginTop: theme.spacing.xs },
