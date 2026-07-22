@@ -53,11 +53,13 @@ function UnitCell({
         placeholderTextColor={theme.colors.textSecondary}
         style={styles.input}
       />
-      <View style={[styles.unitChip, { backgroundColor: theme.colors[soft] }]}>
-        <AppText size="sm" weight="bold" color={tone}>
-          {unitLabel}
-        </AppText>
-      </View>
+      {unitLabel ? (
+        <View style={[styles.unitChip, { backgroundColor: theme.colors[soft] }]}>
+          <AppText size="sm" weight="bold" color={tone}>
+            {unitLabel}
+          </AppText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -111,7 +113,7 @@ export function QtyUnitRow({ onQty, unit, label, resetToken, initialPrimary, err
         <UnitCell
           value={primaryRaw}
           onChangeText={onPrimary}
-          unitLabel={unit.primary || '—'}
+          unitLabel={unit.primary ?? ''}
           tone="accent"
           soft="accentSoft"
           error={hasError}
