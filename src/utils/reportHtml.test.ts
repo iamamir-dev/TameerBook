@@ -72,11 +72,12 @@ describe('renderReportHtml', () => {
     expect(period).toBeGreaterThan(plot);
   });
 
-  it('renders stats with edges and a filled lead card', () => {
-    expect(html).toContain('class="stat edge-accent"');
-    expect(html).toContain('class="stat edge-danger"');
-    expect(html).toContain('class="stat net"');
+  it('renders stats as a flat strip with tone-coloured values (no cards)', () => {
+    expect(html).toContain('class="stat"');
+    expect(html).toContain('class="v v-accent"');
     expect(html).toContain('class="v v-danger">Rs 65,000');
+    expect(html).not.toContain('edge-accent');
+    expect(html).not.toContain('class="stat net"');
   });
 
   it('renders tables with highlight column, tags and double-rule totals', () => {

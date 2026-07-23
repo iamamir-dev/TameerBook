@@ -93,7 +93,7 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     .postatus { display: inline-block; margin-top: 7px; background: ${C.accentSoft}; color: ${C.accent}; font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; border-radius: 999px; padding: 4px 10px; }
 
     .parties { display: flex; gap: 14px; margin: 4px 0 18px; }
-    .party { flex: 1; border: 1px solid ${C.border}; border-radius: 12px; padding: 12px 15px; background: ${C.bg}; }
+    .party { flex: 1; border-radius: 12px; padding: 12px 15px; background: ${C.bg}; }
     .plabel { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
     .pname { font-size: 15px; font-weight: 700; margin-top: 5px; }
     .psub { font-size: 11px; color: ${C.textMid}; margin-top: 2px; letter-spacing: .3px; }

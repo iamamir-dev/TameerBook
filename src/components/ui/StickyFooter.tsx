@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View, type ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, StyleSheet, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme';
@@ -29,11 +29,23 @@ export function StickyFooter({ children, applyInset = true, style }: StickyFoote
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
+  // The keyboard already covers the bottom safe-area, so drop the inset while
+  // it's up — otherwise there's an empty gap between the button and the keyboard.
+  const [kbUp, setKbUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKbUp(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   return (
     <View
       style={[
         styles.footer,
-        { paddingBottom: (applyInset ? insets.bottom : 0) + theme.spacing.md },
+        { paddingBottom: (applyInset && !kbUp ? insets.bottom : 0) + theme.spacing.md },
         style,
       ]}
     >

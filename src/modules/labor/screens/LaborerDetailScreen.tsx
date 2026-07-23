@@ -187,13 +187,13 @@ export function LaborerDetailScreen(): React.JSX.Element {
       <StickyFooter>
         <View style={styles.footerRow}>
           <AppButton
-            label={t('statement')}
-            icon="statement"
+            label={t('printLabel')}
+            icon="print"
             variant="secondary"
             fullWidth={false}
             loading={statement.busy}
             disabled={!khata}
-            onPress={statement.share}
+            onPress={statement.preview}
           />
           <View style={styles.flex}>
             <AppButton label={t('payWorker')} icon="moneyOut" onPress={() => setPayOpen(true)} disabled={!canPay} />

@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ReportPreview } from '@/components/ReportPreview';
 import { StageBadge } from '@/components/StageBadge';
 import { ActionsDrawer, AppCard, AppHeader, AppText, LabelValueRow, LoadErrorState, PhoneChip } from '@/components/ui';
 import { cancelPurchaseOrder } from '@/db';
@@ -42,7 +41,6 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const pdf = usePurchaseOrder(po, supplierPhone);
 
   if (!po) {
@@ -80,7 +78,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
         title={po.poNumber}
         subtitle={t('purchaseOrder')}
         onBack={() => navigation.goBack()}
-        rightAction={{ icon: 'add', onPress: () => setActionsOpen(true), accessibilityLabel: t('actions') }}
+        rightAction={{ icon: 'more', onPress: () => setActionsOpen(true), accessibilityLabel: t('actions') }}
       />
 
       <ScrollView
@@ -218,22 +216,14 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
           ...(canReceive ? [{ icon: 'material' as const, label: t('addDelivery'), onPress: () => setDeliverOpen(true) }] : []),
           ...(canPay ? [{ icon: 'moneyOut' as const, label: t('payBookingLabel'), onPress: () => setPayOpen(true) }] : []),
           ...(active ? [{ icon: 'edit' as const, label: t('editBooking'), onPress: () => navigation.navigate('NewPurchaseOrder', { poId: po.poId }) }] : []),
-          { icon: 'statement' as const, label: t('printLabel'), onPress: () => setPreviewOpen(true) },
+          { icon: 'print' as const, label: t('printLabel'), onPress: pdf.preview },
+          { icon: 'share' as const, label: t('shareLabel'), onPress: pdf.share },
           ...(active ? [{ icon: 'trash' as const, label: t('cancelBookingLabel'), onPress: onCancel }] : []),
         ]}
       />
 
       <MultiDeliverySheet visible={deliverOpen} onClose={() => setDeliverOpen(false)} po={po} accounts={accounts} onSaved={reload} />
       <MultiPaySheet visible={payOpen} onClose={() => setPayOpen(false)} po={po} accounts={accounts} onSaved={reload} />
-
-      <ReportPreview
-        visible={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        title={po.poNumber}
-        html={pdf.html}
-        csv={pdf.csv}
-        baseName={`purchase-order-${po.poNumber}`}
-      />
     </View>
   );
 }

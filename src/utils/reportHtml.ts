@@ -120,9 +120,9 @@ function renderBlock(b: ReportBlock): string {
     <div class="stats">
       ${b.items
         .map((it) => {
-          const cls = it.filled ? ` net${it.filled === 'danger' ? ' net-danger' : ''}` : it.tone ? ` edge-${it.tone}` : '';
-          const vcls = !it.filled && it.tone ? ` v-${it.tone}` : '';
-          return `<div class="stat${cls}"><div class="k">${it.label}</div><div class="v${vcls}">${it.value}</div></div>`;
+          const tone = it.filled ?? it.tone;
+          const vcls = tone ? ` v-${tone}` : '';
+          return `<div class="stat"><div class="k">${it.label}</div><div class="v${vcls}">${it.value}</div></div>`;
         })
         .join('\n      ')}
     </div>`;
@@ -227,19 +227,13 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     .chip { display: inline-block; background: ${C.heroBg}; color: #fff; font-size: 9px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; border-radius: 999px; padding: 5px 12px; }
     .metadate { font-size: 9.5px; color: ${C.textSoft}; margin-top: 6px; letter-spacing: .4px; }
 
-    /* ── Stat cards: colored edges, one filled lead number ────────────── */
-    .stats { display: flex; gap: 10px; margin: 16px 0 20px; }
-    .stat { flex: 1; border: 1.2px solid ${C.border}; border-left: 3px solid ${C.border}; border-radius: 12px; padding: 11px 14px; background: #fff; }
+    /* ── Stats: soft borderless cards; only the amount is coloured ─────── */
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 20px; }
+    .stat { width: 150px; background: ${C.bg}; border-radius: 12px; padding: 12px 15px; }
     .stat .k { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
-    .stat .v { font-size: 17px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    .stat.edge-accent { border-left-color: ${C.accent}; }
-    .stat.edge-danger { border-left-color: ${C.danger}; }
+    .stat .v { font-size: 19px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
     .stat .v.v-accent { color: ${C.accent}; }
     .stat .v.v-danger { color: ${C.danger}; }
-    .stat.net { background: ${C.accent}; border-color: transparent; }
-    .stat.net.net-danger { background: ${C.danger}; }
-    .stat.net .k { color: rgba(255,255,255,.85); }
-    .stat.net .v { color: #fff; font-size: 20px; }
 
     /* ── Sections & tables ─────────────────────────────────────────────── */
     h3 { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: ${C.textMid}; margin: 18px 0 8px; border-left: 3px solid ${C.accent}; padding-left: 9px; break-after: avoid; }

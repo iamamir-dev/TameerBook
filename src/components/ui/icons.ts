@@ -43,8 +43,10 @@ import {
   Maximize2,
   Minimize2,
   Moon,
+  MoreHorizontal,
   Package,
   Plus,
+  Printer,
   Receipt,
   ReceiptText,
   Repeat,
@@ -119,6 +121,8 @@ export const ICONS = {
   reports: ChartColumn,
   investors: Users,
   add: Plus,
+  more: MoreHorizontal,
+  print: Printer,
   settings: Settings,
 
   // UI affordances
