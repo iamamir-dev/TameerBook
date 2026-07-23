@@ -70,6 +70,7 @@ export function usePurchaseOrder(po: PurchaseOrderSummary | null, supplierPhone:
           rate: t('rateLabel'),
           amount: t('amount'),
           total: t('totalLabel'),
+          itemsLabel: t('items'),
           authorizedSignature: t('authorizedSignature'),
           madeWith: t('madeWith'),
         },

@@ -38,6 +38,7 @@ export interface PurchaseOrder {
     rate: string;
     amount: string;
     total: string;
+    itemsLabel: string;
     authorizedSignature: string;
     madeWith: string;
   };
@@ -72,7 +73,7 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     @font-face { font-family: 'AppFont'; font-weight: 700; src: url(data:font/ttf;base64,${assets.fontBold}) format('truetype'); }
     @font-face { font-family: 'Naskh'; font-weight: 400; src: url(data:font/ttf;base64,${assets.naskh}) format('truetype'); }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { margin: 0; }
+    @page { size: A4; margin: 0; }
     body { font-family: 'AppFont','Naskh',sans-serif; color: ${C.text}; background: #fff; -webkit-print-color-adjust: exact; }
     .sheet { width: 100%; border-collapse: separate; border-spacing: 0; border: 0; }
     .sheet > thead { display: table-header-group; }
@@ -109,11 +110,12 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     .itemname { font-weight: 700; }
     .recv-ok { color: ${C.accent}; font-weight: 700; }
 
-    .totals { margin-top: 16px; margin-left: auto; width: 260px; }
-    .trow { display: flex; justify-content: space-between; padding: 9px 4px; }
-    .trow.grand { border-top: 2px solid ${C.text}; font-size: 15px; }
-    .trow.grand span { font-weight: 700; }
-    .trow.grand .amt { color: ${C.accent}; font-variant-numeric: tabular-nums; }
+    /* Soft borderless summary cards (same as the report stats). */
+    .stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 18px; }
+    .stat { width: 150px; background: ${C.bg}; border-radius: 12px; padding: 12px 15px; }
+    .stat .k { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
+    .stat .v { font-size: 19px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .stat .v.v-accent { color: ${C.accent}; }
 
     .sign { margin-top: 44px; width: 220px; }
     .signline { border-bottom: 1.4px solid ${C.textSoft}; height: 30px; }
@@ -152,6 +154,11 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
 
     <tbody><tr><td>
       <div class="bodypad">
+        <div class="stats">
+          <div class="stat"><div class="k">${esc(L.total)}</div><div class="v v-accent">${esc(po.totalText)}</div></div>
+          <div class="stat"><div class="k">${esc(L.itemsLabel)}</div><div class="v">${po.items.length}</div></div>
+        </div>
+
         <div class="parties">
           <div class="party">
             <div class="plabel">${esc(L.vendor)}</div>
@@ -174,10 +181,6 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
           </tr></thead>
           <tbody>${itemRows}</tbody>
         </table>
-
-        <div class="totals">
-          <div class="trow grand"><span>${esc(L.total)}</span><span class="amt">${esc(po.totalText)}</span></div>
-        </div>
 
         <div class="sign">
           <div class="signline"></div>

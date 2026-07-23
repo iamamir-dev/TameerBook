@@ -190,7 +190,7 @@ export function renderReportHtml(doc: ReportDoc, assets: ReportAssets): string {
     @font-face { font-family: 'AppFont'; font-weight: 700; src: url(data:font/ttf;base64,${assets.fontBold}) format('truetype'); }
     @font-face { font-family: 'Naskh'; font-weight: 400; src: url(data:font/ttf;base64,${assets.naskh}) format('truetype'); }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { margin: 0; }
+    @page { size: A4; margin: 0; }
     body { font-family: 'AppFont','Naskh',sans-serif; color: ${C.text}; background: #fff; -webkit-print-color-adjust: exact; }
     /* Table layout drives pagination: the thead REPEATS on every printed page
        and the print engine reserves its height, so content never runs under it. */
