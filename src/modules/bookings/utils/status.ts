@@ -9,7 +9,7 @@ import type { ColorKey } from '@/utils/tones';
 export function bookingStatusMeta(s: BookingSummary): { tone: ColorKey; labelKey: TranslationKey } {
   const { booking, qtyReceived, qtyRemaining, payRemaining } = s;
   const gotAll = qtyRemaining <= 0.001;
-  const paidAll = payRemaining <= 0.001;
+  const paidAll = payRemaining < 1; // sub-rupee remainder = fully paid
 
   if (booking.status === 'CANCELLED') return { tone: 'danger', labelKey: 'statusCancelled' };
   if (gotAll && paidAll) return { tone: 'success', labelKey: 'statusDone' }; // Completed
@@ -23,7 +23,7 @@ export function bookingStatusMeta(s: BookingSummary): { tone: ColorKey; labelKey
 export function purchaseOrderStatusMeta(po: PurchaseOrderSummary): { tone: ColorKey; labelKey: TranslationKey } {
   if (po.status === 'CANCELLED') return { tone: 'danger', labelKey: 'statusCancelled' };
   const gotAll = po.fullyReceived;
-  const paidAll = po.payRemaining <= 0.001;
+  const paidAll = po.items.every((i) => i.payRemaining < 1); // every item's money settled
   const anyReceived = po.items.some((i) => i.qtyReceived > 0);
 
   if (gotAll && paidAll) return { tone: 'success', labelKey: 'statusDone' };

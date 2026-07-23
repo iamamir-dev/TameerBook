@@ -56,7 +56,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const caption = [po.supplierName, po.projectName].filter(Boolean).join(' · ');
   const active = po.status === 'OPEN';
   const canReceive = po.items.some((i) => i.qtyRemaining > 0.001);
-  const canPay = po.payRemaining > 0.001;
+  const canPay = po.items.some((i) => i.payRemaining >= 1);
 
   const onCancel = () => {
     Alert.alert(po.poNumber, t('cancelBookingConfirm'), [

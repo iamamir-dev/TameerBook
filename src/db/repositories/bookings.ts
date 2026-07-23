@@ -61,7 +61,7 @@ export async function createBooking(input: NewBooking): Promise<MaterialBookingR
     input.secondaryFactor ?? null,
     input.qty,
     input.rate,
-    input.qty * input.rate,
+    Math.round(input.qty * input.rate),
     input.poId ?? null,
     input.poNumber ?? null
   );
@@ -98,7 +98,7 @@ export async function updateBooking(id: string, patch: BookingPatch): Promise<vo
   if (s.booking.status === 'CANCELLED') throw new Error('updateBooking: cannot edit a cancelled booking');
   if (patch.qty < s.qtyReceived - 0.001) throw new LimitExceededError(s.qtyReceived, patch.qty);
 
-  const total = patch.qty * patch.rate;
+  const total = Math.round(patch.qty * patch.rate);
   if (total < s.paid - 0.001) throw new LimitExceededError(s.paid, total);
 
   const hasActivity = s.qtyReceived > 0.001 || s.paid > 0.001;
@@ -166,7 +166,8 @@ async function summarize(booking: MaterialBookingRow): Promise<BookingSummary> {
   // keeps the shown status correct even after a payment is voided — the stored
   // column is only a best-effort hint for SQL ordering.
   const cancelled = booking.status === 'CANCELLED';
-  const status: BookingStatus = cancelled ? 'CANCELLED' : qtyRemaining <= 0.001 && payRemaining <= 0.001 ? 'CLOSED' : 'OPEN';
+  // Money is whole rupees; a sub-rupee remainder is rounding noise = fully paid.
+  const status: BookingStatus = cancelled ? 'CANCELLED' : qtyRemaining <= 0.001 && payRemaining < 1 ? 'CLOSED' : 'OPEN';
 
   return {
     booking: { ...booking, status },
@@ -257,7 +258,7 @@ export async function createPurchaseOrder(input: NewPurchaseOrder): Promise<stri
         it.secondaryFactor ?? null,
         it.qty,
         it.rate,
-        it.qty * it.rate,
+        Math.round(it.qty * it.rate),
         poId,
         poNumber
       );
@@ -381,7 +382,7 @@ async function refreshStatus(bookingId: string): Promise<void> {
   const b = await db.getFirstAsync<MaterialBookingRow>('SELECT * FROM material_bookings WHERE id = ?', bookingId);
   if (!b || b.status === 'CANCELLED') return;
   const s = await getBookingSummary(bookingId);
-  const done = s.qtyRemaining <= 0.001 && s.payRemaining <= 0.001;
+  const done = s.qtyRemaining <= 0.001 && s.payRemaining < 1;
   await db.runAsync('UPDATE material_bookings SET status = ? WHERE id = ?', done ? 'CLOSED' : 'OPEN', bookingId);
 }
 
