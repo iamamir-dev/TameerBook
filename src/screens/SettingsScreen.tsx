@@ -4,15 +4,18 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
+  AppButton,
   AppCard,
   AppHeader,
   AppIcon,
+  AppSheet,
   AppText,
   AppToggle,
   SelectSheet,
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
+import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { Language } from '@/i18n/types';
 import type { RootStackParamList } from '@/navigation/types';
@@ -54,6 +57,12 @@ export function SettingsScreen(): React.JSX.Element {
   const setReminder = useSettingsStore((s) => s.setReminder);
   const donationPct = useSettingsStore((s) => s.donationPct);
   const setDonationPct = useSettingsStore((s) => s.setDonationPct);
+  const signature = useSettingsStore((s) => s.signature);
+  const setSignature = useSettingsStore((s) => s.setSignature);
+  const removeBgKey = useSettingsStore((s) => s.removeBgKey);
+  const setRemoveBgKey = useSettingsStore((s) => s.setRemoveBgKey);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [draftKey, setDraftKey] = useState('');
 
   const onToggleReminder = (key: ReminderKey, value: boolean) => {
     setReminder(key, value);
@@ -220,6 +229,39 @@ export function SettingsScreen(): React.JSX.Element {
             icon="tag"
             label={t('statusesTitle')}
             onPress={() => navigation.navigate('Statuses')}
+          />
+
+          <Divider />
+
+          {/* Authorized signature used on the purchase-order PDF. */}
+          <SettingRow
+            icon="agreement"
+            label={t('signatureSetting')}
+            value={signature ? undefined : t('addSignature')}
+            trailing={signature ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+            onPress={() => navigation.navigate('Signature')}
+            onLongPress={
+              signature
+                ? () =>
+                    Alert.alert(t('signatureSetting'), t('deleteConfirm'), [
+                      { text: t('cancel'), style: 'cancel' },
+                      { text: t('delete'), style: 'destructive', onPress: () => setSignature(null) },
+                    ])
+                : undefined
+            }
+          />
+
+          <Divider />
+
+          {/* remove.bg API key (the user's own) for signature background removal. */}
+          <SettingRow
+            icon="key"
+            label={t('removeBgKeyLabel')}
+            trailing={removeBgKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+            onPress={() => {
+              setDraftKey(removeBgKey ?? '');
+              setKeyOpen(true);
+            }}
           />
         </AppCard>
 
@@ -413,6 +455,24 @@ export function SettingsScreen(): React.JSX.Element {
         searchable={false}
         onSelect={(option) => setFontScale(option.id as FontScaleKey)}
       />
+
+      <AppSheet
+        visible={keyOpen}
+        onClose={() => setKeyOpen(false)}
+        title={t('removeBgKeyLabel')}
+        footer={
+          <AppButton
+            label={t('save')}
+            icon="check"
+            onPress={() => {
+              setRemoveBgKey(draftKey.trim() || null);
+              setKeyOpen(false);
+            }}
+          />
+        }
+      >
+        <FloatingLabelInput label={t('removeBgKeyLabel')} value={draftKey} onChangeText={setDraftKey} hint={t('removeBgKeyHint')} />
+      </AppSheet>
     </View>
   );
 }

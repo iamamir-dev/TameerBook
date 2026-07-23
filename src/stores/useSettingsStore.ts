@@ -82,6 +82,10 @@ interface SettingsState {
   /** Default % of profit given to investors (loss is always by capital ratio). */
   /** % of each party's profit donated to charity at settlement. */
   donationPct: number;
+  /** Authorized signature (PNG data URL) drawn in Settings, used on the PO PDF. */
+  signature: string | null;
+  /** User's own remove.bg API key (on-device) for signature background removal. */
+  removeBgKey: string | null;
   hydrate: () => Promise<void>;
   setLanguage: (language: Language) => void;
   toggleLanguage: () => void;
@@ -93,6 +97,8 @@ interface SettingsState {
   setQuickOrder: (order: string[]) => void;
   setReminder: (key: ReminderKey, value: boolean) => void;
   setDonationPct: (pct: number) => void;
+  setSignature: (signature: string | null) => void;
+  setRemoveBgKey: (key: string | null) => void;
 }
 
 const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
@@ -111,6 +117,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   quickOrder: [...DEFAULT_QUICK_ORDER],
   reminders: { daily: true, deadline: true, udhaar: true, buyer: true },
   donationPct: DEFAULT_DONATION_PCT,
+  signature: null,
+  removeBgKey: null,
 
   hydrate: async () => {
     try {
@@ -126,6 +134,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
       }
       if (s.donationPct != null) patch.donationPct = clampPct(Number(s.donationPct));
+      if (s.signature) patch.signature = s.signature;
+      if (s.removeBgKey) patch.removeBgKey = s.removeBgKey;
       if (s.fontFamily && s.fontFamily in FONT_OPTIONS) patch.fontFamily = s.fontFamily as FontKey;
       if (s.fontScale && s.fontScale in FONT_SCALES) patch.fontScale = s.fontScale as FontScaleKey;
       if (s.homeSections) {
@@ -196,5 +206,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const donationPct = clampPct(pct);
     set({ donationPct });
     persist('donationPct', String(donationPct));
+  },
+  setSignature: (signature) => {
+    set({ signature });
+    persist('signature', signature ?? '');
+  },
+  setRemoveBgKey: (removeBgKey) => {
+    set({ removeBgKey });
+    persist('removeBgKey', removeBgKey ?? '');
   },
 }));

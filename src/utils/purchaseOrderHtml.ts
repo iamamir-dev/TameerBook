@@ -26,6 +26,8 @@ export interface PurchaseOrder {
   deliverTo: string | null;
   items: PurchaseOrderLine[];
   totalText: string;
+  /** Authorized signature as a base64 data URL (from Settings); null = none. */
+  signatureDataUrl?: string | null;
   L: {
     purchaseOrder: string;
     poNo: string;
@@ -38,7 +40,6 @@ export interface PurchaseOrder {
     rate: string;
     amount: string;
     total: string;
-    itemsLabel: string;
     authorizedSignature: string;
     madeWith: string;
   };
@@ -93,11 +94,13 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     .pometa b { color: ${C.text}; font-weight: 700; }
     .postatus { display: inline-block; margin-top: 7px; background: ${C.accentSoft}; color: ${C.accent}; font-size: 8.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; border-radius: 999px; padding: 4px 10px; }
 
-    .parties { display: flex; gap: 14px; margin: 4px 0 18px; }
-    .party { flex: 1; border-radius: 12px; padding: 12px 15px; background: ${C.bg}; }
-    .plabel { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
-    .pname { font-size: 15px; font-weight: 700; margin-top: 5px; }
-    .psub { font-size: 11px; color: ${C.textMid}; margin-top: 2px; letter-spacing: .3px; }
+    /* Three soft borderless summary cards: Total · Vendor · Deliver to. */
+    .cards { display: flex; gap: 12px; margin: 4px 0 20px; }
+    .card { flex: 1; background: ${C.bg}; border-radius: 12px; padding: 13px 16px; }
+    .card .k { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
+    .card .v { font-size: 15px; font-weight: 700; margin-top: 5px; }
+    .card .v.v-accent { color: ${C.accent}; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .card .sub { font-size: 11px; color: ${C.textMid}; margin-top: 2px; letter-spacing: .3px; }
 
     table.items { width: 100%; border-collapse: collapse; }
     table.items th { text-align: left; font-size: 8.5px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; color: #fff; background: ${C.heroBg}; padding: 10px 12px; }
@@ -110,14 +113,8 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     .itemname { font-weight: 700; }
     .recv-ok { color: ${C.accent}; font-weight: 700; }
 
-    /* Soft borderless summary cards (same as the report stats). */
-    .stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 18px; }
-    .stat { width: 150px; background: ${C.bg}; border-radius: 12px; padding: 12px 15px; }
-    .stat .k { font-size: 8.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: ${C.textSoft}; }
-    .stat .v { font-size: 19px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    .stat .v.v-accent { color: ${C.accent}; }
-
     .sign { margin-top: 44px; width: 220px; }
+    .sigimg { height: 58px; max-width: 200px; object-fit: contain; display: block; margin-bottom: -8px; }
     .signline { border-bottom: 1.4px solid ${C.textSoft}; height: 30px; }
     .signlabel { font-size: 10px; font-weight: 700; color: ${C.textMid}; margin-top: 7px; letter-spacing: .3px; }
 
@@ -154,21 +151,14 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
 
     <tbody><tr><td>
       <div class="bodypad">
-        <div class="stats">
-          <div class="stat"><div class="k">${esc(L.total)}</div><div class="v v-accent">${esc(po.totalText)}</div></div>
-          <div class="stat"><div class="k">${esc(L.itemsLabel)}</div><div class="v">${po.items.length}</div></div>
-        </div>
-
-        <div class="parties">
-          <div class="party">
-            <div class="plabel">${esc(L.vendor)}</div>
-            <div class="pname">${esc(po.vendorName || '—')}</div>
-            ${po.vendorPhone ? `<div class="psub">${esc(po.vendorPhone)}</div>` : ''}
+        <div class="cards">
+          <div class="card"><div class="k">${esc(L.total)}</div><div class="v v-accent">${esc(po.totalText)}</div></div>
+          <div class="card">
+            <div class="k">${esc(L.vendor)}</div>
+            <div class="v">${esc(po.vendorName || '—')}</div>
+            ${po.vendorPhone ? `<div class="sub">${esc(po.vendorPhone)}</div>` : ''}
           </div>
-          <div class="party">
-            <div class="plabel">${esc(L.deliverTo)}</div>
-            <div class="pname">${esc(po.deliverTo || '—')}</div>
-          </div>
+          <div class="card"><div class="k">${esc(L.deliverTo)}</div><div class="v">${esc(po.deliverTo || '—')}</div></div>
         </div>
 
         <table class="items">
@@ -183,6 +173,7 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
         </table>
 
         <div class="sign">
+          ${po.signatureDataUrl ? `<img class="sigimg" src="${po.signatureDataUrl}"/>` : ''}
           <div class="signline"></div>
           <div class="signlabel">${esc(L.authorizedSignature)}</div>
         </div>

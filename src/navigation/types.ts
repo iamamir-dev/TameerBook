@@ -37,6 +37,7 @@ export type RootStackParamList = {
   Reports: undefined;
   Categories: undefined;
   Statuses: undefined;
+  Signature: undefined;
   CompanyDetail: undefined;
   Allocation: undefined;
   // Plots

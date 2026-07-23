@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -36,6 +37,30 @@ export async function pickDocumentImage(): Promise<string | null> {
   const asset = result.canceled ? null : result.assets[0];
   if (!asset) return null;
   return compress(asset.uri);
+}
+
+/**
+ * Capture (camera) or pick (gallery) a signature photo, cropped by the user,
+ * and return it as a base64 data URL ready to embed in a PDF. Offline; nothing
+ * leaves the device.
+ */
+export async function captureSignature(source: 'camera' | 'gallery'): Promise<string | null> {
+  const perm =
+    source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!perm.granted) return null;
+
+  const result =
+    source === 'camera'
+      ? await ImagePicker.launchCameraAsync({ quality: 0.9, allowsEditing: true })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.9, allowsEditing: true, mediaTypes: ['images'] });
+  const asset = result.canceled ? null : result.assets[0];
+  if (!asset) return null;
+
+  const uri = await compress(asset.uri);
+  const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+  return `data:image/jpeg;base64,${b64}`;
 }
 
 /** Resize to max 1080px wide + JPEG q0.5 (~300KB). */

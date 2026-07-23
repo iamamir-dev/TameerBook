@@ -32,6 +32,7 @@ export function usePurchaseOrder(po: PurchaseOrderSummary | null, supplierPhone:
   const { t } = useTranslation();
   const company = useCompanyStore((st) => st.companies.find((c) => c.id === st.activeCompanyId) ?? null);
   const fontFamily = useSettingsStore((st) => st.fontFamily);
+  const signature = useSettingsStore((st) => st.signature);
   const [busy, setBusy] = useState(false);
 
   const build = async (): Promise<string | null> => {
@@ -58,6 +59,7 @@ export function usePurchaseOrder(po: PurchaseOrderSummary | null, supplierPhone:
         deliverTo: po.projectName,
         items: po.items.map(line),
         totalText: formatRupees(po.total),
+        signatureDataUrl: signature,
         L: {
           purchaseOrder: t('purchaseOrder'),
           poNo: t('poNo'),
@@ -70,7 +72,6 @@ export function usePurchaseOrder(po: PurchaseOrderSummary | null, supplierPhone:
           rate: t('rateLabel'),
           amount: t('amount'),
           total: t('totalLabel'),
-          itemsLabel: t('items'),
           authorizedSignature: t('authorizedSignature'),
           madeWith: t('madeWith'),
         },
