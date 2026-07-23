@@ -63,6 +63,25 @@ export async function captureSignature(source: 'camera' | 'gallery'): Promise<st
   return `data:image/jpeg;base64,${b64}`;
 }
 
+/**
+ * Normalize a signature (draw or photo) to a horizontal, tightly-sized PNG data
+ * URL: if it's taller than it is wide it's rotated 90° so it always reads
+ * left-to-right. Keeps transparency (PNG).
+ */
+export async function normalizeSignature(dataUrl: string): Promise<string> {
+  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+  const path = `${FileSystem.cacheDirectory}sig-${Date.now()}.png`;
+  await FileSystem.writeAsStringAsync(path, base64, { encoding: 'base64' });
+
+  const info = await ImageManipulator.manipulateAsync(path, [], { format: ImageManipulator.SaveFormat.PNG });
+  const actions: ImageManipulator.Action[] = info.height > info.width ? [{ rotate: -90 }] : [];
+  const out = await ImageManipulator.manipulateAsync(path, actions, {
+    format: ImageManipulator.SaveFormat.PNG,
+    base64: true,
+  });
+  return out.base64 ? `data:image/png;base64,${out.base64}` : dataUrl;
+}
+
 /** Resize to max 1080px wide + JPEG q0.5 (~300KB). */
 async function compress(uri: string): Promise<string> {
   const out = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1080 } }], {

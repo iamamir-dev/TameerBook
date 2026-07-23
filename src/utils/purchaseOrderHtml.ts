@@ -114,7 +114,7 @@ export function renderPurchaseOrderHtml(po: PurchaseOrder, assets: ReportAssets)
     .recv-ok { color: ${C.accent}; font-weight: 700; }
 
     .sign { margin-top: 44px; width: 220px; }
-    .sigimg { height: 58px; max-width: 200px; object-fit: contain; display: block; margin-bottom: -8px; }
+    .sigimg { height: 92px; max-width: 260px; width: auto; object-fit: contain; object-position: left bottom; display: block; margin-bottom: -6px; }
     .signline { border-bottom: 1.4px solid ${C.textSoft}; height: 30px; }
     .signlabel { font-size: 10px; font-weight: 700; color: ${C.textMid}; margin-top: 7px; letter-spacing: .3px; }
 

@@ -11,7 +11,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
-import { captureSignature } from '@/utils/photo';
+import { captureSignature, normalizeSignature } from '@/utils/photo';
 import { removeBackground } from '@/utils/removeBg';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -56,10 +56,14 @@ export function SignatureScreen(): React.JSX.Element {
   };
 
   const save = (dataUrl: string) => {
-    setSignature(dataUrl);
-    setPhoto(null);
-    setMode('draw');
-    setEditing(false);
+    void normalizeSignature(dataUrl)
+      .catch(() => dataUrl)
+      .then((fixed) => {
+        setSignature(fixed);
+        setPhoto(null);
+        setMode('draw');
+        setEditing(false);
+      });
   };
   const remove = () =>
     Alert.alert(t('signatureSetting'), t('deleteConfirm'), [
@@ -121,6 +125,7 @@ export function SignatureScreen(): React.JSX.Element {
             onOK={save}
             webStyle={webStyle}
             autoClear={false}
+            trimWhitespace
             imageType="image/png"
             backgroundColor="#ffffff"
             penColor={theme.colors.textPrimary}

@@ -494,7 +494,7 @@ export const ur: TranslationKeys = {
   signCamera: 'کیمرہ',
   signGallery: 'گیلری',
   signatureHint: 'دستخط کی تصویر لیں یا منتخب کریں، پھر کاٹیں۔',
-  signatureSetting: 'پرچیز آرڈر کے دستخط',
+  signatureSetting: 'دستخط',
   addSignature: 'دستخط شامل کریں',
   signChange: 'تبدیل کریں',
   signExtract: 'پس منظر ہٹائیں',

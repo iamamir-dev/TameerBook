@@ -491,7 +491,7 @@ export const en: TranslationKeys = {
   signCamera: 'Camera',
   signGallery: 'Gallery',
   signatureHint: 'Take or pick a photo of the signature, then crop to it.',
-  signatureSetting: 'PO signature',
+  signatureSetting: 'Signature',
   addSignature: 'Add signature',
   signChange: 'Change',
   signExtract: 'Remove background',

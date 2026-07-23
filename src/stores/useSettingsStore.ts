@@ -82,7 +82,7 @@ interface SettingsState {
   /** Default % of profit given to investors (loss is always by capital ratio). */
   /** % of each party's profit donated to charity at settlement. */
   donationPct: number;
-  /** Authorized signature (PNG data URL) drawn in Settings, used on the PO PDF. */
+  /** Company signature (PNG data URL) set in Settings — reusable across documents. */
   signature: string | null;
   /** User's own remove.bg API key (on-device) for signature background removal. */
   removeBgKey: string | null;
