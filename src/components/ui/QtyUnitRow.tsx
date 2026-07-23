@@ -4,7 +4,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { ColorPalette, Theme } from '@/theme/theme';
-import { hasSecondary, type UnitDef } from '@/utils/units';
+import { formatSplitQty, hasSecondary, type UnitDef } from '@/utils/units';
 
 import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
@@ -143,7 +143,7 @@ export function QtyUnitRow({ onQty, unit, label, resetToken, initialPrimary, err
         <View style={styles.totalRow}>
           <AppIcon name="checkCircle" size={14} color="accent" />
           <AppText size="xs" weight="bold" color="accent">
-            {`${combined.toLocaleString('en-PK')} ${unit.primary}`}
+            {formatSplitQty(combined, unit)}
           </AppText>
         </View>
       ) : null}

@@ -29,6 +29,8 @@ interface MaterialItemPickerProps {
   value: MaterialSelection;
   onChange: (sel: MaterialSelection) => void;
   label?: string;
+  /** Material category ids to hide from the list (e.g. already added elsewhere). */
+  excludeIds?: string[];
 }
 
 /**
@@ -37,7 +39,7 @@ interface MaterialItemPickerProps {
  * free name when none are managed yet. Shared by New Booking, Material Entry and
  * the construction Add-Expense sheet so the item source is identical everywhere.
  */
-export function MaterialItemPicker({ value, onChange, label }: MaterialItemPickerProps): React.JSX.Element {
+export function MaterialItemPicker({ value, onChange, label, excludeIds }: MaterialItemPickerProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -81,7 +83,12 @@ export function MaterialItemPicker({ value, onChange, label }: MaterialItemPicke
       <SelectSheet
         visible={sheet}
         onClose={() => setSheet(false)}
-        options={materials.map((m) => ({ id: m.id, label: catLabel(m), subtitle: m.default_unit ?? undefined }))}
+        options={materials.map((m) => ({
+          id: m.id,
+          label: catLabel(m),
+          subtitle: m.default_unit ?? undefined,
+          disabled: m.id !== value.categoryId && (excludeIds ?? []).includes(m.id),
+        }))}
         selectedId={value.categoryId ?? undefined}
         title={label ?? t('itemName')}
         onSelect={(o) => {

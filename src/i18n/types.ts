@@ -526,6 +526,7 @@ export interface TranslationKeys {
   vendor: string;
   deliverTo: string;
   authorizedSignature: string;
+  itemAlreadyAdded: string;
   payBookingLabel: string;
   payRemainingLabel: string;
   deliverToProject: string;

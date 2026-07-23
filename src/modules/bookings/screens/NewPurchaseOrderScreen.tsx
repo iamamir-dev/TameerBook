@@ -119,8 +119,15 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
   const projectOptions: SelectOption[] = projects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }));
   const hasSupplier = !!partyId || supplierName.trim().length > 0;
   const grandTotal = items.reduce((s, it) => s + it.qty * it.rate, 0);
+  // A material can only appear once in an order — flag any repeat.
+  const norm = (s: string) => s.trim().toLowerCase();
+  const isDuplicate = (row: ItemRow, i: number) => {
+    const n = norm(row.material.name);
+    return n.length > 0 && items.findIndex((x) => norm(x.material.name) === n) !== i;
+  };
+  const hasDuplicate = items.some(isDuplicate);
   const itemsValid = items.every((it) => it.material.name.trim().length > 0 && it.qty > 0 && it.rate > 0);
-  const canSave = itemsValid && !!projectId && hasSupplier;
+  const canSave = itemsValid && !hasDuplicate && !!projectId && hasSupplier;
 
   const onSave = () => {
     if (!canSave || saving) return;
@@ -177,7 +184,7 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
       <AppHeader title={editing ? t('editBooking') : t('newBooking')} onBack={() => navigation.goBack()} />
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Supplier + project apply to the whole order. */}
           <FloatingLabelInput label={t('supplier')} value={supplierName} onChangeText={(v) => { setSupplierName(v); setPartyId(null); }} />
           {!partyId && supplierName.trim() ? (
@@ -237,7 +244,11 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
                   </View>
                 </View>
 
-                <MaterialItemPicker value={it.material} onChange={(material) => patchItem(it.key, { material })} />
+                <MaterialItemPicker
+                  value={it.material}
+                  onChange={(material) => patchItem(it.key, { material })}
+                  excludeIds={items.filter((x) => x.key !== it.key && x.material.categoryId).map((x) => x.material.categoryId!)}
+                />
                 <QtyUnitRow unit={it.material.unit} resetToken={it.key} initialPrimary={it.qty} onQty={(qty) => patchItem(it.key, { qty })} />
                 <AmountInput label={t('rateLabel')} value={it.rate} onChange={(rate) => patchItem(it.key, { rate })} floating surface={theme.colors.card} />
               </View>

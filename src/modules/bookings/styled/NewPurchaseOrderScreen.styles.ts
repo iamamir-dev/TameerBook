@@ -13,8 +13,9 @@ export const makeStyles = (theme: Theme) =>
       borderRadius: theme.radius.md,
       borderWidth: 1,
       borderColor: theme.colors.border,
-      padding: theme.spacing.sm,
-      gap: theme.spacing.xs,
+      padding: theme.spacing.md,
+      // Clearance so the floating "Rate" label doesn't ride over the qty row.
+      gap: theme.spacing.md,
     },
     itemHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     itemNo: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },

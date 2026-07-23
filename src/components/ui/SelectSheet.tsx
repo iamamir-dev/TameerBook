@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -25,6 +26,8 @@ export interface SelectOption {
   icon?: IconKey | GlyphName;
   /** Small colored dot before the label (e.g. a status's color). */
   dotColor?: string;
+  /** Shown faded and non-selectable (e.g. already used elsewhere). */
+  disabled?: boolean;
 }
 
 interface SelectSheetProps {
@@ -68,6 +71,17 @@ export function SelectSheet({
     if (visible) setQuery('');
   }, [visible]);
 
+  // Lift the sheet above the keyboard (so the search box + list stay visible).
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
@@ -86,10 +100,10 @@ export function SelectSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       {/* Column that pins the sheet to the bottom; tap above it to dismiss. */}
-      <View style={styles.root}>
+      <View style={[styles.root, { paddingBottom: kb }]}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
 
-        <View style={[styles.sheet, { maxHeight: screenHeight * 0.85, paddingBottom: insets.bottom + theme.spacing.md }]}>
+        <View style={[styles.sheet, { maxHeight: screenHeight * 0.85 - kb, paddingBottom: (kb > 0 ? 0 : insets.bottom) + theme.spacing.md }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>
@@ -127,16 +141,19 @@ export function SelectSheet({
             ) : (
               filtered.map((option) => {
                 const isSelected = option.id === selectedId;
+                const disabled = !!option.disabled;
                 return (
                   <Pressable
                     key={option.id}
-                    onPress={() => handleSelect(option)}
+                    onPress={() => (disabled ? undefined : handleSelect(option))}
+                    disabled={disabled}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
+                    accessibilityState={{ selected: isSelected, disabled }}
                     style={({ pressed }) => [
                       styles.row,
                       isSelected && styles.rowSelected,
-                      pressed && styles.rowPressed,
+                      pressed && !disabled && styles.rowPressed,
+                      disabled && styles.rowDisabled,
                     ]}
                   >
                     {option.dotColor ? (
@@ -247,6 +264,9 @@ const makeStyles = (theme: Theme) =>
     },
     rowPressed: {
       opacity: 0.7,
+    },
+    rowDisabled: {
+      opacity: 0.38,
     },
     dot: { width: 14, height: 14, borderRadius: 7 },
     rowChip: {

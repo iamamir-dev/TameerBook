@@ -486,6 +486,7 @@ export const ur: TranslationKeys = {
   vendor: 'سپلائر',
   deliverTo: 'ڈیلیور کریں',
   authorizedSignature: 'مجاز دستخط',
+  itemAlreadyAdded: 'یہ آئٹم پہلے سے شامل ہے',
   payBookingLabel: 'سپلائر کو دیں',
   payRemainingLabel: 'دینا باقی',
   deliverToProject: 'پراجیکٹ میں بھیجیں',

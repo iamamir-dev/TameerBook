@@ -483,6 +483,7 @@ export const en: TranslationKeys = {
   vendor: 'Vendor',
   deliverTo: 'Deliver to',
   authorizedSignature: 'Authorized signature',
+  itemAlreadyAdded: 'This item is already added',
   payBookingLabel: 'Pay supplier',
   payRemainingLabel: 'To pay',
   deliverToProject: 'Deliver to project',

@@ -135,28 +135,22 @@ export function MultiDeliverySheet({ visible, onClose, po, accounts, onSaved }: 
                 {`${t('remainingQty')}: ${formatSplitQty(item.qtyRemaining, unit)}`}
               </AppText>
             </View>
-            <View style={styles.inputsRow}>
-              <View style={styles.half}>
-                <QtyUnitRow
-                  unit={unit}
-                  resetToken={visible}
-                  onQty={(qty) => setRow(item.booking.id, { qty })}
-                  error={(r?.qty ?? 0) > item.qtyRemaining + 0.001 ? t('exceedsRemaining') : null}
-                />
-              </View>
-              {paidNow ? (
-                <View style={styles.half}>
-                  <AmountInput
-                    label={`${t('amount')} (${formatRupees(item.payRemaining)})`}
-                    value={r?.price ?? 0}
-                    onChange={(price) => setRow(item.booking.id, { price })}
-                    floating
-                    surface={theme.colors.card}
-                    error={(r?.price ?? 0) > item.payRemaining + 0.001 ? t('exceedsRemaining') : null}
-                  />
-                </View>
-              ) : null}
-            </View>
+            <QtyUnitRow
+              unit={unit}
+              resetToken={visible}
+              onQty={(qty) => setRow(item.booking.id, { qty })}
+              error={(r?.qty ?? 0) > item.qtyRemaining + 0.001 ? t('exceedsRemaining') : null}
+            />
+            {paidNow ? (
+              <AmountInput
+                label={`${t('amount')} (${formatRupees(item.payRemaining)})`}
+                value={r?.price ?? 0}
+                onChange={(price) => setRow(item.booking.id, { price })}
+                floating
+                surface={theme.colors.card}
+                error={(r?.price ?? 0) > item.payRemaining + 0.001 ? t('exceedsRemaining') : null}
+              />
+            ) : null}
           </View>
         );
       })}
