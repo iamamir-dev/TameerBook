@@ -419,6 +419,12 @@ export interface MaterialDeliveryRow extends Base {
    * a different project than the booking (so deleting the delivery voids them).
    */
   transfer_id: string | null;
+  /**
+   * When received AND paid in one action, the id of the paired supplier payment
+   * transaction (so the delivery + payment show as one history entry). Null when
+   * the delivery was recorded on its own.
+   */
+  payment_txn_id: string | null;
   note: string | null;
 }
 
@@ -1099,6 +1105,15 @@ ALTER TABLE material_bookings ADD COLUMN secondary_unit TEXT;
 ALTER TABLE material_bookings ADD COLUMN secondary_factor REAL;
 `;
 
+/**
+ * v28 — when material is received AND paid in one action, link the delivery to
+ * its supplier payment (`payment_txn_id`) so the two show as ONE history entry
+ * instead of a separate delivery + payment.
+ */
+export const SCHEMA_V28_DELIVERY_PAYMENT_LINK = `
+ALTER TABLE material_deliveries ADD COLUMN payment_txn_id TEXT;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1121,6 +1136,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 25, sql: SCHEMA_V25_MATERIAL_UNITS_XPROJECT },
   { version: 26, sql: SCHEMA_V26_PURCHASE_ORDER_GROUP },
   { version: 27, sql: SCHEMA_V27_BOOKING_SECONDARY_UNIT },
+  { version: 28, sql: SCHEMA_V28_DELIVERY_PAYMENT_LINK },
 ];
 
 /* -------------------------------------------------------------------------- */

@@ -479,6 +479,8 @@ export const en: TranslationKeys = {
   item: 'Item',
   deliveries: 'Deliveries',
   payments: 'Payments',
+  history: 'History',
+  receivedAndPaid: 'Received & paid',
   poNo: 'PO No.',
   vendor: 'Vendor',
   deliverTo: 'Deliver to',

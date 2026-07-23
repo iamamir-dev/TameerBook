@@ -482,6 +482,8 @@ export const ur: TranslationKeys = {
   item: 'آئٹم',
   deliveries: 'ڈیلیوریز',
   payments: 'ادائیگیاں',
+  history: 'تاریخ',
+  receivedAndPaid: 'موصول اور ادا',
   poNo: 'آرڈر نمبر',
   vendor: 'سپلائر',
   deliverTo: 'ڈیلیور کریں',

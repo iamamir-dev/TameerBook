@@ -423,11 +423,12 @@ async function insertDeliveryRows(
   tx: SQLiteExecutor,
   s: BookingSummary,
   input: DeliveryInput,
-  xfer: { transferId: string; materialCatId: string; receivingName: string; sourceName: string } | null
+  xfer: { transferId: string; materialCatId: string; receivingName: string; sourceName: string } | null,
+  paymentTxnId: string | null = null
 ): Promise<void> {
   await tx.runAsync(
-    `INSERT INTO material_deliveries (id, created_at, created_by, booking_id, date, qty, project_id, transfer_id, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO material_deliveries (id, created_at, created_by, booking_id, date, qty, project_id, transfer_id, payment_txn_id, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     uuid(),
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -436,6 +437,7 @@ async function insertDeliveryRows(
     input.qty,
     input.projectId ?? null,
     xfer?.transferId ?? null,
+    paymentTxnId,
     input.note ?? null
   );
 
@@ -546,9 +548,10 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
 
   const db = await getDatabase();
   await db.withExclusiveTransactionAsync(async (tx) => {
-    await insertDeliveryRows(tx, s, input, xfer);
-    // Supplier payment (its own balance guard aborts the whole tx on overdraw).
-    await insertTransaction(tx, {
+    // Insert the payment FIRST — its balance guard aborts the whole tx on
+    // overdraw before any delivery row exists — then link the delivery to it so
+    // the two read as one history entry.
+    const payTxnId = await insertTransaction(tx, {
       direction: 'OUT',
       amount: input.payAmount,
       date: input.date,
@@ -562,6 +565,7 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
       description: input.note ?? s.booking.item_name,
       createdBy: input.createdBy,
     });
+    await insertDeliveryRows(tx, s, input, xfer, payTxnId);
   });
   await refreshStatus(input.bookingId);
 }
@@ -690,7 +694,24 @@ export async function updateDelivery(deliveryId: string, input: DeliveryEditInpu
   if (s.booking.project_id) await assertProjectActive(s.booking.project_id);
   if (input.projectId && input.projectId !== s.booking.project_id) await assertProjectActive(input.projectId);
 
-  // Validated — replace it (deleteDelivery voids any old cost-transfer legs).
+  // When the destination is unchanged and there are no cost-transfer legs to
+  // recompute, update the row IN PLACE — this preserves any paired payment link
+  // (payment_txn_id) so a combined receive+pay stays one entry after an edit.
+  const destChanged = (input.projectId ?? null) !== (d.project_id ?? null);
+  if (!destChanged && !d.transfer_id) {
+    await db.runAsync(
+      'UPDATE material_deliveries SET qty = ?, date = ?, note = ? WHERE id = ?',
+      input.qty,
+      input.date,
+      input.note ?? null,
+      deliveryId
+    );
+    await refreshStatus(d.booking_id);
+    return;
+  }
+
+  // Destination or transfer legs changed — replace it (deleteDelivery voids any
+  // old cost-transfer legs). A paired payment, if any, keeps its own link.
   await deleteDelivery(deliveryId);
   await addDelivery({
     bookingId: d.booking_id,
@@ -700,4 +721,16 @@ export async function updateDelivery(deliveryId: string, input: DeliveryEditInpu
     note: input.note ?? null,
     createdBy: input.createdBy,
   });
+}
+
+/** Delete a combined entry: remove the delivery AND void its paired payment. */
+export async function deletePoEntry(deliveryId: string): Promise<void> {
+  const db = await getDatabase();
+  const d = await db.getFirstAsync<MaterialDeliveryRow>('SELECT * FROM material_deliveries WHERE id = ?', deliveryId);
+  if (!d) return;
+  if (d.payment_txn_id) {
+    const pay = await getTransaction(d.payment_txn_id);
+    if (pay && pay.is_void === 0) await voidTransaction(pay.id);
+  }
+  await deleteDelivery(deliveryId);
 }

@@ -25,4 +25,6 @@ export const makeStyles = (theme: Theme) =>
     /* History rows */
     histRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
     histLeft: { flex: 1, gap: 2 },
+    histRight: { alignItems: 'flex-end', gap: 2 },
+    pressed: { opacity: 0.6 },
   });

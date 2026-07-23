@@ -1,12 +1,12 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
 import { ActionsDrawer, AppCard, AppHeader, AppText, LabelValueRow, LoadErrorState, PhoneChip } from '@/components/ui';
-import { cancelPurchaseOrder } from '@/db';
+import { cancelPurchaseOrder, deleteDelivery, deletePoEntry, type MaterialDeliveryRow, type TransactionRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -15,10 +15,13 @@ import { formatDisplayDate } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { formatSplitQty } from '@/utils/units';
 
+import { AddDeliverySheet } from '../components/AddDeliverySheet';
 import { MultiDeliverySheet } from '../components/MultiDeliverySheet';
 import { MultiPaySheet } from '../components/MultiPaySheet';
+import { PayBookingSheet } from '../components/PayBookingSheet';
+import { PoEntryDetailSheet } from '../components/PoEntryDetailSheet';
 import { usePurchaseOrder } from '../hooks/usePurchaseOrder';
-import { usePurchaseOrderDetail } from '../hooks/useBookings';
+import { type PoHistoryEntry, usePurchaseOrderDetail } from '../hooks/useBookings';
 import { purchaseOrderStatusMeta } from '../utils/status';
 import { bookingUnit } from '../utils/unit';
 import { makeStyles } from '../styled/PurchaseOrderDetailScreen.styles';
@@ -35,12 +38,15 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = usePurchaseOrderDetail(poId);
-  const { po, supplierPhone, accounts, deliveries, payments } = data;
+  const { po, supplierPhone, accounts, projects, history } = data;
   const { run: runSave } = useSaveAction();
 
   const [actionsOpen, setActionsOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [entryDetail, setEntryDetail] = useState<PoHistoryEntry | null>(null);
+  const [editDelivery, setEditDelivery] = useState<MaterialDeliveryRow | null>(null);
+  const [editPayment, setEditPayment] = useState<TransactionRow | null>(null);
   const pdf = usePurchaseOrder(po, supplierPhone);
 
   if (!po) {
@@ -57,6 +63,27 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const active = po.status === 'OPEN';
   const canReceive = po.items.some((i) => i.qtyRemaining > 0.001);
   const canPay = po.items.some((i) => i.payRemaining >= 1);
+
+  const itemOf = (bookingId: string) => po.items.find((i) => i.booking.id === bookingId) ?? po.items[0];
+  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name ?? '';
+
+  const onDeleteEntry = (entry: PoHistoryEntry) => {
+    Alert.alert(entry.itemName, t('deleteConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: () => void runSave(async () => {
+          if (!entry.delivery) return;
+          if (entry.kind === 'both') await deletePoEntry(entry.delivery.id);
+          else await deleteDelivery(entry.delivery.id);
+          await reload();
+        }),
+      },
+    ]);
+  };
+
+  const editItem = editDelivery ? itemOf(editDelivery.booking_id) : editPayment ? itemOf(editPayment.booking_id!) : null;
 
   const onCancel = () => {
     Alert.alert(po.poNumber, t('cancelBookingConfirm'), [
@@ -155,54 +182,48 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
           })}
         </AppCard>
 
-        {/* PO-level delivery history. */}
-        {deliveries.length > 0 ? (
+        {/* Unified history: deliveries, payments, and combined receive-and-pay
+            entries — tap a row for detail + edit. */}
+        {history.length > 0 ? (
           <>
             <AppText size="lg" weight="bold">
-              {t('deliveries')}
+              {t('history')}
             </AppText>
             <AppCard compact>
-              {deliveries.map((d, i) => (
-                <View key={d.id} style={[styles.histRow, i > 0 && styles.ruled]}>
-                  <View style={styles.histLeft}>
-                    <AppText size="sm" weight="semibold" numberOfLines={1}>
-                      {d.itemName}
-                    </AppText>
-                    <AppText size="xs" color="textSecondary">
-                      {formatDisplayDate(d.date)}
-                    </AppText>
-                  </View>
-                  <AppText size="sm" weight="bold" color="success" tabular>
-                    {`+ ${formatSplitQty(d.qty, bookingUnit(po.items.find((it) => it.booking.id === d.booking_id)?.booking ?? po.items[0].booking))}`}
-                  </AppText>
-                </View>
-              ))}
-            </AppCard>
-          </>
-        ) : null}
-
-        {/* PO-level payment history. */}
-        {payments.length > 0 ? (
-          <>
-            <AppText size="lg" weight="bold">
-              {t('paidLabel')}
-            </AppText>
-            <AppCard compact>
-              {payments.map((p, i) => (
-                <View key={p.id} style={[styles.histRow, i > 0 && styles.ruled]}>
-                  <View style={styles.histLeft}>
-                    <AppText size="sm" weight="semibold" numberOfLines={1}>
-                      {p.itemName}
-                    </AppText>
-                    <AppText size="xs" color="textSecondary">
-                      {formatDisplayDate(p.date)}
-                    </AppText>
-                  </View>
-                  <AppText size="sm" weight="bold" color="danger" tabular>
-                    {`− ${formatRupees(p.amount)}`}
-                  </AppText>
-                </View>
-              ))}
+              {history.map((e, i) => {
+                const unit = bookingUnit(itemOf(e.bookingId).booking);
+                const toOther =
+                  e.delivery && e.delivery.project_id && e.delivery.project_id !== itemOf(e.bookingId).booking.project_id;
+                return (
+                  <Pressable
+                    key={e.key}
+                    onPress={() => setEntryDetail(e)}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.histRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                  >
+                    <View style={styles.histLeft}>
+                      <AppText size="sm" weight="semibold" numberOfLines={1}>
+                        {e.itemName}
+                      </AppText>
+                      <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                        {toOther ? `${formatDisplayDate(e.date)} · → ${projectName(e.delivery!.project_id)}` : formatDisplayDate(e.date)}
+                      </AppText>
+                    </View>
+                    <View style={styles.histRight}>
+                      {e.delivery ? (
+                        <AppText size="sm" weight="bold" color="success" tabular>
+                          {`+ ${formatSplitQty(e.delivery.qty, unit)}`}
+                        </AppText>
+                      ) : null}
+                      {e.payment ? (
+                        <AppText size="sm" weight="bold" color="danger" tabular>
+                          {`− ${formatRupees(e.payment.amount)}`}
+                        </AppText>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
             </AppCard>
           </>
         ) : null}
@@ -224,6 +245,60 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
 
       <MultiDeliverySheet visible={deliverOpen} onClose={() => setDeliverOpen(false)} po={po} accounts={accounts} onSaved={reload} />
       <MultiPaySheet visible={payOpen} onClose={() => setPayOpen(false)} po={po} accounts={accounts} onSaved={reload} />
+
+      <PoEntryDetailSheet
+        visible={!!entryDetail}
+        onClose={() => setEntryDetail(null)}
+        entry={entryDetail}
+        unit={bookingUnit(itemOf(entryDetail?.bookingId ?? '').booking)}
+        destinationName={
+          entryDetail?.delivery && entryDetail.delivery.project_id && entryDetail.delivery.project_id !== itemOf(entryDetail.bookingId).booking.project_id
+            ? projectName(entryDetail.delivery.project_id)
+            : null
+        }
+        onEditDelivery={() => {
+          const d = entryDetail?.delivery ?? null;
+          setEntryDetail(null);
+          setEditDelivery(d);
+        }}
+        onEditPayment={() => {
+          const p = entryDetail?.payment ?? null;
+          setEntryDetail(null);
+          setEditPayment(p);
+        }}
+        onDelete={() => {
+          const e = entryDetail;
+          setEntryDetail(null);
+          if (e) onDeleteEntry(e);
+        }}
+      />
+
+      {editItem ? (
+        <>
+          <AddDeliverySheet
+            visible={!!editDelivery}
+            onClose={() => setEditDelivery(null)}
+            bookingId={editItem.booking.id}
+            bookingProjectId={editItem.booking.project_id}
+            qtyRemaining={editItem.qtyRemaining}
+            unit={bookingUnit(editItem.booking)}
+            payRemaining={editItem.payRemaining}
+            accounts={accounts}
+            projects={projects}
+            editing={editDelivery}
+            onSaved={reload}
+          />
+          <PayBookingSheet
+            visible={!!editPayment}
+            onClose={() => setEditPayment(null)}
+            bookingId={editItem.booking.id}
+            payRemaining={editItem.payRemaining}
+            accounts={accounts}
+            editing={editPayment}
+            onSaved={reload}
+          />
+        </>
+      ) : null}
     </View>
   );
 }
