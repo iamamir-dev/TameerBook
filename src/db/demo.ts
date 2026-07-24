@@ -83,6 +83,24 @@ export async function clearAllData(): Promise<void> {
 }
 
 /**
+ * Wipe ONLY the purchase-order data: every booking, its deliveries, and the
+ * supplier-payment / cost-transfer transactions tagged with a booking. Leaves
+ * the rest of the ledger (accounts, projects, investors, …) untouched — meant
+ * for re-testing the PO flow from scratch. Dev-only.
+ */
+export async function clearPurchaseOrders(): Promise<void> {
+  const db = await getDatabase();
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  try {
+    await db.runAsync('DELETE FROM material_deliveries');
+    await db.runAsync('DELETE FROM transactions WHERE booking_id IS NOT NULL');
+    await db.runAsync('DELETE FROM material_bookings');
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
+  }
+}
+
+/**
  * Populate a realistic demo dataset end-to-end (accounts → plot → project →
  * construction + labor → sale → udhaar) so every screen has something to show.
  * Returns the new project id.

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppButton, AppCard, AppHeader, AppIcon, AppText } from '@/components/ui';
-import { clearAllData, getTableCounts, loadDemoData, runDbTests, TABLE_NAMES, type TestResult } from '@/db';
+import { clearAllData, clearPurchaseOrders, getTableCounts, loadDemoData, runDbTests, TABLE_NAMES, type TestResult } from '@/db';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { RootStackParamList } from '@/navigation/types';
@@ -26,7 +26,7 @@ export function DevToolsScreen(): React.JSX.Element {
 
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [tests, setTests] = useState<TestResult[]>([]);
-  const [busy, setBusy] = useState<null | 'demo' | 'tests' | 'clear'>(null);
+  const [busy, setBusy] = useState<null | 'demo' | 'tests' | 'clear' | 'clearPo'>(null);
   const refreshProjects = useProjectsStore((s) => s.refresh);
 
   const refreshCounts = useCallback(async () => {
@@ -65,6 +65,30 @@ export function DevToolsScreen(): React.JSX.Element {
               await refreshProjects();
               // No companies remain → the app gate drops back to onboarding.
               await useCompanyStore.getState().hydrate();
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [refreshCounts, refreshProjects]);
+
+  const onClearPo = useCallback(() => {
+    Alert.alert(
+      'Clear purchase orders?',
+      'Deletes every purchase order, its deliveries and supplier payments. The rest of the data stays. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear POs',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy('clearPo');
+            try {
+              await clearPurchaseOrders();
+              await refreshCounts();
+              await refreshProjects();
             } finally {
               setBusy(null);
             }
@@ -118,6 +142,14 @@ export function DevToolsScreen(): React.JSX.Element {
           icon="add"
           onPress={onLoadDemo}
           loading={busy === 'demo'}
+          disabled={busy !== null}
+        />
+        <AppButton
+          label="Clear purchase orders"
+          icon="close"
+          variant="secondary"
+          onPress={onClearPo}
+          loading={busy === 'clearPo'}
           disabled={busy !== null}
         />
         <AppButton
