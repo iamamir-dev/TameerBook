@@ -20,6 +20,14 @@ import {
   addLaborer,
   addPlotExpense,
   addPlotPayment,
+  addPlotSaleReceipt,
+  deletePlotTransaction,
+  getPlot,
+  listPlotTransactions,
+  setPlotSale,
+  updatePlotExpense,
+  updatePlotPayment,
+  updatePlotSaleReceipt,
   addProjectInvestor,
   addSaleCost,
   attachInvestorsToProject,
@@ -260,6 +268,67 @@ async function testPlotMath(): Promise<TestResult> {
     checks.push(['account drained to 3900', near(await getAccountBalance(acc.id), 3900)]);
 
     return report('T-PLOT deal math (1000 → 1100)', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-PLOT-ED  edit / delete in place + phantom-SOLD un-sell                  */
+/* -------------------------------------------------------------------------- */
+async function testPlotEditDelete(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST ED-Acc', type: 'CASH', openingBalance: 10000 });
+    c.accounts.push(acc.id);
+    const plot = await createPlot({ name: 'DBTEST ED-Plot', dealPrice: 1000, sellerName: 'S' });
+    c.plots.push(plot.id);
+    const checks: Check[] = [];
+
+    // Seller payment edit re-checks the deal cap (this row's own amount freed).
+    await addPlotPayment({ plotId: plot.id, payType: 'TOKEN', amount: 200, date: D, accountId: acc.id });
+    let txns = await listPlotTransactions(plot.id);
+    const pay = txns[0];
+    await updatePlotPayment(pay.id, { amount: 300 });
+    let s = await getPlotSummary(plot.id);
+    checks.push(['payment 200→300 → paid 300 / remaining 700', near(s.paidToSeller, 300) && near(s.remaining, 700)]);
+    checks.push([
+      'payment edit over the deal blocked',
+      await expectThrow(() => updatePlotPayment(pay.id, { amount: 1200 }), 'LIMIT_EXCEEDED'),
+    ]);
+
+    // Expense edit (amount).
+    const taxCat = await getCategoryByNameEn('Transfer Fees & Tax');
+    await addPlotExpense({ plotId: plot.id, categoryId: taxCat!.id, amount: 100, date: D, accountId: acc.id });
+    txns = await listPlotTransactions(plot.id);
+    const exp = txns.find((t) => t.category_id === taxCat!.id)!;
+    await updatePlotExpense(exp.id, { amount: 150 });
+    s = await getPlotSummary(plot.id);
+    checks.push(['expense 100→150 → expenses 150', near(s.expenses, 150)]);
+
+    // Delete the payment → freed from paid.
+    await deletePlotTransaction(pay.id);
+    s = await getPlotSummary(plot.id);
+    checks.push(['payment deleted → paid 0 / remaining 1000', near(s.paidToSeller, 0) && near(s.remaining, 1000)]);
+
+    // Standalone sale: set price, fully receive → SOLD.
+    await setPlotSale({ plotId: plot.id, salePrice: 2000, buyerName: 'B' });
+    await addPlotSaleReceipt({ plotId: plot.id, amount: 2000, date: D, accountId: acc.id });
+    checks.push(['fully received → SOLD', (await getPlot(plot.id))?.status === 'SOLD']);
+
+    // Editing the receipt down reopens the sale → the plot un-sells.
+    txns = await listPlotTransactions(plot.id);
+    const receipt = txns.find((t) => t.phase === 'SALE')!;
+    await updatePlotSaleReceipt(receipt.id, { amount: 1500 });
+    s = await getPlotSummary(plot.id);
+    checks.push(['receipt 2000→1500 → OWNED / received 1500', (await getPlot(plot.id))?.status === 'OWNED' && near(s.saleReceived, 1500)]);
+
+    // Deleting the receipt clears the phantom SOLD entirely.
+    await deletePlotTransaction(receipt.id);
+    s = await getPlotSummary(plot.id);
+    checks.push(['receipt deleted → OWNED / received 0', (await getPlot(plot.id))?.status === 'OWNED' && near(s.saleReceived, 0)]);
+
+    return report('T-PLOT-ED edit/delete in place (+ un-sell)', checks);
   } finally {
     await c.run();
   }
@@ -1139,6 +1208,7 @@ export async function runDbTests(): Promise<TestResult[]> {
   const tests = [
     testAccountBalances,
     testPlotMath,
+    testPlotEditDelete,
     testLaborAccrual,
     testSaleAndProjectCost,
     testSettlementProfitWithDonation,

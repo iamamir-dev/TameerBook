@@ -5,13 +5,20 @@ import {
   type PlotRow,
   type PlotStatus,
   type SizeUnit,
+  type TransactionRow,
 } from '../schema';
 import { nowISO, uuid } from '../uuid';
-import { categoryIdByName } from './categories';
+import { categoryIdByName, getCategory } from './categories';
 import { requireCompanyId } from './companies';
 import { addDocument } from './documents';
 import { assertProjectActive } from './guards';
-import { addTransaction, LimitExceededError } from './transactions';
+import {
+  addTransaction,
+  applyTransactionPatch,
+  getTransaction,
+  LimitExceededError,
+  voidTransaction,
+} from './transactions';
 
 /**
  * TOKEN and BAYANA are one-off milestones of a property deal — you pay token
@@ -461,6 +468,125 @@ export async function addPlotSaleReceipt(input: {
     const db = await getDatabase();
     await db.runAsync("UPDATE plots SET status = 'SOLD' WHERE id = ?", input.plotId);
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Edit / delete in place — every recorded plot entry is correctable.        */
+/* -------------------------------------------------------------------------- */
+
+export interface PlotTxnPatch {
+  amount?: number;
+  date?: string;
+  accountId?: string;
+  note?: string | null;
+}
+
+/** True when a plot transaction is a seller payment (category "Plot Payment"). */
+async function isSellerPayment(t: TransactionRow): Promise<boolean> {
+  if (!t.category_id) return false;
+  const cat = await getCategory(t.category_id);
+  return cat?.name_en === 'Plot Payment';
+}
+
+/**
+ * Flip a STANDALONE plot's status to match its sale progress: SOLD once the
+ * full price is received, back to OWNED otherwise. Never touches a plot inside
+ * a project (its status is IN_PROJECT). Called after a sale receipt is edited
+ * or deleted so voiding the last receipt un-sells the plot.
+ */
+async function reevaluatePlotSold(plotId: string): Promise<void> {
+  const plot = await getPlot(plotId);
+  if (!plot || plot.project_id || (plot.status !== 'SOLD' && plot.status !== 'OWNED')) return;
+  const summary = await getPlotSummary(plotId);
+  const fullyReceived = summary.salePrice > 0 && summary.saleReceived >= summary.salePrice - 0.001;
+  const target: PlotStatus = fullyReceived ? 'SOLD' : 'OWNED';
+  if (plot.status !== target) {
+    const db = await getDatabase();
+    await db.runAsync('UPDATE plots SET status = ? WHERE id = ?', target, plotId);
+  }
+}
+
+/**
+ * Edit a seller payment IN PLACE. Re-checks the deal cap (can't pay the seller
+ * more than the deal, this row's own amount freed) then applies the shared
+ * patch (account overdraw guard). The pay-type/milestone stays fixed.
+ */
+export async function updatePlotPayment(id: string, patch: PlotTxnPatch): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) throw new Error(`updatePlotPayment: ${id} not found`);
+  if (!t.plot_id || t.phase !== 'PLOT' || t.direction !== 'OUT' || !(await isSellerPayment(t))) {
+    throw new Error('updatePlotPayment: not a seller payment');
+  }
+  const plot = await getPlot(t.plot_id);
+  if (plot?.project_id) await assertProjectActive(plot.project_id);
+
+  const summary = await getPlotSummary(t.plot_id);
+  const amount = patch.amount ?? t.amount;
+  const maxAllowed = summary.remaining + t.amount; // deal owed, freeing this row
+  if (amount > maxAllowed + 0.001) throw new LimitExceededError(maxAllowed, amount);
+
+  await applyTransactionPatch(t, { amount, date: patch.date, accountId: patch.accountId, description: patch.note });
+}
+
+export interface PlotExpensePatch extends PlotTxnPatch {
+  categoryId?: string;
+}
+
+/** Edit a plot expense IN PLACE (amount / date / account / category / note). */
+export async function updatePlotExpense(id: string, patch: PlotExpensePatch): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) throw new Error(`updatePlotExpense: ${id} not found`);
+  if (!t.plot_id || t.phase !== 'PLOT' || t.direction !== 'OUT' || (await isSellerPayment(t))) {
+    throw new Error('updatePlotExpense: not a plot expense');
+  }
+  const plot = await getPlot(t.plot_id);
+  if (plot?.project_id) await assertProjectActive(plot.project_id);
+
+  await applyTransactionPatch(t, {
+    amount: patch.amount,
+    date: patch.date,
+    accountId: patch.accountId,
+    categoryId: patch.categoryId,
+    description: patch.note,
+  });
+}
+
+/**
+ * Edit a standalone-sale buyer receipt IN PLACE. Re-checks the outstanding cap
+ * (this row freed) and re-evaluates the SOLD flip afterwards.
+ */
+export async function updatePlotSaleReceipt(id: string, patch: PlotTxnPatch): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) throw new Error(`updatePlotSaleReceipt: ${id} not found`);
+  if (!t.plot_id || t.phase !== 'SALE' || t.direction !== 'IN') {
+    throw new Error('updatePlotSaleReceipt: not a sale receipt');
+  }
+  const plot = await getPlot(t.plot_id);
+  if (plot?.project_id) throw new Error('updatePlotSaleReceipt: plot belongs to a project');
+
+  const summary = await getPlotSummary(t.plot_id);
+  const amount = patch.amount ?? t.amount;
+  const maxAllowed = summary.saleOutstanding + t.amount;
+  if (amount > maxAllowed + 0.001) throw new LimitExceededError(maxAllowed, amount);
+
+  await applyTransactionPatch(t, { amount, date: patch.date, accountId: patch.accountId, description: patch.note });
+  await reevaluatePlotSold(t.plot_id);
+}
+
+/**
+ * Delete a plot transaction (seller payment, expense, or standalone sale
+ * receipt) by voiding it — balances and the deal/sale math re-derive, and a
+ * voided sale receipt un-sells the plot (fixes the phantom-SOLD it left behind).
+ */
+export async function deletePlotTransaction(id: string): Promise<void> {
+  const t = await getTransaction(id);
+  if (!t || t.is_void === 1) return;
+  if (!t.plot_id) throw new Error('deletePlotTransaction: not a plot transaction');
+  const plot = await getPlot(t.plot_id);
+  if (plot?.project_id && t.phase === 'PLOT') await assertProjectActive(plot.project_id);
+
+  await voidTransaction(id);
+  if (t.phase === 'SALE') await reevaluatePlotSold(t.plot_id);
 }
 
 /** All plots with their summaries, newest first (the Plots list). */

@@ -41,7 +41,8 @@ export function PlotFormFields({ form, patch }: Props): React.JSX.Element {
 
   return (
     <>
-      <FloatingLabelInput label={t('plotName')} value={form.name} onChangeText={(name) => patch({ name })} />
+      {/* A plot has no separate name — its address (society/block/plot no) is
+          its name. At least one of these is required (enforced by canSave). */}
       <FloatingLabelInput
         label={t('society')}
         value={form.society}

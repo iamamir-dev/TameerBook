@@ -1,27 +1,26 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   ActionsDrawer,
   AddActionButton,
+  AppButton,
   AppCard,
   AppHeader,
   AppText,
   LedgerTable,
   LoadErrorState,
-  SelectSheet,
   type DrawerAction,
   type LedgerRow,
 } from '@/components/ui';
 import {
   addDocument,
-  listDocuments,
+  deletePlotTransaction,
   PAY_TYPE_LABEL_KEYS,
-  setPlotStage,
   type TransactionRow,
 } from '@/db';
 import { useCategoryLabel, useSaveAction } from '@/hooks';
@@ -29,7 +28,6 @@ import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import { pickDocumentImage } from '@/utils/photo';
-import { stageTone } from '@/utils/tones';
 
 import { PlotDocsGrid } from '../components/PlotDocsGrid';
 import { PlotExpenseSheet } from '../components/PlotExpenseSheet';
@@ -49,9 +47,8 @@ interface Sheets {
   exp: boolean;
   sell: SellPlotSheetMode | null;
   actions: boolean;
-  stage: boolean;
 }
-const CLOSED: Sheets = { pay: false, exp: false, sell: null, actions: false, stage: false };
+const CLOSED: Sheets = { pay: false, exp: false, sell: null, actions: false };
 
 /**
  * The core plot page — the owner's notebook for one plot: cost summary, seller
@@ -60,34 +57,65 @@ const CLOSED: Sheets = { pay: false, exp: false, sell: null, actions: false, sta
  */
 export function PlotDetailScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const { plotId } = useRoute<PlotRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = usePlotDetail(plotId);
-  const { summary, linkedProject, accounts, categories, docs, txns, stages } = data;
+  const { summary, linkedProject, accounts, categories, docs, txns } = data;
   const { run: runSave } = useSaveAction();
   const catName = useCategoryLabel();
 
   const [sheets, setSheets] = useState<Sheets>(CLOSED);
   const patch = (p: Partial<Sheets>) => setSheets((s) => ({ ...s, ...p }));
   const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
+  const [editing, setEditing] = useState<{ kind: 'pay' | 'exp' | 'receipt'; txn: TransactionRow } | null>(null);
 
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
+  /** Which flow corrects this ledger row: buyer payment, seller payment, or expense. */
+  const txnKind = (txn: TransactionRow): 'pay' | 'exp' | 'receipt' => {
+    if (txn.phase === 'SALE') return 'receipt';
+    return catById.get(txn.category_id ?? '')?.name_en === 'Plot Payment' ? 'pay' : 'exp';
+  };
+
+  const onEditTxn = (txn: TransactionRow) => {
+    setTxnDetail(null);
+    setEditing({ kind: txnKind(txn), txn });
+  };
+
+  const onDeleteTxn = (txn: TransactionRow) => {
+    Alert.alert(t('delete'), t('deleteConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: () =>
+          void runSave(async () => {
+            await deletePlotTransaction(txn.id);
+            setTxnDetail(null);
+            await reload();
+          }),
+      },
+    ]);
+  };
+
+  const closeEdit = () => setEditing(null);
 
   const ledgerRows: LedgerRow[] = useMemo(
     () =>
       txns.map((txn) => {
         const cat = txn.category_id ? catById.get(txn.category_id) : undefined;
         const payLabel = txn.pay_type ? t(PAY_TYPE_LABEL_KEYS[txn.pay_type]) : undefined;
+        const isSale = txn.phase === 'SALE';
         return {
           id: txn.id,
           title: txn.description || payLabel || (cat ? catName(cat) : t('transactions')),
           date: txn.date,
           amount: txn.amount,
-          direction: 'out' as const,
+          direction: isSale ? ('in' as const) : ('out' as const),
           typeLabel: payLabel ?? (cat ? catName(cat) : undefined),
           onPress: () => setTxnDetail(txn),
         };
@@ -115,9 +143,12 @@ export function PlotDetailScreen(): React.JSX.Element {
 
   const { plot, salePrice } = summary;
   const sold = plot.status === 'SOLD';
-  // No mutating actions on a sold plot or one inside a completed project.
-  const readOnly = sold || linkedProject?.status === 'COMPLETED';
-  const currentStage = stages.find((x) => x.id === plot.stage_id) ?? null;
+  const projectCompleted = linkedProject?.status === 'COMPLETED';
+  // No NEW entries on a sold plot or one inside a completed project…
+  const readOnly = sold || projectCompleted;
+  // …but existing entries stay correctable unless the project is closed (so
+  // fixing/removing a buyer payment can still un-sell a standalone plot).
+  const canEditEntries = !projectCompleted;
 
   const drawerActions: DrawerAction[] = [
     { icon: 'rupee', label: t('sellerPayment'), onPress: () => patch({ actions: false, pay: true }) },
@@ -148,9 +179,6 @@ export function PlotDetailScreen(): React.JSX.Element {
       >
         <PlotHeroCard
           summary={summary}
-          stage={currentStage}
-          readOnly={readOnly}
-          onPressStage={() => patch({ stage: true })}
           linkedProject={linkedProject}
           onOpenProject={() => plot.project_id && navigation.navigate('ProjectDetail', { projectId: plot.project_id })}
         />
@@ -187,56 +215,60 @@ export function PlotDetailScreen(): React.JSX.Element {
       />
 
       <SellerPaymentSheet
-        visible={sheets.pay}
-        onClose={() => patch({ pay: false })}
+        visible={sheets.pay || editing?.kind === 'pay'}
+        onClose={() => {
+          patch({ pay: false });
+          closeEdit();
+        }}
         summary={summary}
         accounts={accounts}
+        editing={editing?.kind === 'pay' ? editing.txn : null}
         onSaved={reload}
       />
 
       <PlotExpenseSheet
-        visible={sheets.exp}
-        onClose={() => patch({ exp: false })}
+        visible={sheets.exp || editing?.kind === 'exp'}
+        onClose={() => {
+          patch({ exp: false });
+          closeEdit();
+        }}
         summary={summary}
         accounts={accounts}
+        editing={editing?.kind === 'exp' ? editing.txn : null}
         onSaved={reload}
-      />
-
-      <SelectSheet
-        visible={sheets.stage}
-        onClose={() => patch({ stage: false })}
-        title={t('setStatusLabel')}
-        searchable={false}
-        selectedId={plot.stage_id ?? '__none__'}
-        options={[
-          { id: '__none__', label: t('noStatus') },
-          ...stages.map((st) => ({
-            id: st.id,
-            label: language === 'ur' ? st.name_ur : st.name_en,
-            dotColor: theme.colors[stageTone(st)],
-          })),
-        ]}
-        onSelect={(o) => {
-          patch({ stage: false });
-          void (async () => {
-            const ok = await runSave(() => setPlotStage(plotId, o.id === '__none__' ? null : o.id));
-            if (ok) await reload();
-          })();
-        }}
       />
 
       {!plot.project_id ? (
         <SellPlotSheet
-          visible={sheets.sell !== null}
-          mode={sheets.sell ?? 'price'}
-          onClose={() => patch({ sell: null })}
+          visible={sheets.sell !== null || editing?.kind === 'receipt'}
+          mode={editing?.kind === 'receipt' ? 'receipt' : sheets.sell ?? 'price'}
+          onClose={() => {
+            patch({ sell: null });
+            closeEdit();
+          }}
           summary={summary}
           accounts={accounts}
+          editing={editing?.kind === 'receipt' ? editing.txn : null}
           onSaved={reload}
         />
       ) : null}
 
-      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
+      <TransactionDetailSheet
+        txn={txnDetail}
+        onClose={() => setTxnDetail(null)}
+        footer={
+          txnDetail && canEditEntries ? (
+            <View style={styles.detailActions}>
+              <View style={styles.flex}>
+                <AppButton label={t('edit')} icon="edit" variant="secondary" onPress={() => onEditTxn(txnDetail)} />
+              </View>
+              <View style={styles.flex}>
+                <AppButton label={t('delete')} icon="trash" variant="danger" onPress={() => onDeleteTxn(txnDetail)} />
+              </View>
+            </View>
+          ) : undefined
+        }
+      />
     </View>
   );
 }

@@ -3,44 +3,31 @@ import { View } from 'react-native';
 
 import { StageBadge } from '@/components/StageBadge';
 import { AppCard, AppIcon, AppText } from '@/components/ui';
-import { SIZE_UNIT_LABEL_KEYS, type PlotStatus, type PlotSummary } from '@/db';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { SIZE_UNIT_LABEL_KEYS, type PlotSummary } from '@/db';
+import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { formatRupees } from '@/utils/money';
-import { softToneColor, type ColorKey } from '@/utils/tones';
+import { softToneColor } from '@/utils/tones';
 
 import { PlotSummaryRow } from './PlotSummaryRow';
+import { plotStatusMeta } from '../utils/status';
 import { makeStyles } from '../styled/PlotCard.styles';
-
-const STATUS_LABEL: Record<PlotStatus, TranslationKey> = {
-  OWNED: 'plotOwned',
-  IN_PROJECT: 'plotInProject',
-  SOLD: 'plotSold',
-};
-
-const STATUS_TONE: Record<PlotStatus, ColorKey> = {
-  OWNED: 'success',
-  IN_PROJECT: 'primary',
-  SOLD: 'gold',
-};
 
 interface Props {
   summary: PlotSummary;
-  /** User-set display status (Settings → Statuses); null = none. */
-  stageLabel: string | null;
-  /** The status's own color; null = default lifecycle tone. */
-  stageBadgeTone: ColorKey | null;
   onPress: () => void;
 }
 
-/** One plot card, laid out exactly like the owner reads his notebook. */
-export function PlotCard({ summary, stageLabel, stageBadgeTone, onPress }: Props): React.JSX.Element {
+/** One plot card, laid out exactly like the owner reads his notebook. The title
+ *  IS the plot's address; its status is auto-derived from the deal/sale state. */
+export function PlotCard({ summary, onPress }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const { plot, projectName, dealPrice, paidToSeller, remaining, expenses, totalCost } = summary;
-  const tone = STATUS_TONE[plot.status];
-  const subtitle = [plot.society, plot.block, plot.plot_no].filter(Boolean).join(' · ');
+  const { tone, labelKey } = plotStatusMeta(summary);
+  // In a project we show the project's name on the badge instead of "In project".
+  const badgeLabel = plot.status === 'IN_PROJECT' && projectName ? projectName : t(labelKey);
   const sizeText = plot.size_value ? `${plot.size_value} ${t(SIZE_UNIT_LABEL_KEYS[plot.size_unit ?? 'MARLA'])}` : null;
 
   return (
@@ -53,16 +40,8 @@ export function PlotCard({ summary, stageLabel, stageBadgeTone, onPress }: Props
           <AppText size="md" weight="bold" numberOfLines={1}>
             {plot.name}
           </AppText>
-          {subtitle ? (
-            <AppText size="xs" color="textSecondary" numberOfLines={1}>
-              {subtitle}
-            </AppText>
-          ) : null}
           <View style={styles.badgeWrap}>
-            <StageBadge
-              tone={stageLabel && stageBadgeTone ? stageBadgeTone : tone}
-              label={stageLabel ?? (plot.status === 'IN_PROJECT' && projectName ? projectName : t(STATUS_LABEL[plot.status]))}
-            />
+            <StageBadge tone={tone} label={badgeLabel} />
             {sizeText ? (
               <View style={[styles.sizePill, { backgroundColor: softToneColor(theme, 'gold') }]}>
                 <AppIcon name="plot" size={12} color="gold" />

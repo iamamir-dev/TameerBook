@@ -2,8 +2,9 @@ import { useState } from 'react';
 
 import type { PlotRow, SizeUnit } from '@/db';
 
+import { composePlotName, hasPlotAddress } from '../utils/plotName';
+
 export interface PlotForm {
-  name: string;
   society: string;
   block: string;
   plotNo: string;
@@ -17,7 +18,6 @@ export interface PlotForm {
 }
 
 const EMPTY: PlotForm = {
-  name: '',
   society: '',
   block: '',
   plotNo: '',
@@ -35,7 +35,8 @@ export interface UsePlotForm {
   /** Load an existing plot's values into the form (Edit prefill). */
   prefill: (plot: PlotRow) => void;
   canSave: boolean;
-  /** The shared field set both createPlot and updatePlot accept. */
+  /** The shared field set both createPlot and updatePlot accept. The plot's
+   *  NAME is its address (there is no separate name field). */
   buildInput: () => {
     name: string;
     society: string | null;
@@ -52,8 +53,9 @@ export interface UsePlotForm {
 
 /**
  * The ONE plot form state, shared by New and Edit (which were near-identical
- * 240-line screens). Owns the fields, the prefill, `canSave`, and the input
- * builder that normalizes the size text into a value+unit.
+ * 240-line screens). A plot has no separate name — its address IS its name, so
+ * `buildInput` composes the name from society/block/plot-no and `canSave`
+ * requires at least one address part (plus a deal price).
  */
 export function usePlotForm(): UsePlotForm {
   const [form, setForm] = useState<PlotForm>(EMPTY);
@@ -61,7 +63,6 @@ export function usePlotForm(): UsePlotForm {
 
   const prefill = (plot: PlotRow) =>
     setForm({
-      name: plot.name,
       society: plot.society ?? '',
       block: plot.block ?? '',
       plotNo: plot.plot_no ?? '',
@@ -73,13 +74,14 @@ export function usePlotForm(): UsePlotForm {
       deadline: plot.transfer_deadline,
     });
 
-  const canSave = form.name.trim().length > 0 && form.dealPrice > 0;
+  const address = { society: form.society, block: form.block, plotNo: form.plotNo };
+  const canSave = hasPlotAddress(address) && form.dealPrice > 0;
 
   const buildInput = () => {
     const sizeValue = Number(form.size);
     const hasSize = form.size.trim().length > 0 && Number.isFinite(sizeValue) && sizeValue > 0;
     return {
-      name: form.name.trim(),
+      name: composePlotName(address),
       society: form.society.trim() || null,
       block: form.block.trim() || null,
       plotNo: form.plotNo.trim() || null,

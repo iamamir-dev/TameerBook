@@ -11,7 +11,7 @@ import {
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
-import { addPlotExpense, type AccountWithBalance, type PlotSummary } from '@/db';
+import { addPlotExpense, updatePlotExpense, type AccountWithBalance, type PlotSummary, type TransactionRow } from '@/db';
 import { useCategoryLabel, useModuleCategories, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -24,6 +24,8 @@ interface Props {
   onClose: () => void;
   summary: PlotSummary;
   accounts: AccountWithBalance[];
+  /** Pass an expense to edit in place; omit/null to add a new one. */
+  editing?: TransactionRow | null;
   onSaved: () => Promise<void>;
 }
 
@@ -37,11 +39,11 @@ interface Form {
 }
 
 /**
- * A plot-side expense (tax, transfer fee, naqsha, …) on the shared
- * `MoneyEntrySheet`. The category chip offers ONLY the Settings-managed "Plot"
- * categories (via `useModuleCategories('plot')`) — never another module's.
+ * A plot-side expense (tax, transfer fee, naqsha, …) — add or edit in place — on
+ * the shared `MoneyEntrySheet`. The category chip offers ONLY the Settings-managed
+ * "Plot" categories (via `useModuleCategories('plot')`).
  */
-export function PlotExpenseSheet({ visible, onClose, summary, accounts, onSaved }: Props): React.JSX.Element {
+export function PlotExpenseSheet({ visible, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -55,7 +57,14 @@ export function PlotExpenseSheet({ visible, onClose, summary, accounts, onSaved 
 
   useEffect(() => {
     if (!visible) return;
-    setForm({ categoryId: null, amount: 0, accountId: accounts[0]?.id ?? null, date: todayISO().slice(0, 10), note: '', receiptUri: null });
+    setForm({
+      categoryId: editing?.category_id ?? null,
+      amount: editing?.amount ?? 0,
+      accountId: editing?.account_id ?? accounts[0]?.id ?? null,
+      date: editing?.date ?? todayISO().slice(0, 10),
+      note: editing?.description ?? '',
+      receiptUri: null,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -70,22 +79,34 @@ export function PlotExpenseSheet({ visible, onClose, summary, accounts, onSaved 
   );
 
   const category = categories.find((c) => c.id === form.categoryId) ?? null;
+  const ownAmount = editing?.amount ?? 0;
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
-  const amountError = form.amount > 0 && account && form.amount > account.balance ? t('insufficientFunds') : null;
+  const accountCap = account ? account.balance + (editing && editing.account_id === account.id ? ownAmount : 0) : 0;
+  const amountError = form.amount > 0 && account && form.amount > accountCap ? t('insufficientFunds') : null;
   const canSave = form.amount > 0 && form.accountId !== null && form.categoryId !== null && !amountError;
 
   const onSave = () => {
     if (!canSave || saving || !form.accountId || !form.categoryId) return;
     void run(async () => {
-      await addPlotExpense({
-        plotId: summary.plot.id,
-        categoryId: form.categoryId!,
-        amount: form.amount,
-        date: form.date,
-        accountId: form.accountId!,
-        note: form.note.trim() || null,
-        receiptUri: form.receiptUri,
-      });
+      if (editing) {
+        await updatePlotExpense(editing.id, {
+          categoryId: form.categoryId!,
+          amount: form.amount,
+          date: form.date,
+          accountId: form.accountId!,
+          note: form.note.trim() || null,
+        });
+      } else {
+        await addPlotExpense({
+          plotId: summary.plot.id,
+          categoryId: form.categoryId!,
+          amount: form.amount,
+          date: form.date,
+          accountId: form.accountId!,
+          note: form.note.trim() || null,
+          receiptUri: form.receiptUri,
+        });
+      }
       onClose();
       await onSaved();
     });
@@ -116,7 +137,7 @@ export function PlotExpenseSheet({ visible, onClose, summary, accounts, onSaved 
     <MoneyEntrySheet
       visible={visible}
       onClose={onClose}
-      title={t('addExpense')}
+      title={editing ? t('editExpense') : t('addExpense')}
       header={header}
       amount={form.amount}
       onAmountChange={(amount) => patch({ amount })}
@@ -128,7 +149,7 @@ export function PlotExpenseSheet({ visible, onClose, summary, accounts, onSaved 
       onDateChange={(date) => patch({ date })}
       note={form.note}
       onNoteChange={(note) => patch({ note })}
-      extra={<ReceiptPhotoField uri={form.receiptUri} onChange={(receiptUri) => patch({ receiptUri })} />}
+      extra={editing ? undefined : <ReceiptPhotoField uri={form.receiptUri} onChange={(receiptUri) => patch({ receiptUri })} />}
       onSave={onSave}
       saving={saving}
       saveDisabled={!canSave}

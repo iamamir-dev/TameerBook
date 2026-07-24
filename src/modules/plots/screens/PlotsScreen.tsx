@@ -9,7 +9,6 @@ import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
-import { stageTone } from '@/utils/tones';
 
 import { PlotCard } from '../components/PlotCard';
 import { usePlotsList } from '../hooks/usePlots';
@@ -20,16 +19,14 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 /** Plots list: one card per plot with the owner's card math, plus a FAB. */
 export function PlotsScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const { data } = usePlotsList();
-  const { plots, stages } = data;
+  const { plots } = data;
   const [query, setQuery] = useState('');
-
-  const stageFor = (stageId: string | null) => stages.find((x) => x.id === stageId) ?? null;
 
   const filtered = plots.filter((it) => {
     const q = query.trim().toLowerCase();
@@ -60,18 +57,13 @@ export function PlotsScreen(): React.JSX.Element {
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE }]}
         >
           {plots.length > 5 ? <SearchBar value={query} onChange={setQuery} /> : null}
-          {filtered.map((item) => {
-            const st = stageFor(item.plot.stage_id);
-            return (
-              <PlotCard
-                key={item.plot.id}
-                summary={item}
-                stageLabel={st ? (language === 'ur' ? st.name_ur : st.name_en) : null}
-                stageBadgeTone={st ? stageTone(st) : null}
-                onPress={() => navigation.navigate('PlotDetail', { plotId: item.plot.id })}
-              />
-            );
-          })}
+          {filtered.map((item) => (
+            <PlotCard
+              key={item.plot.id}
+              summary={item}
+              onPress={() => navigation.navigate('PlotDetail', { plotId: item.plot.id })}
+            />
+          ))}
         </ScrollView>
       )}
     </View>

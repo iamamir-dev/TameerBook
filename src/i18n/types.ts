@@ -380,6 +380,9 @@ export interface TranslationKeys {
   plotOwned: string;
   plotInProject: string;
   plotSold: string;
+  statusForSale: string;
+  statusPartPaid: string;
+  statusPaidUp: string;
   noPlotsYet: string;
   noPlotsDetail: string;
   selectPlot: string;
@@ -516,6 +519,8 @@ export interface TranslationKeys {
   addDelivery: string;
   editDelivery: string;
   editPayment: string;
+  editExpense: string;
+  editReceipt: string;
   editBooking: string;
   purchaseOrder: string;
   printLabel: string;

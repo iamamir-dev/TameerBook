@@ -36,7 +36,9 @@ export function StatusesScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const [module, setModule] = useState<StageModule>('PROJECT');
+  // Statuses are user-managed for PROJECTS only; plots derive their status
+  // automatically from the deal/sale state (like a Purchase Order).
+  const module: StageModule = 'PROJECT';
   const [rows, setRows] = useState<StageRow[]>([]);
   const [editor, setEditor] = useState<{ stage: StageRow | null } | null>(null);
   const [name, setName] = useState('');
@@ -84,25 +86,6 @@ export function StatusesScreen(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <AppHeader title={t('statusesTitle')} onBack={() => navigation.goBack()} />
-
-      <View style={styles.segment}>
-        {(['PROJECT', 'PLOT'] as StageModule[]).map((m) => {
-          const active = module === m;
-          return (
-            <Pressable
-              key={m}
-              onPress={() => setModule(m)}
-              style={[styles.segBtn, active && styles.segBtnActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              <AppText size="sm" weight="bold" color={active ? 'onAccent' : 'textSecondary'}>
-                {t(m === 'PROJECT' ? 'projects' : 'plotsTitle')}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -200,16 +183,6 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    segment: {
-      flexDirection: 'row',
-      gap: theme.spacing.xs,
-      margin: theme.spacing.lg,
-      padding: 3,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.card,
-    },
-    segBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
-    segBtnActive: { backgroundColor: theme.colors.accent },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
     card: { gap: theme.spacing.sm },
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },

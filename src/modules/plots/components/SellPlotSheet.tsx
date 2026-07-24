@@ -10,9 +10,11 @@ import {
   PAY_TYPE_LABEL_KEYS,
   PAY_TYPES,
   setPlotSale,
+  updatePlotSaleReceipt,
   type AccountWithBalance,
   type PayType,
   type PlotSummary,
+  type TransactionRow,
 } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -32,16 +34,19 @@ interface Props {
   /** The plot being flipped (must NOT belong to a project — repo guard). */
   summary: PlotSummary;
   accounts: AccountWithBalance[];
+  /** Pass a buyer payment to edit in place (receipt mode only). */
+  editing?: TransactionRow | null;
   onSaved: () => Promise<void>;
 }
 
 /**
  * The STANDALONE plot sale (a flip without a project). `price` mode records the
- * agreed sale price + buyer (`setPlotSale`); `receipt` mode posts buyer money on
- * the shared `MoneyEntrySheet` (`addPlotSaleReceipt`), capped at the outstanding
- * amount. The plot flips to SOLD automatically once fully received.
+ * agreed sale price + buyer (`setPlotSale`); `receipt` mode posts — or edits —
+ * buyer money on the shared `MoneyEntrySheet`, capped at the outstanding amount
+ * (an edited row's own amount freed). The plot flips to SOLD automatically once
+ * fully received, and back when a payment is removed.
  */
-export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSaved }: Props): React.JSX.Element {
+export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -66,12 +71,12 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSav
     if (!visible) return;
     setPrice(summary.salePrice);
     setBuyer(summary.plot.buyer_name ?? '');
-    setAmount(0);
-    setPayType(null);
-    setDate(todayISO().slice(0, 10));
+    setAmount(editing?.amount ?? 0);
+    setPayType((editing?.pay_type as PayType) ?? null);
+    setDate(editing?.date ?? todayISO().slice(0, 10));
     setReceiptUri(null);
-    setAccountId((prev) => prev ?? accounts[0]?.id ?? null);
-    if (mode === 'receipt') {
+    setAccountId((prev) => editing?.account_id ?? prev ?? accounts[0]?.id ?? null);
+    if (mode === 'receipt' && !editing) {
       listUsedPayTypes(summary.plot.id, 'SALE', 'IN').then(setUsedPayTypes).catch(() => setUsedPayTypes([]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,10 +91,18 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSav
     });
   };
 
+  const ownAmount = editing?.amount ?? 0;
+  const outstandingCap = summary.saleOutstanding + ownAmount;
+  const account = accounts.find((a) => a.id === accountId) ?? null;
+
   const onSaveReceipt = () => {
     if (amount <= 0 || !accountId || saving) return;
     void run(async () => {
-      await addPlotSaleReceipt({ plotId: plot.id, amount, date, accountId: accountId!, payType, receiptUri });
+      if (editing) {
+        await updatePlotSaleReceipt(editing.id, { amount, date, accountId: accountId! });
+      } else {
+        await addPlotSaleReceipt({ plotId: plot.id, amount, date, accountId: accountId!, payType, receiptUri });
+      }
       onClose();
       await onSaved();
     });
@@ -109,8 +122,8 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSav
     );
   }
 
-  const amountError = amount > 0 && amount > summary.saleOutstanding ? t('exceedsRemaining') : null;
-  const header = (
+  const amountError = amount > 0 && amount > outstandingCap ? t('exceedsRemaining') : null;
+  const header = editing ? null : (
     <View style={styles.chipRow}>
       {available.map((pt) => {
         const sel = payType === pt;
@@ -135,8 +148,8 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSav
     <MoneyEntrySheet
       visible={visible}
       onClose={onClose}
-      title={t('addReceipt')}
-      subtitle={`${t('remaining')}: ${formatRupees(summary.saleOutstanding)}`}
+      title={editing ? t('editReceipt') : t('addReceipt')}
+      subtitle={`${t('remaining')}: ${formatRupees(outstandingCap)}`}
       header={header}
       amount={amount}
       onAmountChange={setAmount}
@@ -146,7 +159,7 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, onSav
       onAccountChange={setAccountId}
       date={date}
       onDateChange={setDate}
-      extra={<ReceiptPhotoField uri={receiptUri} onChange={setReceiptUri} />}
+      extra={editing ? undefined : <ReceiptPhotoField uri={receiptUri} onChange={setReceiptUri} />}
       onSave={onSaveReceipt}
       saving={saving}
       saveDisabled={amount <= 0 || !accountId || !!amountError}

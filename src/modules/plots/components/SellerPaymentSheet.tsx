@@ -8,9 +8,11 @@ import {
   ONCE_PAY_TYPES,
   PAY_TYPE_LABEL_KEYS,
   PAY_TYPES,
+  updatePlotPayment,
   type AccountWithBalance,
   type PayType,
   type PlotSummary,
+  type TransactionRow,
 } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -25,6 +27,8 @@ interface Props {
   onClose: () => void;
   summary: PlotSummary;
   accounts: AccountWithBalance[];
+  /** Pass a payment to edit in place; omit/null to add a new one. */
+  editing?: TransactionRow | null;
   onSaved: () => Promise<void>;
 }
 
@@ -37,11 +41,12 @@ interface Form {
 }
 
 /**
- * Pay the seller an instalment of the deal (token / bayana / instalment / final)
- * on the shared `MoneyEntrySheet`. Pay-type chips pick the milestone; a one-time
- * type already used on this plot is hidden. Capped at what is still owed.
+ * Pay the seller — or edit a seller payment in place — on the shared
+ * `MoneyEntrySheet`. Pay-type chips pick the milestone when adding (fixed on
+ * edit); a one-time type already used on this plot is hidden. Capped at what is
+ * still owed, freeing an edited row's own amount back into the cap.
  */
-export function SellerPaymentSheet({ visible, onClose, summary, accounts, onSaved }: Props): React.JSX.Element {
+export function SellerPaymentSheet({ visible, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -56,24 +61,33 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, onSave
   // Reset only when the sheet opens (avoids wiping the form on data bumps).
   useEffect(() => {
     if (!visible) return;
-    setForm({ payType: 'INSTALLMENT', amount: 0, accountId: accounts[0]?.id ?? null, date: todayISO().slice(0, 10), receiptUri: null });
-    listUsedPayTypes(summary.plot.id, 'PLOT', 'OUT').then(setUsedPayTypes).catch(() => setUsedPayTypes([]));
+    setForm({
+      payType: (editing?.pay_type as PayType) ?? 'INSTALLMENT',
+      amount: editing?.amount ?? 0,
+      accountId: editing?.account_id ?? accounts[0]?.id ?? null,
+      date: editing?.date ?? todayISO().slice(0, 10),
+      receiptUri: null,
+    });
+    if (!editing) listUsedPayTypes(summary.plot.id, 'PLOT', 'OUT').then(setUsedPayTypes).catch(() => setUsedPayTypes([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Keep the selected pay-type valid once the used list arrives.
+  // Keep the selected pay-type valid once the used list arrives (add mode only).
   useEffect(() => {
-    if (!available.some((pt) => pt === form.payType) && available[0]) patch({ payType: available[0] });
+    if (!editing && !available.some((pt) => pt === form.payType) && available[0]) patch({ payType: available[0] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usedPayTypes]);
 
+  const ownAmount = editing?.amount ?? 0;
+  const remainingCap = summary.remaining + ownAmount;
   const account = accounts.find((a) => a.id === form.accountId) ?? null;
+  const accountCap = account ? account.balance + (editing && editing.account_id === account.id ? ownAmount : 0) : 0;
   const amountError =
     form.amount <= 0
       ? null
-      : form.amount > summary.remaining
+      : form.amount > remainingCap
         ? t('exceedsRemaining')
-        : account && form.amount > account.balance
+        : account && form.amount > accountCap
           ? t('insufficientFunds')
           : null;
   const canSave = form.amount > 0 && form.accountId !== null && !amountError;
@@ -81,20 +95,24 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, onSave
   const onSave = () => {
     if (!canSave || saving || !form.accountId) return;
     void run(async () => {
-      await addPlotPayment({
-        plotId: summary.plot.id,
-        payType: form.payType,
-        amount: form.amount,
-        date: form.date,
-        accountId: form.accountId!,
-        receiptUri: form.receiptUri,
-      });
+      if (editing) {
+        await updatePlotPayment(editing.id, { amount: form.amount, date: form.date, accountId: form.accountId! });
+      } else {
+        await addPlotPayment({
+          plotId: summary.plot.id,
+          payType: form.payType,
+          amount: form.amount,
+          date: form.date,
+          accountId: form.accountId!,
+          receiptUri: form.receiptUri,
+        });
+      }
       onClose();
       await onSaved();
     });
   };
 
-  const header = (
+  const header = editing ? null : (
     <View style={styles.chipRow}>
       {available.map((pt) => {
         const sel = pt === form.payType;
@@ -119,8 +137,8 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, onSave
     <MoneyEntrySheet
       visible={visible}
       onClose={onClose}
-      title={t('sellerPayment')}
-      subtitle={`${t('remaining')}: ${formatRupees(summary.remaining)}`}
+      title={editing ? t('editPayment') : t('sellerPayment')}
+      subtitle={`${t('remaining')}: ${formatRupees(remainingCap)}`}
       header={header}
       amount={form.amount}
       onAmountChange={(amount) => patch({ amount })}
@@ -130,9 +148,10 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, onSave
       onAccountChange={(accountId) => patch({ accountId })}
       date={form.date}
       onDateChange={(date) => patch({ date })}
-      extra={<ReceiptPhotoField uri={form.receiptUri} onChange={(receiptUri) => patch({ receiptUri })} />}
+      extra={editing ? undefined : <ReceiptPhotoField uri={form.receiptUri} onChange={(receiptUri) => patch({ receiptUri })} />}
       onSave={onSave}
       saving={saving}
+      saveLabel={editing ? t('save') : undefined}
       saveDisabled={!canSave}
     />
   );

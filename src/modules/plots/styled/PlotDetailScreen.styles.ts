@@ -13,4 +13,5 @@ export const makeStyles = (theme: Theme) =>
       gap: theme.spacing.sm,
       marginTop: theme.spacing.sm,
     },
+    detailActions: { flexDirection: 'row', gap: theme.spacing.sm },
   });

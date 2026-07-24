@@ -8,24 +8,19 @@ import {
   listDocuments,
   listPlotSummaries,
   listPlotTransactions,
-  listStages,
   type AccountWithBalance,
   type CategoryRow,
   type DocumentRow,
   type PlotSummary,
   type ProjectRow,
-  type StageRow,
   type TransactionRow,
 } from '@/db';
 import { useFocusData } from '@/hooks';
 
-/** Plots home list: every plot's summary + the PLOT display statuses. */
+/** Plots home list: every plot's summary (status is auto-derived, not stored). */
 export function usePlotsList() {
-  const loader = useCallback(async () => {
-    const [plots, stages] = await Promise.all([listPlotSummaries(), listStages('PLOT')]);
-    return { plots, stages };
-  }, []);
-  return useFocusData(loader, { plots: [] as PlotSummary[], stages: [] as StageRow[] });
+  const loader = useCallback(async () => ({ plots: await listPlotSummaries() }), []);
+  return useFocusData(loader, { plots: [] as PlotSummary[] });
 }
 
 export interface PlotDetailData {
@@ -37,22 +32,20 @@ export interface PlotDetailData {
   categories: CategoryRow[];
   docs: DocumentRow[];
   txns: TransactionRow[];
-  stages: StageRow[];
 }
 
-/** One plot's page data (summary, ledger, documents, accounts, statuses). */
+/** One plot's page data (summary, ledger, documents, accounts). */
 export function usePlotDetail(plotId: string) {
   const loader = useCallback(async (): Promise<PlotDetailData> => {
     const summary = await getPlotSummary(plotId);
-    const [accounts, categories, docs, txns, linkedProject, stages] = await Promise.all([
+    const [accounts, categories, docs, txns, linkedProject] = await Promise.all([
       listAccountsWithBalance(),
       listCategories(),
       listDocuments('plot', plotId),
       listPlotTransactions(plotId),
       summary.plot.project_id ? getProject(summary.plot.project_id) : Promise.resolve(null),
-      listStages('PLOT'),
     ]);
-    return { summary, linkedProject, accounts, categories, docs, txns, stages };
+    return { summary, linkedProject, accounts, categories, docs, txns };
   }, [plotId]);
   return useFocusData<PlotDetailData>(loader, {
     summary: null,
@@ -61,6 +54,5 @@ export function usePlotDetail(plotId: string) {
     categories: [],
     docs: [],
     txns: [],
-    stages: [],
   });
 }
