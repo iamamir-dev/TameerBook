@@ -183,7 +183,7 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
     <View style={styles.screen}>
       <AppHeader title={editing ? t('editBooking') : t('newBooking')} onBack={() => navigation.goBack()} />
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Supplier + project apply to the whole order. */}
           <FloatingLabelInput label={t('supplier')} value={supplierName} onChangeText={(v) => { setSupplierName(v); setPartyId(null); }} />
