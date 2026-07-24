@@ -1,6 +1,6 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { ActivityList } from '@/components/ActivityList';
@@ -36,11 +36,25 @@ export function InvestorProfileScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const { investorId } = useRoute<ProfileRoute>().params;
+  const { investorId, focusTxnId } = useRoute<ProfileRoute>().params;
   const styles = makeStyles(theme);
 
   const { data, reload } = useInvestorProfile(investorId);
   const { investor, summary, returns, activity, accounts } = data;
+
+  // Jumped in from a linked transaction: flash + scroll to the capital timeline.
+  const scrollRef = useRef<ScrollView>(null);
+  const timelineYRef = useRef(0);
+  const focusHandled = useRef(false);
+  const [highlightTxn, setHighlightTxn] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusTxnId || focusHandled.current || activity.length === 0) return;
+    focusHandled.current = true;
+    setHighlightTxn(focusTxnId);
+    const s = setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, timelineYRef.current - 80), animated: true }), 350);
+    const c = setTimeout(() => setHighlightTxn(null), 3200);
+    return () => { clearTimeout(s); clearTimeout(c); };
+  }, [focusTxnId, activity]);
 
   const projects = useProjectsStore((s) => s.items);
   const refreshProjects = useProjectsStore((s) => s.refresh);
@@ -106,6 +120,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
       />
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
@@ -124,7 +139,10 @@ export function InvestorProfileScreen(): React.JSX.Element {
           onOpenProject={(projectId) => navigation.navigate('ProjectDetail', { projectId })}
         />
 
-        <View style={styles.sectionHeader}>
+        <View
+          style={styles.sectionHeader}
+          onLayout={(e) => { timelineYRef.current = e.nativeEvent.layout.y; }}
+        >
           <AppText size="lg" weight="bold">
             {t('capitalTimeline')}
           </AppText>
@@ -135,6 +153,7 @@ export function InvestorProfileScreen(): React.JSX.Element {
             items={buildInvestorActivityItems(activity, t)}
             emptyText={t('emptyLedger')}
             onEdit={onEditTxn}
+            highlightId={highlightTxn}
           />
         </AppCard>
       </ScrollView>

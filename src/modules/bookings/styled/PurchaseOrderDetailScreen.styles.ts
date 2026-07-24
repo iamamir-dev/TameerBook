@@ -23,8 +23,22 @@ export const makeStyles = (theme: Theme) =>
     itemSub: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm, marginTop: 2 },
 
     /* History rows */
-    histRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
-    histLeft: { flex: 1, gap: 2 },
-    histRight: { alignItems: 'flex-end', gap: 2 },
+    histRow: { paddingVertical: theme.spacing.sm },
+    histLeft: { gap: 3 },
+    histTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.md },
+    histNote: { fontStyle: 'italic' },
+    // Bleed the tint out by the card's padding on every side and add the same
+    // amount back as padding, so the surrounding gap becomes space INSIDE the
+    // highlight while the row's occupied size is unchanged (content stays put,
+    // no layout shift). Covers the card's top padding on the first row and its
+    // bottom padding on the last row too.
+    histHighlight: {
+      backgroundColor: theme.colors.dangerSoft,
+      borderRadius: theme.radius.md,
+      marginHorizontal: -theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
+      marginVertical: -theme.spacing.md,
+      paddingVertical: theme.spacing.md + theme.spacing.sm,
+    },
     pressed: { opacity: 0.6 },
   });

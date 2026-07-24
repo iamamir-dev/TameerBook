@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AccountPickerRow, AmountInput, AppButton, AppSheet, AppText, DateField } from '@/components/ui';
-import { payBooking, type AccountWithBalance, type PurchaseOrderSummary } from '@/db';
+import { payBooking, uuid, type AccountWithBalance, type PurchaseOrderSummary } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -31,12 +32,14 @@ export function MultiPaySheet({ visible, onClose, po, accounts, onSaved }: Props
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [date, setDate] = useState(today);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     if (!visible) return;
     setAmounts({});
     setDate(today);
     setAccountId(accounts[0]?.id ?? null);
+    setNote('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -50,9 +53,11 @@ export function MultiPaySheet({ visible, onClose, po, accounts, onSaved }: Props
     if (!canSave || saving || !accountId) return;
     void (async () => {
       const ok = await runSave(async () => {
+        const batchId = uuid();
+        const pNote = note.trim() || null;
         for (const item of items) {
           const amount = amounts[item.booking.id] ?? 0;
-          if (amount > 0) await payBooking({ bookingId: item.booking.id, amount, date, accountId });
+          if (amount > 0) await payBooking({ bookingId: item.booking.id, amount, date, accountId, batchId, note: pNote });
         }
         await onSaved();
       });
@@ -97,6 +102,8 @@ export function MultiPaySheet({ visible, onClose, po, accounts, onSaved }: Props
           />
         </View>
       ))}
+
+      <FloatingLabelInput label={t('paymentNote')} value={note} onChangeText={setNote} multiline />
     </AppSheet>
   );
 }

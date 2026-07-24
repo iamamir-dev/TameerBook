@@ -28,6 +28,8 @@ import {
   listPlots,
   listRecentTransactions,
   listStages,
+  resolveTxnModuleTarget,
+  type TxnModuleTarget,
   listTransferDeadlines,
   SIZE_UNIT_LABEL_KEYS,
   type StageRow,
@@ -47,6 +49,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { groupTxnActivity } from '@/utils/bookingBatch';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
@@ -83,6 +86,8 @@ export function HomeScreen(): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
   const [recent, setRecent] = useState<TransactionRow[]>([]);
+  // Which recent transactions link to a restructured module page (PO/investor/labor).
+  const [txnTarget, setTxnTarget] = useState<Record<string, TxnModuleTarget>>({});
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
   const [ownedPlots, setOwnedPlots] = useState<PlotRow[]>([]);
@@ -108,6 +113,10 @@ export function HomeScreen(): React.JSX.Element {
     setAccounts(accs);
     setUdhaar(ud);
     setRecent(txns);
+    // Resolve which recent transactions link to a restructured module page, so
+    // their detail drawer can offer a jump straight to it.
+    const targets = await Promise.all(txns.map(async (x) => [x.id, await resolveTxnModuleTarget(x)] as const));
+    setTxnTarget(Object.fromEntries(targets.filter(([, tt]) => tt) as [string, TxnModuleTarget][]));
     setCategories(cats);
     setDeadlineWarn(nearestTransferDeadline(deadlines));
     setStages(stageRows);
@@ -146,23 +155,40 @@ export function HomeScreen(): React.JSX.Element {
     [categories, catLabel]
   );
 
+  // Booking payments made in one PO action collapse into a single row.
+  const activityGroups = useMemo(() => groupTxnActivity(recent).slice(0, 8), [recent]);
+
   const ledgerRows: LedgerRow[] = useMemo(
     () =>
-      recent.map((txn) => ({
-        id: txn.id,
-        title:
-          txn.description ||
-          catName(txn.category_id) ||
-          txn.counterparty_name ||
-          t(txn.direction === 'IN' ? 'aamdani' : 'kharcha'),
-        date: txn.date,
-        amount: txn.amount,
-        direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
-        typeLabel: catName(txn.category_id) || undefined,
-        onPress: () => setTxnDetail(txn),
-      })),
-    [recent, catName, t]
+      activityGroups.map((g) => {
+        const first = g.txns[0];
+        return {
+          id: g.id,
+          title:
+            first.description ||
+            catName(first.category_id) ||
+            first.counterparty_name ||
+            t(first.direction === 'IN' ? 'aamdani' : 'kharcha'),
+          date: first.date,
+          amount: g.total,
+          direction: first.direction === 'IN' ? ('in' as const) : ('out' as const),
+          typeLabel: catName(first.category_id) || undefined,
+          // Always open the detail drawer; a batch shows the summed total there.
+          onPress: () => setTxnDetail(g.isBatch ? { ...first, amount: g.total } : first),
+        };
+      }),
+    [activityGroups, catName, t]
   );
+
+  const targetLabel = (tt?: TxnModuleTarget) =>
+    tt?.kind === 'po' ? t('viewPurchaseOrder') : tt?.kind === 'investor' ? t('viewInvestor') : tt?.kind === 'labor' ? t('viewLabor') : undefined;
+
+  const openTxnTarget = (tt: TxnModuleTarget, focusTxnId: string) => {
+    setTxnDetail(null);
+    if (tt.kind === 'po') navigation.navigate('PurchaseOrderDetail', { poId: tt.poId, focusTxnId });
+    else if (tt.kind === 'investor') navigation.navigate('InvestorProfile', { investorId: tt.investorId, focusTxnId });
+    else navigation.navigate('LaborerDetail', { laborerId: tt.laborerId, focusTxnId });
+  };
 
   const accountTypeLabel = (a: AccountWithBalance) =>
     t(a.type === 'BANK' ? 'accountBank' : a.type === 'CASH' ? 'accountCash' : 'accountWallet');
@@ -449,7 +475,12 @@ export function HomeScreen(): React.JSX.Element {
           void switchTo(o.id);
         }}
       />
-      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
+      <TransactionDetailSheet
+        txn={txnDetail}
+        onClose={() => setTxnDetail(null)}
+        onOpen={txnDetail && txnTarget[txnDetail.id] ? () => openTxnTarget(txnTarget[txnDetail.id], txnDetail.id) : undefined}
+        openLabel={txnDetail ? targetLabel(txnTarget[txnDetail.id]) : undefined}
+      />
     </View>
   );
 }

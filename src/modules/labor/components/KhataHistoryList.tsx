@@ -20,6 +20,8 @@ interface KhataHistoryListProps {
   hideProject?: boolean;
   /** Tap a row to open it (payment → detail/edit, attendance → re-mark). */
   onSelect?: (entry: LaborerKhataEntry) => void;
+  /** Payment transaction id to tint (after jumping to it from a linked row). */
+  highlightTxnId?: string | null;
 }
 
 /**
@@ -27,7 +29,7 @@ interface KhataHistoryListProps {
  * wage earned) and wage payments, mixed by date across projects. Accruals read
  * as + (green), payments as − (red) — the two directions of a khata.
  */
-export function KhataHistoryList({ history, hideTitle, hideProject, onSelect }: KhataHistoryListProps): React.JSX.Element {
+export function KhataHistoryList({ history, hideTitle, hideProject, onSelect, highlightTxnId }: KhataHistoryListProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -58,7 +60,11 @@ export function KhataHistoryList({ history, hideTitle, hideProject, onSelect }: 
                   onPress={onSelect ? () => onSelect(e) : undefined}
                   disabled={!onSelect}
                   accessibilityRole={onSelect ? 'button' : undefined}
-                  style={({ pressed }) => [styles.row, pressed && onSelect ? styles.pressed : null]}
+                  style={({ pressed }) => [
+                    styles.row,
+                    e.txnId && e.txnId === highlightTxnId ? styles.highlighted : null,
+                    pressed && onSelect ? styles.pressed : null,
+                  ]}
                 >
                   <View style={[styles.chip, { backgroundColor: chipBg }]}>
                     <AppText size="xs" weight="bold" color={tone}>

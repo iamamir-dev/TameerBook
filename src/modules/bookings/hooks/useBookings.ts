@@ -27,19 +27,26 @@ export type PoDelivery = MaterialDeliveryRow & { itemName: string };
 export type PoPayment = TransactionRow & { itemName: string };
 
 /**
- * One row of a purchase order's history. A delivery received AND paid in one
- * action is a single `both` entry (delivery + its linked payment); everything
- * else is a standalone `delivery` or `payment`.
+ * One row of a purchase order's history = everything recorded in ONE action
+ * (batch). Receiving and/or paying several items at once collapses into a single
+ * entry carrying all its deliveries + payments; a lone delivery/payment is a
+ * batch of one.
  */
 export interface PoHistoryEntry {
   key: string;
   kind: 'delivery' | 'payment' | 'both';
   date: string;
   createdAt: string;
-  bookingId: string;
-  itemName: string;
-  delivery: PoDelivery | null;
-  payment: PoPayment | null;
+  /** Distinct bookings touched by this batch. */
+  bookingIds: string[];
+  itemCount: number;
+  /** The item name when the batch is a single item; null = show "N items". */
+  itemName: string | null;
+  deliveries: PoDelivery[];
+  payments: PoPayment[];
+  /** Σ of the batch's supplier payments. */
+  totalPaid: number;
+  batchId: string | null;
 }
 
 export interface PurchaseOrderDetailData {
@@ -72,38 +79,42 @@ export function usePurchaseOrderDetail(poId: string) {
     const deliveries = perItem.flatMap((x) => x.deliveries);
     const payments = perItem.flatMap((x) => x.payments);
 
-    // A delivery that carries a linked payment absorbs it into one `both` entry;
-    // the rest stand alone.
-    const linkedPayIds = new Set(deliveries.map((d) => d.payment_txn_id).filter(Boolean) as string[]);
-    const payById = new Map(payments.map((p) => [p.id, p]));
+    // Group everything by its batch. A delivery groups by batch_id; a payment by
+    // its batch_id — or, for legacy rows, by the delivery that links it via
+    // payment_txn_id. Anything without a batch is its own group of one.
+    const gkOfDelivery = (d: PoDelivery) => d.batch_id ?? `d:${d.id}`;
+    const linkedGk = new Map<string, string>();
+    for (const d of deliveries) if (d.payment_txn_id) linkedGk.set(d.payment_txn_id, gkOfDelivery(d));
+    const gkOfPayment = (p: PoPayment) => linkedGk.get(p.id) ?? p.po_batch_id ?? `p:${p.id}`;
 
-    const entries: PoHistoryEntry[] = [];
-    for (const d of deliveries) {
-      const pay = d.payment_txn_id ? payById.get(d.payment_txn_id) ?? null : null;
-      entries.push({
-        key: d.id,
-        kind: pay ? 'both' : 'delivery',
-        date: d.date,
-        createdAt: d.created_at,
-        bookingId: d.booking_id,
-        itemName: d.itemName,
-        delivery: d,
-        payment: pay,
-      });
-    }
-    for (const p of payments) {
-      if (linkedPayIds.has(p.id)) continue; // already shown as part of a `both`
-      entries.push({
-        key: p.id,
-        kind: 'payment',
-        date: p.date,
-        createdAt: p.created_at,
-        bookingId: p.booking_id!,
-        itemName: p.itemName,
-        delivery: null,
-        payment: p,
-      });
-    }
+    const groups = new Map<string, { deliveries: PoDelivery[]; payments: PoPayment[] }>();
+    const bucket = (k: string) => {
+      let g = groups.get(k);
+      if (!g) groups.set(k, (g = { deliveries: [], payments: [] }));
+      return g;
+    };
+    for (const d of deliveries) bucket(gkOfDelivery(d)).deliveries.push(d);
+    for (const p of payments) bucket(gkOfPayment(p)).payments.push(p);
+
+    const entries: PoHistoryEntry[] = [...groups.entries()].map(([key, g]) => {
+      const all = [...g.deliveries, ...g.payments];
+      const bookingIds = [...new Set([...g.deliveries.map((d) => d.booking_id), ...g.payments.map((p) => p.booking_id!)])];
+      const names = [...new Set(all.map((x) => x.itemName))];
+      const kind = g.deliveries.length && g.payments.length ? 'both' : g.deliveries.length ? 'delivery' : 'payment';
+      return {
+        key,
+        kind,
+        date: all[0]?.date ?? '',
+        createdAt: all[0]?.created_at ?? '',
+        bookingIds,
+        itemCount: bookingIds.length,
+        itemName: names.length === 1 ? names[0] : null,
+        deliveries: g.deliveries,
+        payments: g.payments,
+        totalPaid: g.payments.reduce((s, p) => s + p.amount, 0),
+        batchId: g.deliveries[0]?.batch_id ?? g.payments[0]?.po_batch_id ?? null,
+      };
+    });
     const history = entries.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 
     return { po, supplierPhone, accounts, projects, history };

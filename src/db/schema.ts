@@ -292,6 +292,8 @@ export interface TransactionRow extends Base {
   labor_id: string | null;
   /** Links a supplier payment to its material booking. */
   booking_id: string | null;
+  /** Groups supplier payments made in one purchase-order action (multi-item). */
+  po_batch_id: string | null;
   /** Links a payment received to the investor it came from (like plot_id). */
   investor_id: string | null;
   description: string | null;
@@ -425,6 +427,11 @@ export interface MaterialDeliveryRow extends Base {
    * the delivery was recorded on its own.
    */
   payment_txn_id: string | null;
+  /**
+   * Groups every row recorded in one purchase-order action (multi-item receive
+   * / pay) so they read as a single history entry. Null = a lone delivery.
+   */
+  batch_id: string | null;
   note: string | null;
 }
 
@@ -1114,6 +1121,17 @@ export const SCHEMA_V28_DELIVERY_PAYMENT_LINK = `
 ALTER TABLE material_deliveries ADD COLUMN payment_txn_id TEXT;
 `;
 
+/**
+ * v29 — group everything recorded in ONE purchase-order action (e.g. receiving
+ * + paying several items at once) under a shared batch id, so it shows as a
+ * single history entry: `batch_id` on deliveries, `po_batch_id` on the supplier
+ * payment transactions.
+ */
+export const SCHEMA_V29_PO_BATCH = `
+ALTER TABLE material_deliveries ADD COLUMN batch_id TEXT;
+ALTER TABLE transactions ADD COLUMN po_batch_id TEXT;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1137,6 +1155,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 26, sql: SCHEMA_V26_PURCHASE_ORDER_GROUP },
   { version: 27, sql: SCHEMA_V27_BOOKING_SECONDARY_UNIT },
   { version: 28, sql: SCHEMA_V28_DELIVERY_PAYMENT_LINK },
+  { version: 29, sql: SCHEMA_V29_PO_BATCH },
 ];
 
 /* -------------------------------------------------------------------------- */

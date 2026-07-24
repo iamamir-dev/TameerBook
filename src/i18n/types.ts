@@ -524,6 +524,12 @@ export interface TranslationKeys {
   payments: string;
   history: string;
   receivedAndPaid: string;
+  editEntry: string;
+  viewPurchaseOrder: string;
+  viewInvestor: string;
+  viewLabor: string;
+  deliveryNote: string;
+  paymentNote: string;
   poNo: string;
   vendor: string;
   deliverTo: string;

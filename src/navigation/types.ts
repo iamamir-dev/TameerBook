@@ -60,16 +60,16 @@ export type RootStackParamList = {
   // Material bookings
   Bookings: undefined;
   NewPurchaseOrder: { poId?: string } | undefined;
-  PurchaseOrderDetail: { poId: string };
+  PurchaseOrderDetail: { poId: string; focusTxnId?: string };
   Investment: { investorId?: string } | undefined;
   // Udhaar
   Udhaar: undefined;
   UdhaarDetail: { udhaarId: string };
   // Labor (worker khatas across projects)
   Labor: undefined;
-  LaborerDetail: { laborerId: string };
+  LaborerDetail: { laborerId: string; focusTxnId?: string };
   // Investors
-  InvestorProfile: { investorId: string };
+  InvestorProfile: { investorId: string; focusTxnId?: string };
   ExitWizard: { investorId: string };
   // Reports / misc
   Report: { type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };

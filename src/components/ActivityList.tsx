@@ -42,6 +42,8 @@ interface ActivityListProps {
    *  module supplies the context-correct edit sheet (kept out of here so the
    *  list stays reusable). */
   onEdit?: (txn: TransactionRow) => void;
+  /** Row id to tint (e.g. after jumping to it from Home/Transactions). */
+  highlightId?: string | null;
 }
 
 /**
@@ -52,7 +54,7 @@ interface ActivityListProps {
  * a read-only info sheet. Reusable across modules — the caller maps its data to
  * `ActivityItem[]` and handles edit via `onEdit`.
  */
-export function ActivityList({ items, emptyText, onEdit }: ActivityListProps): React.JSX.Element {
+export function ActivityList({ items, emptyText, onEdit, highlightId }: ActivityListProps): React.JSX.Element {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<ActivityItem | null>(null);
 
@@ -70,7 +72,12 @@ export function ActivityList({ items, emptyText, onEdit }: ActivityListProps): R
 
   return (
     <>
-      <LedgerTable rows={rows} emptyText={emptyText} />
+      <LedgerTable
+        rows={rows}
+        emptyText={emptyText}
+        // highlightId comes in as a transaction id; map it to its row id.
+        highlightId={highlightId ? items.find((it) => it.txn?.id === highlightId)?.id ?? highlightId : undefined}
+      />
 
       {/* Transaction-backed rows → rich detail (+ optional edit). */}
       <TransactionDetailSheet

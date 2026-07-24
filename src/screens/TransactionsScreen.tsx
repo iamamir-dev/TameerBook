@@ -27,6 +27,8 @@ import {
   listCategories,
   listAllCompanyTransactions,
   listProjects,
+  resolveTxnModuleTarget,
+  type TxnModuleTarget,
   type ProjectRow,
   type TransactionRow,
   voidTransaction,
@@ -36,6 +38,7 @@ import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
+import { groupTxnActivity } from '@/utils/bookingBatch';
 import { todayISO } from '@/utils/date';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -92,6 +95,8 @@ export function TransactionsScreen(): React.JSX.Element {
   const [accSheet, setAccSheet] = useState(false);
   const [projSheet, setProjSheet] = useState(false);
   const [selected, setSelected] = useState<TransactionRow | null>(null);
+  // Which transactions link to a restructured module page (PO/investor/labor).
+  const [txnTarget, setTxnTarget] = useState<Record<string, TxnModuleTarget>>({});
 
   const load = useCallback(async () => {
     const [rows, cats, accts, projs] = await Promise.all([
@@ -104,6 +109,8 @@ export function TransactionsScreen(): React.JSX.Element {
     setCategories(cats);
     setAccounts(accts);
     setProjects(projs);
+    const targets = await Promise.all(rows.map(async (x) => [x.id, await resolveTxnModuleTarget(x)] as const));
+    setTxnTarget(Object.fromEntries(targets.filter(([, tt]) => tt) as [string, TxnModuleTarget][]));
   }, []);
 
   useFocusReload(load);
@@ -175,6 +182,16 @@ export function TransactionsScreen(): React.JSX.Element {
       })),
     [categories, language]
   );
+
+  const targetLabel = (tt?: TxnModuleTarget) =>
+    tt?.kind === 'po' ? t('viewPurchaseOrder') : tt?.kind === 'investor' ? t('viewInvestor') : tt?.kind === 'labor' ? t('viewLabor') : undefined;
+
+  const openTxnTarget = (tt: TxnModuleTarget, focusTxnId: string) => {
+    setSelected(null);
+    if (tt.kind === 'po') navigation.navigate('PurchaseOrderDetail', { poId: tt.poId, focusTxnId });
+    else if (tt.kind === 'investor') navigation.navigate('InvestorProfile', { investorId: tt.investorId, focusTxnId });
+    else navigation.navigate('LaborerDetail', { laborerId: tt.laborerId, focusTxnId });
+  };
 
   const onFix = () => {
     if (!selected) return;
@@ -267,20 +284,25 @@ export function TransactionsScreen(): React.JSX.Element {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
         {grouped.map((g) => {
-          // Same notebook ledger the Home feed uses — simple and familiar.
-          const rows: LedgerRow[] = g.rows.map((txn) => ({
-            id: txn.id,
-            title:
-              txn.description ||
-              catName(txn.category_id) ||
-              txn.counterparty_name ||
-              (txn.direction === 'IN' ? t('aamdani') : t('kharcha')),
-            date: txn.date,
-            amount: txn.amount,
-            direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
-            typeLabel: catName(txn.category_id) || undefined,
-            onPress: () => setSelected(txn),
-          }));
+          // Same notebook ledger the Home feed uses — booking payments made in
+          // one PO action collapse into a single row.
+          const rows: LedgerRow[] = groupTxnActivity(g.rows).map((grp) => {
+            const first = grp.txns[0];
+            return {
+              id: grp.id,
+              title:
+                first.description ||
+                catName(first.category_id) ||
+                first.counterparty_name ||
+                (first.direction === 'IN' ? t('aamdani') : t('kharcha')),
+              date: first.date,
+              amount: grp.total,
+              direction: first.direction === 'IN' ? ('in' as const) : ('out' as const),
+              typeLabel: catName(first.category_id) || undefined,
+              // Always open the detail drawer; a batch shows the summed total there.
+              onPress: () => setSelected(grp.isBatch ? { ...first, amount: grp.total } : first),
+            };
+          });
           return (
             <View key={g.date} style={styles.daySection}>
               <AppText size="xs" weight="bold" color="textSecondary" uppercase style={styles.dayHeader}>
@@ -334,6 +356,8 @@ export function TransactionsScreen(): React.JSX.Element {
       <TransactionDetailSheet
         txn={selected}
         onClose={() => setSelected(null)}
+        onOpen={selected && txnTarget[selected.id] ? () => openTxnTarget(txnTarget[selected.id], selected.id) : undefined}
+        openLabel={selected ? targetLabel(txnTarget[selected.id]) : undefined}
         footer={
           <>
             <View style={styles.fixExplain}>

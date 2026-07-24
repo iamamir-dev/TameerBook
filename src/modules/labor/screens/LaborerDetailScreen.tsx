@@ -1,6 +1,6 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ScrollView, View } from 'react-native';
 
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -44,11 +44,25 @@ export function LaborerDetailScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const { laborerId } = useRoute<DetailRoute>().params;
+  const { laborerId, focusTxnId } = useRoute<DetailRoute>().params;
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = useLaborerKhata(laborerId);
   const { khata, accounts, projects } = data;
+
+  // Jumped in from a linked wage payment: flash + scroll to the history.
+  const scrollRef = useRef<ScrollView>(null);
+  const historyYRef = useRef(0);
+  const focusHandled = useRef(false);
+  const [highlightTxn, setHighlightTxn] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusTxnId || focusHandled.current || !khata) return;
+    focusHandled.current = true;
+    setHighlightTxn(focusTxnId);
+    const s = setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, historyYRef.current - 80), animated: true }), 350);
+    const c = setTimeout(() => setHighlightTxn(null), 3200);
+    return () => { clearTimeout(s); clearTimeout(c); };
+  }, [focusTxnId, khata]);
   const { run: runSave } = useSaveAction();
   const statement = useKhataStatement(khata);
 
@@ -137,6 +151,7 @@ export function LaborerDetailScreen(): React.JSX.Element {
         <LoadErrorState onRetry={reload} />
       ) : khata ? (
         <ScrollView
+          ref={scrollRef}
           style={styles.flex}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: theme.spacing.xl }]}
@@ -167,7 +182,11 @@ export function LaborerDetailScreen(): React.JSX.Element {
           ))}
 
           {khata.history.length > 0 ? (
-            <AppText size="lg" weight="bold">
+            <AppText
+              size="lg"
+              weight="bold"
+              onLayout={(e) => { historyYRef.current = e.nativeEvent.layout.y; }}
+            >
               {t('historyTitle')}
             </AppText>
           ) : null}
@@ -176,7 +195,7 @@ export function LaborerDetailScreen(): React.JSX.Element {
               <AppText size="md" weight="bold" color="accent" numberOfLines={1}>
                 {g.name}
               </AppText>
-              <KhataHistoryList history={g.entries} hideTitle hideProject onSelect={onSelectHistory} />
+              <KhataHistoryList history={g.entries} hideTitle hideProject onSelect={onSelectHistory} highlightTxnId={highlightTxn} />
             </View>
           ))}
         </ScrollView>

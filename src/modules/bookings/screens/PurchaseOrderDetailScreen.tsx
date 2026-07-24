@@ -1,12 +1,12 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
 import { ActionsDrawer, AppCard, AppHeader, AppText, LabelValueRow, LoadErrorState, PhoneChip } from '@/components/ui';
-import { cancelPurchaseOrder, deleteDelivery, deletePoEntry, type MaterialDeliveryRow, type TransactionRow } from '@/db';
+import { cancelPurchaseOrder, deletePoBatch } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -15,10 +15,8 @@ import { formatDisplayDate } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { formatSplitQty } from '@/utils/units';
 
-import { AddDeliverySheet } from '../components/AddDeliverySheet';
 import { MultiDeliverySheet } from '../components/MultiDeliverySheet';
 import { MultiPaySheet } from '../components/MultiPaySheet';
-import { PayBookingSheet } from '../components/PayBookingSheet';
 import { PoEntryDetailSheet } from '../components/PoEntryDetailSheet';
 import { usePurchaseOrder } from '../hooks/usePurchaseOrder';
 import { type PoHistoryEntry, usePurchaseOrderDetail } from '../hooks/useBookings';
@@ -33,21 +31,47 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const { poId } = useRoute<PoRoute>().params;
+  const { poId, focusTxnId } = useRoute<PoRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const { data, loadFailed, reload } = usePurchaseOrderDetail(poId);
-  const { po, supplierPhone, accounts, projects, history } = data;
+  const { po, supplierPhone, accounts, history } = data;
   const { run: runSave } = useSaveAction();
 
   const [actionsOpen, setActionsOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [entryDetail, setEntryDetail] = useState<PoHistoryEntry | null>(null);
-  const [editDelivery, setEditDelivery] = useState<MaterialDeliveryRow | null>(null);
-  const [editPayment, setEditPayment] = useState<TransactionRow | null>(null);
+  const [editBatch, setEditBatch] = useState<PoHistoryEntry | null>(null);
   const pdf = usePurchaseOrder(po, supplierPhone);
+
+  // Arriving from a linked transaction (e.g. Home activity): flash + scroll to
+  // its history entry once the list has laid out.
+  const scrollRef = useRef<ScrollView>(null);
+  const historyYRef = useRef(0);
+  const rowYsRef = useRef<Record<string, number>>({});
+  const focusHandled = useRef(false);
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusTxnId || focusHandled.current || history.length === 0) return;
+    const entry = history.find(
+      (e) => e.payments.some((p) => p.id === focusTxnId) || e.deliveries.some((d) => d.id === focusTxnId)
+    );
+    if (!entry) return;
+    focusHandled.current = true;
+    setHighlightKey(entry.key);
+    const toScroll = setTimeout(() => {
+      const y = historyYRef.current + (rowYsRef.current[entry.key] ?? 0) - 80;
+      scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+    }, 350);
+    const toClear = setTimeout(() => setHighlightKey(null), 3200);
+    return () => {
+      clearTimeout(toScroll);
+      clearTimeout(toClear);
+    };
+  }, [focusTxnId, history]);
 
   if (!po) {
     return (
@@ -65,25 +89,27 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
   const canPay = po.items.some((i) => i.payRemaining >= 1);
 
   const itemOf = (bookingId: string) => po.items.find((i) => i.booking.id === bookingId) ?? po.items[0];
-  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name ?? '';
+  const unitFor = (bookingId: string) => bookingUnit(itemOf(bookingId).booking);
+  const entryTitle = (e: PoHistoryEntry) => e.itemName ?? `${e.itemCount} ${t('items')}`;
+  const entryNote = (e: PoHistoryEntry) =>
+    e.deliveries.find((d) => d.note)?.note ?? e.payments.find((p) => p.description)?.description ?? null;
 
   const onDeleteEntry = (entry: PoHistoryEntry) => {
-    Alert.alert(entry.itemName, t('deleteConfirm'), [
+    Alert.alert(entryTitle(entry), t('deleteConfirm'), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('delete'),
         style: 'destructive',
         onPress: () => void runSave(async () => {
-          if (!entry.delivery) return;
-          if (entry.kind === 'both') await deletePoEntry(entry.delivery.id);
-          else await deleteDelivery(entry.delivery.id);
+          await deletePoBatch(
+            entry.deliveries.map((d) => d.id),
+            entry.payments.map((p) => p.id)
+          );
           await reload();
         }),
       },
     ]);
   };
-
-  const editItem = editDelivery ? itemOf(editDelivery.booking_id) : editPayment ? itemOf(editPayment.booking_id!) : null;
 
   const onCancel = () => {
     Alert.alert(po.poNumber, t('cancelBookingConfirm'), [
@@ -109,6 +135,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
       />
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
@@ -141,14 +168,15 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
             <View style={styles.col}>
               <LabelValueRow label={t('paidLabel')} value={formatRupees(po.paid)} valueColor="danger" />
             </View>
-            <View style={styles.vDivider} />
-            <View style={styles.col}>
-              <LabelValueRow
-                label={t('payRemainingLabel')}
-                value={formatRupees(po.payRemaining)}
-                valueColor={po.payRemaining > 0 ? 'danger' : 'textPrimary'}
-              />
-            </View>
+            {/* Only surface "to pay" while money is still owed. */}
+            {po.payRemaining >= 1 ? (
+              <>
+                <View style={styles.vDivider} />
+                <View style={styles.col}>
+                  <LabelValueRow label={t('payRemainingLabel')} value={formatRupees(po.payRemaining)} valueColor="danger" />
+                </View>
+              </>
+            ) : null}
           </View>
         </AppCard>
 
@@ -159,6 +187,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
         <AppCard compact>
           {po.items.map((item, i) => {
             const unit = bookingUnit(item.booking);
+            const fullyReceived = item.qtyRemaining <= 0.001;
             return (
               <View key={item.booking.id} style={[styles.itemRow, i > 0 && styles.ruled]}>
                 <View style={styles.itemTop}>
@@ -173,8 +202,11 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
                   <AppText size="xs" color="textSecondary">
                     {`${formatSplitQty(item.booking.qty, unit)} × ${formatRupees(item.booking.rate)}`}
                   </AppText>
-                  <AppText size="xs" weight="semibold" color={item.qtyRemaining <= 0.001 ? 'success' : 'textSecondary'}>
-                    {`${t('receivedQty')}: ${formatSplitQty(item.qtyReceived, unit)} / ${formatSplitQty(item.booking.qty, unit)}`}
+                  {/* Fully received → just the total (green); otherwise received / total. */}
+                  <AppText size="xs" weight="semibold" color={fullyReceived ? 'success' : 'textSecondary'}>
+                    {fullyReceived
+                      ? formatSplitQty(item.booking.qty, unit)
+                      : `${formatSplitQty(item.qtyReceived, unit)} / ${formatSplitQty(item.booking.qty, unit)}`}
                   </AppText>
                 </View>
               </View>
@@ -189,35 +221,49 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
             <AppText size="lg" weight="bold">
               {t('history')}
             </AppText>
+            <View onLayout={(ev) => { historyYRef.current = ev.nativeEvent.layout.y; }}>
             <AppCard compact>
               {history.map((e, i) => {
-                const unit = bookingUnit(itemOf(e.bookingId).booking);
-                const toOther =
-                  e.delivery && e.delivery.project_id && e.delivery.project_id !== itemOf(e.bookingId).booking.project_id;
+                const single = e.itemCount === 1;
+                const soleDelivery = single ? e.deliveries[0] : null;
+                const note = entryNote(e);
+                const typeLabel = e.kind === 'both' ? t('receivedAndPaid') : e.kind === 'delivery' ? t('receivedQty') : t('payBookingLabel');
                 return (
                   <Pressable
                     key={e.key}
                     onPress={() => setEntryDetail(e)}
+                    onLayout={(ev) => { rowYsRef.current[e.key] = ev.nativeEvent.layout.y; }}
                     accessibilityRole="button"
-                    style={({ pressed }) => [styles.histRow, i > 0 && styles.ruled, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.histRow, i > 0 && styles.ruled, highlightKey === e.key && styles.histHighlight, pressed && styles.pressed]}
                   >
                     <View style={styles.histLeft}>
-                      <AppText size="sm" weight="semibold" numberOfLines={1}>
-                        {e.itemName}
-                      </AppText>
-                      <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                        {toOther ? `${formatDisplayDate(e.date)} · → ${projectName(e.delivery!.project_id)}` : formatDisplayDate(e.date)}
-                      </AppText>
-                    </View>
-                    <View style={styles.histRight}>
-                      {e.delivery ? (
-                        <AppText size="sm" weight="bold" color="success" tabular>
-                          {`+ ${formatSplitQty(e.delivery.qty, unit)}`}
+                      <View style={styles.histTitleRow}>
+                        <AppText size="sm" weight="bold" numberOfLines={1} style={styles.flex}>
+                          {typeLabel}
                         </AppText>
-                      ) : null}
-                      {e.payment ? (
-                        <AppText size="sm" weight="bold" color="danger" tabular>
-                          {`− ${formatRupees(e.payment.amount)}`}
+                        {e.totalPaid > 0 ? (
+                          <AppText size="sm" weight="bold" color="danger" tabular>
+                            {`− ${formatRupees(e.totalPaid)}`}
+                          </AppText>
+                        ) : soleDelivery ? (
+                          <AppText size="sm" weight="bold" color="success" tabular>
+                            {`+ ${formatSplitQty(soleDelivery.qty, unitFor(e.bookingIds[0]))}`}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      <View style={styles.histTitleRow}>
+                        <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.flex}>
+                          {formatDisplayDate(e.date)}
+                        </AppText>
+                        {e.itemCount > 1 ? (
+                          <AppText size="xs" weight="semibold" color="textSecondary">
+                            {`${e.itemCount} ${t('items')}`}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      {note ? (
+                        <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.histNote}>
+                          {note}
                         </AppText>
                       ) : null}
                     </View>
@@ -225,6 +271,7 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
                 );
               })}
             </AppCard>
+            </View>
           </>
         ) : null}
       </ScrollView>
@@ -243,28 +290,28 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
         ]}
       />
 
-      <MultiDeliverySheet visible={deliverOpen} onClose={() => setDeliverOpen(false)} po={po} accounts={accounts} onSaved={reload} />
+      <MultiDeliverySheet
+        visible={deliverOpen || !!editBatch}
+        onClose={() => {
+          setDeliverOpen(false);
+          setEditBatch(null);
+        }}
+        po={po}
+        accounts={accounts}
+        editing={editBatch}
+        onSaved={reload}
+      />
       <MultiPaySheet visible={payOpen} onClose={() => setPayOpen(false)} po={po} accounts={accounts} onSaved={reload} />
 
       <PoEntryDetailSheet
         visible={!!entryDetail}
         onClose={() => setEntryDetail(null)}
         entry={entryDetail}
-        unit={bookingUnit(itemOf(entryDetail?.bookingId ?? '').booking)}
-        destinationName={
-          entryDetail?.delivery && entryDetail.delivery.project_id && entryDetail.delivery.project_id !== itemOf(entryDetail.bookingId).booking.project_id
-            ? projectName(entryDetail.delivery.project_id)
-            : null
-        }
-        onEditDelivery={() => {
-          const d = entryDetail?.delivery ?? null;
+        unitFor={unitFor}
+        onEdit={() => {
+          const e = entryDetail;
           setEntryDetail(null);
-          setEditDelivery(d);
-        }}
-        onEditPayment={() => {
-          const p = entryDetail?.payment ?? null;
-          setEntryDetail(null);
-          setEditPayment(p);
+          setEditBatch(e);
         }}
         onDelete={() => {
           const e = entryDetail;
@@ -272,33 +319,6 @@ export function PurchaseOrderDetailScreen(): React.JSX.Element {
           if (e) onDeleteEntry(e);
         }}
       />
-
-      {editItem ? (
-        <>
-          <AddDeliverySheet
-            visible={!!editDelivery}
-            onClose={() => setEditDelivery(null)}
-            bookingId={editItem.booking.id}
-            bookingProjectId={editItem.booking.project_id}
-            qtyRemaining={editItem.qtyRemaining}
-            unit={bookingUnit(editItem.booking)}
-            payRemaining={editItem.payRemaining}
-            accounts={accounts}
-            projects={projects}
-            editing={editDelivery}
-            onSaved={reload}
-          />
-          <PayBookingSheet
-            visible={!!editPayment}
-            onClose={() => setEditPayment(null)}
-            bookingId={editItem.booking.id}
-            payRemaining={editItem.payRemaining}
-            accounts={accounts}
-            editing={editPayment}
-            onSaved={reload}
-          />
-        </>
-      ) : null}
     </View>
   );
 }

@@ -358,6 +358,17 @@ export async function cancelPurchaseOrder(poKey: string): Promise<void> {
   for (const item of po.items) await cancelBooking(item.booking.id);
 }
 
+/** The purchase-order key (po_id, or the booking's own id) for a booking. */
+export async function poKeyForBooking(bookingId: string): Promise<string | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ po_id: string | null }>(
+    'SELECT po_id FROM material_bookings WHERE id = ?',
+    bookingId
+  );
+  if (!row) return null;
+  return row.po_id ?? bookingId;
+}
+
 export async function listDeliveries(bookingId: string): Promise<MaterialDeliveryRow[]> {
   const db = await getDatabase();
   return db.getAllAsync<MaterialDeliveryRow>(
@@ -399,6 +410,8 @@ export interface DeliveryInput {
   date: string;
   /** Project that RECEIVED the material (null/undefined = the booking's project). */
   projectId?: string | null;
+  /** Groups this delivery with others recorded in the same PO action. */
+  batchId?: string | null;
   note?: string | null;
   createdBy?: string;
 }
@@ -427,8 +440,8 @@ async function insertDeliveryRows(
   paymentTxnId: string | null = null
 ): Promise<void> {
   await tx.runAsync(
-    `INSERT INTO material_deliveries (id, created_at, created_by, booking_id, date, qty, project_id, transfer_id, payment_txn_id, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO material_deliveries (id, created_at, created_by, booking_id, date, qty, project_id, transfer_id, payment_txn_id, batch_id, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     uuid(),
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -438,6 +451,7 @@ async function insertDeliveryRows(
     input.projectId ?? null,
     xfer?.transferId ?? null,
     paymentTxnId,
+    input.batchId ?? null,
     input.note ?? null
   );
 
@@ -526,7 +540,9 @@ export async function addDelivery(input: DeliveryInput): Promise<void> {
   const xfer = await resolveXfer(s, input);
 
   const db = await getDatabase();
-  await db.withExclusiveTransactionAsync((tx) => insertDeliveryRows(tx, s, input, xfer));
+  // A lone delivery is still its own batch of one (keeps history grouping uniform).
+  const withBatch = { ...input, batchId: input.batchId ?? uuid() };
+  await db.withExclusiveTransactionAsync((tx) => insertDeliveryRows(tx, s, withBatch, xfer));
   await refreshStatus(input.bookingId);
 }
 
@@ -535,7 +551,9 @@ export async function addDelivery(input: DeliveryInput): Promise<void> {
  * payment (insufficient funds / over-limit) can't leave an orphan delivery.
  * Replaces the sheet's previous two-step addDelivery()+payBooking().
  */
-export async function receiveAndPay(input: DeliveryInput & { payAmount: number; accountId: string }): Promise<void> {
+export async function receiveAndPay(
+  input: DeliveryInput & { payAmount: number; accountId: string; payNote?: string | null }
+): Promise<void> {
   const s = await getBookingSummary(input.bookingId);
   if (s.booking.project_id) await assertProjectActive(s.booking.project_id);
   assertDeliverable(s, input.qty, input.date);
@@ -545,6 +563,9 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
 
   const xfer = await resolveXfer(s, input);
   const payCatId = await categoryIdByName('Material Booking', 'EXPENSE', 'میٹریل بکنگ', true);
+  // Delivery and payment share ONE batch id, so a receive-and-pay reads as a
+  // single history entry (the whole PO action, when done for several items).
+  const batchId = input.batchId ?? uuid();
 
   const db = await getDatabase();
   await db.withExclusiveTransactionAsync(async (tx) => {
@@ -562,10 +583,12 @@ export async function receiveAndPay(input: DeliveryInput & { payAmount: number; 
       partyId: s.booking.party_id,
       counterpartyName: s.booking.supplier_name,
       bookingId: input.bookingId,
-      description: input.note ?? s.booking.item_name,
+      poBatchId: batchId,
+      // Delivery and payment carry their OWN notes (kept separate in history).
+      description: input.payNote ?? s.booking.item_name,
       createdBy: input.createdBy,
     });
-    await insertDeliveryRows(tx, s, input, xfer, payTxnId);
+    await insertDeliveryRows(tx, s, { ...input, batchId }, xfer, payTxnId);
   });
   await refreshStatus(input.bookingId);
 }
@@ -591,6 +614,8 @@ export interface BookingPaymentInput {
   amount: number;
   date: string;
   accountId: string;
+  /** Groups this payment with others made in the same PO action. */
+  batchId?: string | null;
   note?: string | null;
   createdBy?: string;
 }
@@ -622,6 +647,7 @@ export async function payBooking(input: BookingPaymentInput): Promise<void> {
     partyId: s.booking.party_id,
     counterpartyName: s.booking.supplier_name,
     bookingId: input.bookingId,
+    poBatchId: input.batchId ?? uuid(),
     description: input.note ?? `${s.booking.item_name}`,
     createdBy: input.createdBy,
   });
@@ -723,14 +749,14 @@ export async function updateDelivery(deliveryId: string, input: DeliveryEditInpu
   });
 }
 
-/** Delete a combined entry: remove the delivery AND void its paired payment. */
-export async function deletePoEntry(deliveryId: string): Promise<void> {
-  const db = await getDatabase();
-  const d = await db.getFirstAsync<MaterialDeliveryRow>('SELECT * FROM material_deliveries WHERE id = ?', deliveryId);
-  if (!d) return;
-  if (d.payment_txn_id) {
-    const pay = await getTransaction(d.payment_txn_id);
+/**
+ * Delete a whole history batch: void every supplier payment in it and remove
+ * every delivery in it (each delivery also voids its own cost-transfer legs).
+ */
+export async function deletePoBatch(deliveryIds: string[], paymentIds: string[]): Promise<void> {
+  for (const pid of paymentIds) {
+    const pay = await getTransaction(pid);
     if (pay && pay.is_void === 0) await voidTransaction(pay.id);
   }
-  await deleteDelivery(deliveryId);
+  for (const did of deliveryIds) await deleteDelivery(did);
 }

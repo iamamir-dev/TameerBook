@@ -33,6 +33,8 @@ export interface NewTransaction {
   laborId?: string | null;
   investorId?: string | null;
   bookingId?: string | null;
+  /** Groups supplier payments made in one purchase-order action (multi-item). */
+  poBatchId?: string | null;
   description?: string | null;
   /** Material quantity in the category's default unit. */
   qty?: number | null;
@@ -119,8 +121,8 @@ export async function insertTransaction(
     `INSERT INTO transactions
        (id, created_at, created_by, company_id, direction, amount, date, account_id, project_id, plot_id,
         phase, category_id, party_id, counterparty_name, pay_type, transfer_id, udhaar_id,
-        labor_id, investor_id, booking_id, description, qty, doc_id, is_void, void_of_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+        labor_id, investor_id, booking_id, po_batch_id, description, qty, doc_id, is_void, void_of_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
@@ -141,6 +143,7 @@ export async function insertTransaction(
     input.laborId ?? null,
     input.investorId ?? null,
     input.bookingId ?? null,
+    input.poBatchId ?? null,
     input.description ?? null,
     input.qty ?? null,
     input.docId ?? null

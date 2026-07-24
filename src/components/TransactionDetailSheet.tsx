@@ -22,6 +22,10 @@ interface Props {
   onClose: () => void;
   /** Optional extra footer content (e.g. the fix-mistake actions). */
   footer?: React.ReactNode;
+  /** When set, shows a button that jumps to the transaction's own page. */
+  onOpen?: () => void;
+  /** Label for the onOpen button (e.g. "View purchase order"). */
+  openLabel?: string;
 }
 
 /**
@@ -30,7 +34,7 @@ interface Props {
  * photo. Structured like a document — amount hero, a Details section of
  * labeled rows, and the receipt photo (tap to view full-screen).
  */
-export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.JSX.Element {
+export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t, language } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -105,6 +109,17 @@ export function TransactionDetailSheet({ txn, onClose, footer }: Props): React.J
             </>
           ) : null}
 
+          {onOpen ? (
+            <Pressable
+              onPress={onOpen}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.openBtn, pressed && styles.openPressed]}
+            >
+              <AppText size="sm" weight="bold" color="accent">{openLabel ?? ''}</AppText>
+              <AppIcon name="forward" size={16} color="accent" />
+            </Pressable>
+          ) : null}
+
           {footer}
         </View>
       ) : null}
@@ -165,6 +180,15 @@ const makeStyles = (theme: Theme) =>
       marginBottom: theme.spacing.sm,
     },
     sectionTitle: { marginTop: theme.spacing.sm },
+    openBtn: {
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.xs,
+      paddingVertical: theme.spacing.xs,
+    },
+    openPressed: { opacity: 0.6 },
     row: {
       flexDirection: 'row',
       alignItems: 'flex-start',

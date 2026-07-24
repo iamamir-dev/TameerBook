@@ -26,6 +26,8 @@ interface LedgerTableProps {
   rows: LedgerRow[];
   /** Message when there are no rows. */
   emptyText?: string;
+  /** Row id to tint (e.g. after jumping to it from a linked activity row). */
+  highlightId?: string | null;
 }
 
 /**
@@ -34,7 +36,7 @@ interface LedgerTableProps {
  * amount + type tag on the right, separated by hairlines  instantly readable
  * for someone used to a paper register.
  */
-export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.Element {
+export function LedgerTable({ rows, emptyText, highlightId }: LedgerTableProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
 
@@ -52,6 +54,7 @@ export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.El
     <View style={styles.table}>
       {rows.map((row, i) => {
         const Container = row.onPress ? Pressable : View;
+        const hi = highlightId === row.id && styles.highlighted;
         return (
           <Container
             key={row.id}
@@ -62,10 +65,11 @@ export function LedgerTable({ rows, emptyText }: LedgerTableProps): React.JSX.El
                 style: ({ pressed }: { pressed: boolean }) => [
                   styles.row,
                   i > 0 && styles.ruled,
+                  hi,
                   pressed && styles.pressed,
                 ],
               }
-              : { style: [styles.row, i > 0 && styles.ruled] })}
+              : { style: [styles.row, i > 0 && styles.ruled, hi] })}
           >
             <View style={styles.left}>
               <AppText size="sm" weight="semibold" numberOfLines={1}>
@@ -115,6 +119,16 @@ const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
     },
     pressed: { opacity: 0.7 },
+    // Bleed the tint out by the card's padding and add it back as padding, so it
+    // covers the surrounding gap without changing the row's occupied size.
+    highlighted: {
+      backgroundColor: theme.colors.dangerSoft,
+      borderRadius: theme.radius.md,
+      marginHorizontal: -theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
+      marginVertical: -theme.spacing.md,
+      paddingVertical: theme.spacing.md + theme.spacing.xs,
+    },
     left: { flex: 1, gap: 2 },
     right: { alignItems: 'flex-end', gap: 2 },
     empty: {
