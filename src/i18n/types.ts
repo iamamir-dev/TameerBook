@@ -141,6 +141,8 @@ export interface TranslationKeys {
   seller: string;
   categoryInUse: string;
   manageCategories: string;
+  categories: string;
+  noCategoriesYet: string;
   addCategoryLabel: string;
   addSubcategory: string;
   defaultUnit: string;

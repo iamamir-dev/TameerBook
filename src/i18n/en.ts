@@ -120,6 +120,8 @@ export const en: TranslationKeys = {
   seller: 'Seller',
   categoryInUse: 'This category is in use (has entries or sub-categories) and can’t be deleted.',
   manageCategories: 'Categories',
+  categories: 'categories',
+  noCategoriesYet: 'No categories yet',
   addCategoryLabel: 'Add category',
   addSubcategory: 'Add sub-category',
   defaultUnit: 'Default unit',

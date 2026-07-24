@@ -1,6 +1,6 @@
-import { useNavigation } from '@react-navigation/native';
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,6 +11,7 @@ import {
   deleteCategory,
   listCategoryTree,
   reorderCategories,
+  SYSTEM_CATEGORY_NAMES,
   updateCategory,
   type CategoryRow,
   type CategoryTreeNode,
@@ -23,11 +24,15 @@ import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type CategoriesRoute = RouteProp<RootStackParamList, 'Categories'>;
 
 type Editor =
   | { mode: 'addMain' }
   | { mode: 'addSub'; parentId: string }
   | { mode: 'edit'; cat: CategoryRow; isSub: boolean };
+
+/** Internal, app-managed posting categories are never shown in Settings. */
+const HIDDEN = new Set<string>(SYSTEM_CATEGORY_NAMES as readonly string[]);
 
 /** Tap-to-add suggestions per main heading, so users see common options. */
 interface Suggestion {
@@ -120,20 +125,24 @@ const SECTION_SUGGESTIONS: Record<string, Suggestion[]> = {
 };
 
 /**
- * Manage expense & income categories as a main→sub tree (Settings → Categories).
- * "Materials", "Home Expense", etc. are main headings; their sub-categories are
- * the things you actually book against. Material sub-categories can carry a
- * default unit. System categories (used by the app's own postings) are locked.
+ * Manage expense & income categories, ONE SECTION AT A TIME (Settings →
+ * Categories). The landing view lists the sections (Plot, Materials, Labor,
+ * Home, Sale, Income…); tapping one drills into a page that manages just that
+ * section's categories. App-managed posting categories (Plot Payment, Material
+ * Booking, …) are never shown. The same screen renders both views — a
+ * `sectionId` route param selects the drill-in.
  */
 export function CategoriesScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const route = useRoute<CategoriesRoute>();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const label = useCategoryLabel();
 
-  const [type, setType] = useState<CategoryType>('EXPENSE');
+  const sectionId = route.params?.sectionId ?? null;
+  const [type, setType] = useState<CategoryType>(route.params?.type ?? 'EXPENSE');
   const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState('');
@@ -143,11 +152,15 @@ export function CategoriesScreen(): React.JSX.Element {
   const { saving, run } = useSaveAction();
 
   const load = useCallback(async () => setTree(await listCategoryTree(type)), [type]);
-  // Re-load when the tab changes; tree=null meanwhile → skeleton.
   const { reload } = useFocusReload(load);
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Visible sections (top-level, minus app-managed posting categories).
+  const sections = useMemo(() => (tree ?? []).filter((n) => !HIDDEN.has(n.name_en)), [tree]);
+  const section = sectionId ? sections.find((s) => s.id === sectionId) ?? null : null;
+  const visibleChildren = (node: CategoryTreeNode) => node.children.filter((c) => !HIDDEN.has(c.name_en));
 
   const resetUnitFields = () => {
     setUnit('');
@@ -176,7 +189,6 @@ export function CategoriesScreen(): React.JSX.Element {
 
   const save = () => {
     if (!editor || !name.trim() || saving) return;
-    // Secondary unit only meaningful with a primary unit + a positive factor.
     const secondaryUnit = unit.trim() && secUnit.trim() ? secUnit.trim() : null;
     const secondaryFactor = secondaryUnit && Number(secFactor) > 0 ? Number(secFactor) : null;
     void (async () => {
@@ -253,11 +265,79 @@ export function CategoriesScreen(): React.JSX.Element {
       </View>
     );
 
+  /* ----------------------------- Section detail ---------------------------- */
+  if (sectionId) {
+    const children = section ? visibleChildren(section) : [];
+    const have = new Set(children.map((c) => c.name_en.toLowerCase()));
+    const suggestions = section ? (SECTION_SUGGESTIONS[section.name_en] ?? []).filter((s) => !have.has(s.en.toLowerCase())) : [];
+
+    return (
+      <View style={styles.screen}>
+        <AppHeader title={section ? label(section) : t('manageCategories')} onBack={() => navigation.goBack()} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
+        >
+          <AppCard style={styles.card}>
+            {children.length > 0 ? (
+              <SortableList
+                items={children}
+                keyOf={(c) => c.id}
+                rowHeight={44}
+                onReorder={reorderSubs}
+                renderItem={(sub) => (
+                  <View style={styles.subRow}>
+                    <AppIcon name="reorder" size={14} color="textSecondary" />
+                    <AppText size="sm" style={styles.flex} numberOfLines={1}>
+                      {label(sub)}
+                    </AppText>
+                    {sub.default_unit ? (
+                      <AppText size="xs" color="textSecondary">
+                        {sub.default_unit}
+                      </AppText>
+                    ) : null}
+                    {rowActions(sub)}
+                  </View>
+                )}
+              />
+            ) : (
+              <AppText size="sm" color="textSecondary">
+                {t('noCategoriesYet')}
+              </AppText>
+            )}
+
+            {suggestions.length > 0 ? (
+              <View style={styles.suggestWrap}>
+                {suggestions.map((s) => (
+                  <Pressable key={s.en} onPress={() => section && addSuggested(section.id, s)} style={styles.suggestChip} accessibilityRole="button">
+                    <AppIcon name="add" size={13} color="textSecondary" />
+                    <AppText size="xs" weight="semibold" color="textSecondary">
+                      {s.en}
+                    </AppText>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            <Pressable onPress={() => section && openAddSub(section.id)} style={styles.addSub} accessibilityRole="button">
+              <AppIcon name="add" size={16} color="accent" />
+              <AppText size="xs" weight="bold" color="accent">
+                {t('addSubcategory')}
+              </AppText>
+            </Pressable>
+          </AppCard>
+        </ScrollView>
+
+        {renderEditor()}
+      </View>
+    );
+  }
+
+  /* ------------------------------ Section list ----------------------------- */
   return (
     <View style={styles.screen}>
       <AppHeader title={t('manageCategories')} onBack={() => navigation.goBack()} />
 
-      {/* Expense / Income segment */}
       <View style={styles.segment}>
         {(['EXPENSE', 'INCOME'] as CategoryType[]).map((tp) => {
           const active = type === tp;
@@ -287,102 +367,56 @@ export function CategoriesScreen(): React.JSX.Element {
         {tree === null
           ? [0, 1, 2].map((i) => (
               <AppCard key={i} style={styles.card}>
-                <View style={styles.skelTitle} />
-                <View style={styles.skelRow} />
                 <View style={styles.skelRow} />
                 <View style={[styles.skelRow, styles.skelShort]} />
               </AppCard>
             ))
           : null}
-        {(tree ?? []).map((main) => (
-          <AppCard key={main.id} style={styles.card}>
-            <View style={styles.mainRow}>
-              <AppIcon name={(main.icon as never) ?? 'kharcha'} size={18} color="primary" />
-              <AppText size="md" weight="bold" style={styles.flex} numberOfLines={1}>
-                {label(main)}
-              </AppText>
-              {rowActions(main)}
-            </View>
-
-            {main.children.length > 0 ? (
-              <SortableList
-                items={main.children}
-                keyOf={(c) => c.id}
-                rowHeight={44}
-                onReorder={reorderSubs}
-                renderItem={(sub) => (
-                  <View style={styles.subRow}>
-                    <AppIcon name="reorder" size={14} color="textSecondary" />
-                    <AppText size="sm" style={styles.flex} numberOfLines={1}>
-                      {label(sub)}
-                    </AppText>
-                    {sub.default_unit ? (
-                      <AppText size="xs" color="textSecondary">
-                        {sub.default_unit}
-                      </AppText>
-                    ) : null}
-                    {rowActions(sub)}
-                  </View>
-                )}
-              />
-            ) : null}
-
-            {/* Tap-to-add suggestions the user hasn't added yet. */}
-            {(() => {
-              const have = new Set(main.children.map((c) => c.name_en.toLowerCase()));
-              const suggestions = (SECTION_SUGGESTIONS[main.name_en] ?? []).filter(
-                (s) => !have.has(s.en.toLowerCase())
-              );
-              if (suggestions.length === 0) return null;
-              return (
-                <View style={styles.suggestWrap}>
-                  {suggestions.map((s) => (
-                    <Pressable
-                      key={s.en}
-                      onPress={() => addSuggested(main.id, s)}
-                      style={styles.suggestChip}
-                      accessibilityRole="button"
-                    >
-                      <AppIcon name="add" size={13} color="textSecondary" />
-                      <AppText size="xs" weight="semibold" color="textSecondary">
-                        {s.en}
-                      </AppText>
-                    </Pressable>
-                  ))}
+        {sections.map((main) => {
+          const count = visibleChildren(main).length;
+          return (
+            <Pressable
+              key={main.id}
+              onPress={() => navigation.push('Categories', { sectionId: main.id, type })}
+              accessibilityRole="button"
+            >
+              <AppCard style={styles.sectionRow}>
+                <AppIcon name={(main.icon as never) ?? 'kharcha'} size={20} color="primary" />
+                <View style={styles.flex}>
+                  <AppText size="md" weight="bold" numberOfLines={1}>
+                    {label(main)}
+                  </AppText>
+                  <AppText size="xs" color="textSecondary">
+                    {`${count} ${t('categories')}`}
+                  </AppText>
                 </View>
-              );
-            })()}
-
-            <Pressable onPress={() => openAddSub(main.id)} style={styles.addSub} accessibilityRole="button">
-              <AppIcon name="add" size={16} color="accent" />
-              <AppText size="xs" weight="bold" color="accent">
-                {t('addSubcategory')}
-              </AppText>
+                <AppIcon name="forward" size={20} color="textSecondary" />
+              </AppCard>
             </Pressable>
-          </AppCard>
-        ))}
+          );
+        })}
 
         <AppButton label={t('addCategoryLabel')} icon="add" variant="secondary" onPress={openAddMain} />
       </ScrollView>
 
-      {/* Add / edit sheet */}
+      {renderEditor()}
+    </View>
+  );
+
+  function renderEditor() {
+    return (
       <Modal visible={!!editor} transparent animationType="slide" onRequestClose={() => setEditor(null)}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <Pressable style={styles.backdrop} onPress={() => setEditor(null)} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
-              {editor?.mode === 'edit'
-                ? t('edit')
-                : editor?.mode === 'addSub'
-                  ? t('addSubcategory')
-                  : t('addCategoryLabel')}
+              {editor?.mode === 'edit' ? t('edit') : editor?.mode === 'addSub' ? t('addSubcategory') : t('addCategoryLabel')}
             </AppText>
             <FloatingLabelInput label={t('name')} value={name} onChangeText={setName} />
             {showUnit ? (
               <>
                 <FloatingLabelInput label={`${t('defaultUnit')} (${t('optional')})`} value={unit} onChangeText={setUnit} />
-                {/* Optional smaller sub-unit + how many make one main unit. */}
                 {unit.trim() ? (
                   <>
                     <FloatingLabelInput label={`${t('secondaryUnit')} (${t('optional')})`} value={secUnit} onChangeText={setSecUnit} />
@@ -402,16 +436,14 @@ export function CategoriesScreen(): React.JSX.Element {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
-  );
+    );
+  }
 }
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    // Loading skeleton — categories can take a moment on first open.
-    skelTitle: { height: 18, width: '40%', borderRadius: 6, backgroundColor: theme.colors.track },
     skelRow: { height: 34, borderRadius: theme.radius.md, backgroundColor: theme.colors.track, opacity: 0.6 },
     skelShort: { width: '60%' },
     segment: {
@@ -426,7 +458,7 @@ const makeStyles = (theme: Theme) =>
     segBtnActive: { backgroundColor: theme.colors.accent },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
     card: { gap: theme.spacing.sm },
-    mainRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    sectionRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     subRow: {
       flexDirection: 'row',
       alignItems: 'center',

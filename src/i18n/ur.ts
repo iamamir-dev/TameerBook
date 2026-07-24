@@ -123,6 +123,8 @@ export const ur: TranslationKeys = {
   seller: 'بیچنے والا',
   categoryInUse: 'یہ قسم استعمال میں ہے (اندراج یا ذیلی اقسام موجود ہیں) اس لیے حذف نہیں ہو سکتی۔',
   manageCategories: 'اقسام',
+  categories: 'اقسام',
+  noCategoriesYet: 'ابھی کوئی قسم نہیں',
   addCategoryLabel: 'قسم شامل کریں',
   addSubcategory: 'ذیلی قسم شامل کریں',
   defaultUnit: 'ڈیفالٹ یونٹ',
