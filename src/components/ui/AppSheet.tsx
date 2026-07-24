@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -61,10 +62,15 @@ export function AppSheet({
   const styles = makeStyles(theme);
   const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
 
+  // Keyboard lift is iOS-only: Android is configured with
+  // `softwareKeyboardLayoutMode: "resize"`, so the OS already shrinks the window
+  // above the keyboard. Also lifting manually there double-compensated and
+  // pushed tall sheets off the top of the screen.
   const [kb, setKb] = useState(0);
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
+    if (Platform.OS !== 'ios') return;
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKb(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKb(0));
     return () => {
       show.remove();
       hide.remove();
