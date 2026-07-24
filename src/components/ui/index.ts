@@ -36,4 +36,5 @@ export { AppSheet } from './AppSheet';
 export { AccountPickerRow } from './AccountPickerRow';
 export { LabelValueRow } from './LabelValueRow';
 export { MoneyEntrySheet } from './MoneyEntrySheet';
+export { ReceiptPhotoField } from './ReceiptPhotoField';
 export { ICONS, iconFor, type GlyphName, type IconKey } from './icons';
