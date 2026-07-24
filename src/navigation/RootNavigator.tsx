@@ -89,8 +89,18 @@ const MODAL = { presentation: 'modal', animation: 'slide_from_bottom' } as const
  * everywhere because each screen owns its AppHeader.
  */
 export function RootNavigator(): React.JSX.Element {
+  const theme = useTheme();
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Paint the screen container in the theme background so pushed screens
+        // never flash white/black during transitions (esp. dark mode).
+        contentStyle: { backgroundColor: theme.colors.background },
+        // Smooth slide on push; back reverses the same animation.
+        animation: 'slide_from_right',
+      }}
+    >
       <Stack.Screen name="Tabs" component={Tabs} />
       <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={MODAL} />
       <Stack.Screen name="Settings" component={SettingsScreen} />

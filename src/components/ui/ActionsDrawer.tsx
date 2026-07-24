@@ -1,7 +1,9 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSheetAnimation } from '@/hooks';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
@@ -35,11 +37,14 @@ export function ActionsDrawer({ visible, onClose, title, actions }: ActionsDrawe
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
+  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" />
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.backdrop, backdropStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
+      </Animated.View>
+      <Animated.View style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
         <View style={styles.grabber} />
         {title ? (
           <AppText size="lg" weight="bold" numberOfLines={1}>
@@ -66,7 +71,7 @@ export function ActionsDrawer({ visible, onClose, title, actions }: ActionsDrawe
             <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
         ))}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

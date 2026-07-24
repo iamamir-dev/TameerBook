@@ -165,7 +165,9 @@ function ThemedApp(): React.JSX.Element {
   const needsOnboarding = !showSplash && !bootError && !activeCompanyId;
 
   return (
-    <View style={styles.flex}>
+    // Themed root background so nothing shows white/black through navigation or
+    // drawer transitions (both light and dark mode).
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
       <StatusBar style={showSplash || theme.darkMode ? 'light' : 'dark'} />
       {bootError && booted ? (
         <ErrorFallback

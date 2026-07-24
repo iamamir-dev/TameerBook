@@ -9,8 +9,10 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -63,6 +65,7 @@ export function SelectSheet({
   const { t } = useTranslation();
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
+  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
 
   const [query, setQuery] = useState('');
 
@@ -98,12 +101,14 @@ export function SelectSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       {/* Column that pins the sheet to the bottom; tap above it to dismiss. */}
       <View style={[styles.root, { paddingBottom: kb }]}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('cancel')} />
+        </Animated.View>
 
-        <View style={[styles.sheet, { maxHeight: screenHeight * 0.85 - kb, paddingBottom: (kb > 0 ? 0 : insets.bottom) + theme.spacing.md }]}>
+        <Animated.View style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * 0.85 - kb, paddingBottom: (kb > 0 ? 0 : insets.bottom) + theme.spacing.md }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>
@@ -184,7 +189,7 @@ export function SelectSheet({
               })
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -195,10 +200,10 @@ const makeStyles = (theme: Theme) =>
     root: {
       flex: 1,
       justifyContent: 'flex-end',
-      backgroundColor: theme.colors.overlay,
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,
+      backgroundColor: theme.colors.overlay,
     },
     sheet: {
       backgroundColor: theme.colors.card,

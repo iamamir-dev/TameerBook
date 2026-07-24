@@ -8,8 +8,10 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -57,6 +59,7 @@ export function AppSheet({
   const { t } = useTranslation();
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
+  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
 
   const [kb, setKb] = useState(0);
   useEffect(() => {
@@ -89,11 +92,13 @@ export function AppSheet({
   const footerPadBottom = insets.bottom + theme.spacing.md;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <View style={[styles.root, { paddingBottom: kb }]}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('cancel')} />
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('cancel')} />
+        </Animated.View>
 
-        <View style={[styles.sheet, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
+        <Animated.View style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>
@@ -118,7 +123,7 @@ export function AppSheet({
           ) : (
             <View style={{ height: footerPadBottom }} />
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -126,8 +131,8 @@ export function AppSheet({
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    root: { flex: 1, justifyContent: 'flex-end', backgroundColor: theme.colors.overlay },
-    backdrop: { ...StyleSheet.absoluteFillObject },
+    root: { flex: 1, justifyContent: 'flex-end' },
+    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.colors.overlay },
     sheet: {
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: theme.radius.hero,

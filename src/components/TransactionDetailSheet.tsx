@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon, AppText } from '@/components/ui';
@@ -11,6 +12,7 @@ import {
   listDocuments,
   type TransactionRow,
 } from '@/db';
+import { useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -46,6 +48,13 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [viewer, setViewer] = useState(false);
 
+  // Smooth slide/fade; keep the last txn on screen while the sheet animates out.
+  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(txn !== null);
+  const [shown, setShown] = useState<TransactionRow | null>(txn);
+  useEffect(() => {
+    if (txn) setShown(txn);
+  }, [txn]);
+
   useEffect(() => {
     if (!txn) return;
     setCatName('');
@@ -68,31 +77,33 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
   }, [txn, language]);
 
   return (
-    <Modal visible={txn !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" />
-      {txn ? (
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.backdrop, backdropStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
+      </Animated.View>
+      {shown ? (
+        <Animated.View style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
 
           {/* Amount hero */}
-          <AppText size="xxl" weight="bold" tabular color={txn.direction === 'IN' ? 'success' : 'danger'}>
-            {txn.direction === 'IN' ? '+ ' : '− '}
-            {`Rs ${formatPakistaniGrouping(txn.amount)}`}
+          <AppText size="xxl" weight="bold" tabular color={shown.direction === 'IN' ? 'success' : 'danger'}>
+            {shown.direction === 'IN' ? '+ ' : '− '}
+            {`Rs ${formatPakistaniGrouping(shown.amount)}`}
           </AppText>
           <AppText size="md" weight="semibold">
-            {catName || (txn.direction === 'IN' ? t('aamdani') : t('kharcha'))}
+            {catName || (shown.direction === 'IN' ? t('aamdani') : t('kharcha'))}
           </AppText>
 
           {/* Details — labeled rows, like a document. */}
           <AppText size="sm" weight="bold" color="accent" style={styles.sectionTitle}>
             {t('detailsSection')}
           </AppText>
-          <DetailRow label={t('date')} value={dayjs(txn.date).format('DD MMM YYYY')} />
+          <DetailRow label={t('date')} value={dayjs(shown.date).format('DD MMM YYYY')} />
           {catName ? <DetailRow label={t('category')} value={catName} /> : null}
           {accName ? <DetailRow label={t('accountLabel')} value={accName} /> : null}
           {projName ? <DetailRow label={t('projectLabel')} value={projName} /> : null}
-          {txn.counterparty_name ? <DetailRow label={t('party')} value={txn.counterparty_name} /> : null}
-          {txn.description ? <DetailRow label={t('note')} value={txn.description} /> : null}
+          {shown.counterparty_name ? <DetailRow label={t('party')} value={shown.counterparty_name} /> : null}
+          {shown.description ? <DetailRow label={t('note')} value={shown.description} /> : null}
 
           {/* Receipt photo — tap for the full-screen view. */}
           {receiptUri ? (
@@ -121,7 +132,7 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
           ) : null}
 
           {footer}
-        </View>
+        </Animated.View>
       ) : null}
 
       {/* Full-screen receipt viewer */}
