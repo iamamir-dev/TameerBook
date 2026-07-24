@@ -6,12 +6,11 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
-  AppButton,
   AppCard,
   AppHeader,
   AppText,
@@ -31,9 +30,8 @@ import {
   type TxnModuleTarget,
   type ProjectRow,
   type TransactionRow,
-  voidTransaction,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -77,7 +75,6 @@ export function TransactionsScreen(): React.JSX.Element {
   const params = useRoute<TxnRoute>().params;
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
-  const { saving, run: runSave } = useSaveAction();
 
   const [txns, setTxns] = useState<TransactionRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -191,38 +188,6 @@ export function TransactionsScreen(): React.JSX.Element {
     if (tt.kind === 'po') navigation.navigate('PurchaseOrderDetail', { poId: tt.poId, focusTxnId });
     else if (tt.kind === 'investor') navigation.navigate('InvestorProfile', { investorId: tt.investorId, focusTxnId });
     else navigation.navigate('LaborerDetail', { laborerId: tt.laborerId, focusTxnId });
-  };
-
-  const onFix = () => {
-    if (!selected) return;
-    const original = selected;
-    Alert.alert(t('fixMistakeConfirmTitle'), t('fixMistakeExplain'), [
-      { text: t('cancel'), style: 'cancel' },
-      {
-        text: t('fixMistake'),
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            const ok = await runSave(async () => {
-              await voidTransaction(original.id);
-            });
-            if (!ok) return;
-            setSelected(null);
-            navigation.navigate('Entry', {
-              direction: original.direction,
-              prefill: {
-                amount: original.amount,
-                categoryId: original.category_id,
-                note: original.description ?? undefined,
-                accountId: original.account_id ?? undefined,
-                projectId: original.project_id ?? undefined,
-                partyId: original.party_id,
-              },
-            });
-          })();
-        },
-      },
-    ]);
   };
 
   return (
@@ -352,29 +317,12 @@ export function TransactionsScreen(): React.JSX.Element {
         onSelect={(o) => setFilterProjectId(o.id)}
       />
 
-      {/* Shared transaction detail sheet + the fix-mistake action */}
+      {/* Read-only detail — jump to the relevant module page to edit. */}
       <TransactionDetailSheet
         txn={selected}
         onClose={() => setSelected(null)}
         onOpen={selected && txnTarget[selected.id] ? () => openTxnTarget(txnTarget[selected.id], selected.id) : undefined}
         openLabel={selected ? targetLabel(txnTarget[selected.id]) : undefined}
-        footer={
-          <>
-            <View style={styles.fixExplain}>
-              <AppText size="xs" color="textSecondary">
-                {t('fixMistakeExplain')}
-              </AppText>
-            </View>
-            <View style={styles.sheetButtons}>
-              <View style={styles.sheetBtn}>
-                <AppButton label={t('cancel')} variant="secondary" onPress={() => setSelected(null)} />
-              </View>
-              <View style={styles.sheetBtn}>
-                <AppButton label={t('fixMistake')} icon="tools" variant="danger" loading={saving} onPress={onFix} />
-              </View>
-            </View>
-          </>
-        }
       />
     </View>
   );
@@ -419,12 +367,4 @@ const makeStyles = (theme: Theme) =>
     emptyText: { paddingVertical: theme.spacing.xl },
     daySection: { marginBottom: theme.spacing.md, gap: theme.spacing.xs },
     dayHeader: { marginLeft: theme.spacing.xs },
-    fixExplain: {
-      backgroundColor: theme.colors.dangerSoft,
-      borderRadius: theme.radius.md,
-      padding: theme.spacing.md,
-      marginTop: theme.spacing.sm,
-    },
-    sheetButtons: { flexDirection: 'row', gap: theme.spacing.md, marginTop: theme.spacing.xs },
-    sheetBtn: { flex: 1 },
   });
