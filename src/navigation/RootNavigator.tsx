@@ -23,12 +23,9 @@ import {
 import { LaborerDetailScreen, LaborScreen } from '@/modules/labor';
 import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
-import { NewPlotScreen } from '@/screens/NewPlotScreen';
-import { EditPlotScreen } from '@/screens/EditPlotScreen';
 import { NewProjectWizard } from '@/screens/NewProjectWizard';
 import { PhotoDiaryScreen } from '@/screens/PhotoDiaryScreen';
-import { PlotDetailScreen } from '@/screens/PlotDetailScreen';
-import { PlotsScreen } from '@/screens/PlotsScreen';
+import { EditPlotScreen, NewPlotScreen, PlotDetailScreen, PlotsScreen } from '@/modules/plots';
 import { ProjectDetailScreen } from '@/screens/ProjectDetailScreen';
 import { ProjectsScreen } from '@/screens/ProjectsScreen';
 import { QuickEntryScreen } from '@/screens/QuickEntryScreen';

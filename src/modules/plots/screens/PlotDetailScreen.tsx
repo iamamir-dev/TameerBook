@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { SellPlotSheet, type SellPlotSheetMode } from '@/components/plot/SellPlotSheet';
+import { SellPlotSheet, type SellPlotSheetMode } from '../components/SellPlotSheet';
 import { StageBadge } from '@/components/StageBadge';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
