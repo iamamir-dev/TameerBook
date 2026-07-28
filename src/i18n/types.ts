@@ -138,6 +138,8 @@ export interface TranslationKeys {
   remaining: string;
   transferDeadline: string;
   editPlot: string;
+  markTransferred: string;
+  transferredOn: string;
   seller: string;
   categoryInUse: string;
   manageCategories: string;
@@ -216,6 +218,8 @@ export interface TranslationKeys {
   ptBayana: string;
   ptInstallment: string;
   ptFinal: string;
+  sellerPaymentTypes: string;
+  buyerPaymentTypes: string;
   addPayment: string;
   feeOther: string;
 

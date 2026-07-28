@@ -18,6 +18,7 @@ import {
   History,
   Info,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -135,6 +136,8 @@ export const ICONS = {
   textSize: ALargeSmall,
   back: ChevronLeft,
   forward: ChevronRight,
+  /** Points at content revealed BELOW — collapsible section headers. */
+  chevronDown: ChevronDown,
   expand: Maximize2,
   collapse: Minimize2,
   trendUp: TrendingUp,

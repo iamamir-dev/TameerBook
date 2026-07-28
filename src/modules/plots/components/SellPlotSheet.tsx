@@ -2,21 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AmountInput, AppButton, AppSheet, AppText, MoneyEntrySheet, ReceiptPhotoField } from '@/components/ui';
+import { AmountInput, AppButton, AppIcon, AppSheet, AppText, MoneyEntrySheet, ReceiptPhotoField } from '@/components/ui';
 import {
   addPlotSaleReceipt,
-  listUsedPayTypes,
-  ONCE_PAY_TYPES,
-  PAY_TYPE_LABEL_KEYS,
-  PAY_TYPES,
+  listBuyerPaymentCategories,
+  listUsedBuyerCategoryIds,
   setPlotSale,
   updatePlotSaleReceipt,
   type AccountWithBalance,
-  type PayType,
+  type CategoryRow,
   type PlotSummary,
   type TransactionRow,
 } from '@/db';
-import { useSaveAction } from '@/hooks';
+import { useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
@@ -27,6 +25,9 @@ import { makeStyles } from '../styled/PaymentSheet.styles';
 /** Which form the sheet shows: agree the deal, or receive buyer money. */
 export type SellPlotSheetMode = 'price' | 'receipt';
 
+/** Buyer-payment types usable at most once per sale. */
+const ONCE_ONLY = ['Token', 'Advance'];
+
 interface Props {
   visible: boolean;
   mode: SellPlotSheetMode;
@@ -36,21 +37,24 @@ interface Props {
   accounts: AccountWithBalance[];
   /** Pass a buyer payment to edit in place (receipt mode only). */
   editing?: TransactionRow | null;
+  /** Jump to Settings → Plot to add a new buyer-payment category. */
+  onAddCategory?: () => void;
   onSaved: () => Promise<void>;
 }
 
 /**
  * The STANDALONE plot sale (a flip without a project). `price` mode records the
  * agreed sale price + buyer (`setPlotSale`); `receipt` mode posts — or edits —
- * buyer money on the shared `MoneyEntrySheet`, capped at the outstanding amount
- * (an edited row's own amount freed). The plot flips to SOLD automatically once
- * fully received, and back when a payment is removed.
+ * buyer money on the shared `MoneyEntrySheet`. The milestone chips are the
+ * Settings-managed "Buyer Payment" categories. Capped at the outstanding amount;
+ * the plot flips to SOLD once fully received, and back when a payment is removed.
  */
-export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
+export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editing, onAddCategory, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const { saving, run } = useSaveAction();
+  const catName = useCategoryLabel();
   const { plot } = summary;
 
   // Price form
@@ -59,9 +63,10 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
 
   // Receipt form
   const [amount, setAmount] = useState(0);
-  const [payType, setPayType] = useState<PayType | null>(null);
-  const [usedPayTypes, setUsedPayTypes] = useState<PayType[]>([]);
-  const available = PAY_TYPES.filter((pt) => !ONCE_PAY_TYPES.includes(pt) || !usedPayTypes.includes(pt));
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [cats, setCats] = useState<CategoryRow[]>([]);
+  const [usedIds, setUsedIds] = useState<string[]>([]);
+  const available = cats.filter((c) => !(ONCE_ONLY.includes(c.name_en) && usedIds.includes(c.id)));
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
@@ -72,15 +77,22 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
     setPrice(summary.salePrice);
     setBuyer(summary.plot.buyer_name ?? '');
     setAmount(editing?.amount ?? 0);
-    setPayType((editing?.pay_type as PayType) ?? null);
+    setCategoryId(editing?.category_id ?? null);
     setDate(editing?.date ?? todayISO().slice(0, 10));
     setReceiptUri(null);
     setAccountId((prev) => editing?.account_id ?? prev ?? accounts[0]?.id ?? null);
     if (mode === 'receipt' && !editing) {
-      listUsedPayTypes(summary.plot.id, 'SALE', 'IN').then(setUsedPayTypes).catch(() => setUsedPayTypes([]));
+      listBuyerPaymentCategories().then(setCats).catch(() => setCats([]));
+      listUsedBuyerCategoryIds(summary.plot.id).then(setUsedIds).catch(() => setUsedIds([]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, mode]);
+
+  // Default to the first available milestone once the list arrives (add mode).
+  useEffect(() => {
+    if (mode === 'receipt' && !editing && categoryId === null && available[0]) setCategoryId(available[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cats, usedIds]);
 
   const onSavePrice = () => {
     if (price <= 0 || saving) return;
@@ -93,7 +105,6 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
 
   const ownAmount = editing?.amount ?? 0;
   const outstandingCap = summary.saleOutstanding + ownAmount;
-  const account = accounts.find((a) => a.id === accountId) ?? null;
 
   const onSaveReceipt = () => {
     if (amount <= 0 || !accountId || saving) return;
@@ -101,7 +112,7 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
       if (editing) {
         await updatePlotSaleReceipt(editing.id, { amount, date, accountId: accountId! });
       } else {
-        await addPlotSaleReceipt({ plotId: plot.id, amount, date, accountId: accountId!, payType, receiptUri });
+        await addPlotSaleReceipt({ plotId: plot.id, amount, date, accountId: accountId!, categoryId, receiptUri });
       }
       onClose();
       await onSaved();
@@ -123,24 +134,32 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
   }
 
   const amountError = amount > 0 && amount > outstandingCap ? t('exceedsRemaining') : null;
+  const canSave = amount > 0 && !!accountId && categoryId !== null && !amountError;
   const header = editing ? null : (
-    <View style={styles.chipRow}>
-      {available.map((pt) => {
-        const sel = payType === pt;
-        return (
-          <Pressable
-            key={pt}
-            onPress={() => setPayType(sel ? null : pt)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: sel }}
-            style={[styles.chip, sel && styles.chipActive]}
-          >
-            <AppText size="sm" weight={sel ? 'bold' : 'semibold'} color={sel ? 'accent' : 'textSecondary'}>
-              {t(PAY_TYPE_LABEL_KEYS[pt])}
-            </AppText>
-          </Pressable>
-        );
-      })}
+    <View style={styles.chipHeader}>
+      <View style={styles.chipRow}>
+        {available.map((c) => {
+          const sel = categoryId === c.id;
+          return (
+            <Pressable
+              key={c.id}
+              onPress={() => setCategoryId(c.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sel }}
+              style={[styles.chip, sel && styles.chipActive]}
+            >
+              <AppText size="xs" weight={sel ? 'bold' : 'semibold'} color={sel ? 'accent' : 'textSecondary'}>
+                {catName(c)}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+      {onAddCategory ? (
+        <Pressable onPress={onAddCategory} accessibilityRole="button" accessibilityLabel={t('addCategoryLabel')} style={styles.addChip}>
+          <AppIcon name="add" size={16} color="accent" />
+        </Pressable>
+      ) : null}
     </View>
   );
 
@@ -162,7 +181,7 @@ export function SellPlotSheet({ visible, mode, onClose, summary, accounts, editi
       extra={editing ? undefined : <ReceiptPhotoField uri={receiptUri} onChange={setReceiptUri} />}
       onSave={onSaveReceipt}
       saving={saving}
-      saveDisabled={amount <= 0 || !accountId || !!amountError}
+      saveDisabled={!canSave}
     />
   );
 }

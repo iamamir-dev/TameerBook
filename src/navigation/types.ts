@@ -35,7 +35,7 @@ export type RootStackParamList = {
   Transfer: { fromAccountId?: string } | undefined;
   // Reports hub (reached from Settings)
   Reports: undefined;
-  Categories: { sectionId?: string; type?: 'EXPENSE' | 'INCOME' } | undefined;
+  Categories: { sectionId?: string; sectionName?: string; type?: 'EXPENSE' | 'INCOME' } | undefined;
   Statuses: undefined;
   Signature: undefined;
   CompanyDetail: undefined;

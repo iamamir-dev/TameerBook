@@ -20,6 +20,7 @@ import {
 import {
   addDocument,
   deletePlotTransaction,
+  markPlotTransferred,
   PAY_TYPE_LABEL_KEYS,
   type TransactionRow,
 } from '@/db';
@@ -27,8 +28,10 @@ import { useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
+import { todayISO } from '@/utils/date';
 import { pickDocumentImage } from '@/utils/photo';
 
+import { PlotCategoryBreakdown } from '../components/PlotCategoryBreakdown';
 import { PlotDocsGrid } from '../components/PlotDocsGrid';
 import { PlotExpenseSheet } from '../components/PlotExpenseSheet';
 import { PlotHeroCard } from '../components/PlotHeroCard';
@@ -74,11 +77,21 @@ export function PlotDetailScreen(): React.JSX.Element {
   const [editing, setEditing] = useState<{ kind: 'pay' | 'exp' | 'receipt'; txn: TransactionRow } | null>(null);
 
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const sellerHeadingId = useMemo(() => categories.find((c) => c.name_en === 'Seller Payment')?.id ?? null, [categories]);
 
   /** Which flow corrects this ledger row: buyer payment, seller payment, or expense. */
   const txnKind = (txn: TransactionRow): 'pay' | 'exp' | 'receipt' => {
     if (txn.phase === 'SALE') return 'receipt';
-    return catById.get(txn.category_id ?? '')?.name_en === 'Plot Payment' ? 'pay' : 'exp';
+    const cat = catById.get(txn.category_id ?? '');
+    // Seller payment = the legacy "Plot Payment" or any "Seller Payment" child.
+    return cat?.name_en === 'Plot Payment' || (!!sellerHeadingId && cat?.parent_id === sellerHeadingId) ? 'pay' : 'exp';
+  };
+
+  /** Jump to Settings → Plot (Seller Payment / Buyer Payment / Expenses groups). */
+  const onAddCategory = () => {
+    setSheets(CLOSED);
+    closeEdit();
+    navigation.navigate('Categories', { sectionName: 'Plot', type: 'EXPENSE' });
   };
 
   const onEditTxn = (txn: TransactionRow) => {
@@ -123,6 +136,22 @@ export function PlotDetailScreen(): React.JSX.Element {
     [txns, catById, catName, t]
   );
 
+  // "By category" spend breakdown (paid-to-seller milestones + expenses).
+  const breakdownRows = useMemo(() => {
+    const byCat = new Map<string, { label: string; total: number }>();
+    for (const txn of txns) {
+      if (txn.direction !== 'OUT') continue;
+      const cat = txn.category_id ? catById.get(txn.category_id) : undefined;
+      const key = cat?.id ?? '__uncat__';
+      const label = cat ? catName(cat) : t('addExpense');
+      const prev = byCat.get(key);
+      byCat.set(key, { label, total: (prev?.total ?? 0) + txn.amount });
+    }
+    return Array.from(byCat.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.total - a.total);
+  }, [txns, catById, catName, t]);
+
   const onAddDocument = async () => {
     const uri = await pickDocumentImage();
     if (!uri) return;
@@ -150,6 +179,14 @@ export function PlotDetailScreen(): React.JSX.Element {
   // fixing/removing a buyer payment can still un-sell a standalone plot).
   const canEditEntries = !projectCompleted;
 
+  const onMarkTransferred = () => {
+    patch({ actions: false });
+    void runSave(async () => {
+      await markPlotTransferred(plotId, todayISO().slice(0, 10));
+      await reload();
+    });
+  };
+
   const drawerActions: DrawerAction[] = [
     { icon: 'rupee', label: t('sellerPayment'), onPress: () => patch({ actions: false, pay: true }) },
     { icon: 'kharcha', label: t('addExpense'), onPress: () => patch({ actions: false, exp: true }) },
@@ -158,6 +195,9 @@ export function PlotDetailScreen(): React.JSX.Element {
       : []),
     ...(!plot.project_id && salePrice > 0 && !sold
       ? [{ icon: 'moneyIn' as const, label: t('addReceipt'), onPress: () => patch({ actions: false, sell: 'receipt' }) }]
+      : []),
+    ...(!plot.transfer_date
+      ? [{ icon: 'today' as const, label: t('markTransferred'), onPress: onMarkTransferred }]
       : []),
   ];
 
@@ -188,6 +228,8 @@ export function PlotDetailScreen(): React.JSX.Element {
         {!plot.project_id && salePrice > 0 ? (
           <PlotSaleCard summary={summary} onAddReceipt={() => patch({ sell: 'receipt' })} />
         ) : null}
+
+        <PlotCategoryBreakdown rows={breakdownRows} />
 
         {/* Ledger — the "+" opens the actions drawer. */}
         <View style={styles.sectionHeader}>
@@ -223,6 +265,7 @@ export function PlotDetailScreen(): React.JSX.Element {
         summary={summary}
         accounts={accounts}
         editing={editing?.kind === 'pay' ? editing.txn : null}
+        onAddCategory={onAddCategory}
         onSaved={reload}
       />
 
@@ -235,6 +278,7 @@ export function PlotDetailScreen(): React.JSX.Element {
         summary={summary}
         accounts={accounts}
         editing={editing?.kind === 'exp' ? editing.txn : null}
+        onAddCategory={onAddCategory}
         onSaved={reload}
       />
 
@@ -249,6 +293,7 @@ export function PlotDetailScreen(): React.JSX.Element {
           summary={summary}
           accounts={accounts}
           editing={editing?.kind === 'receipt' ? editing.txn : null}
+          onAddCategory={onAddCategory}
           onSaved={reload}
         />
       ) : null}

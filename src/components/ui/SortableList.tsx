@@ -44,10 +44,14 @@ export function SortableList<T>({ items, keyOf, rowHeight, renderItem, onReorder
   const positions = useSharedValue<Record<string, number>>(
     Object.fromEntries(ids.map((id, i) => [id, i]))
   );
+  // Reset positions ONLY when the id ORDER actually changes — not on every
+  // render (items is a fresh array each time). Otherwise a drop would snap back
+  // to the old order while the persisted reorder + reload is still in flight.
+  const idKey = ids.join('');
   React.useEffect(() => {
-    positions.value = Object.fromEntries(items.map((it, i) => [keyOf(it), i]));
+    positions.value = Object.fromEntries(ids.map((id, i) => [id, i]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [idKey]);
 
   const commit = React.useCallback(
     (map: Record<string, number>) => onReorder(Object.keys(map).sort((a, b) => map[a] - map[b])),

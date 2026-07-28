@@ -6,6 +6,7 @@ import { AppCard, AppIcon, AppText } from '@/components/ui';
 import { SIZE_UNIT_LABEL_KEYS, type PlotSummary, type ProjectRow } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
+import { formatDisplayDate } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
 import { PlotSummaryRow } from './PlotSummaryRow';
@@ -50,6 +51,15 @@ export function PlotHeroCard({ summary, linkedProject, onOpenProject }: Props): 
       <PlotSummaryRow label={t('paidToSeller')} value={formatRupees(paidToSeller)} valueColor="danger" />
       <PlotSummaryRow label={t('remaining')} value={formatRupees(remaining)} />
       <PlotSummaryRow label={t('plotExpensesLabel')} value={formatRupees(expenses)} valueColor="danger" />
+
+      {plot.transfer_date ? (
+        <View style={styles.transferRow}>
+          <AppIcon name="check" size={14} color="success" />
+          <AppText size="xs" weight="bold" color="success">
+            {`${t('transferredOn')} · ${formatDisplayDate(plot.transfer_date)}`}
+          </AppText>
+        </View>
+      ) : null}
 
       {plot.project_id ? (
         <>

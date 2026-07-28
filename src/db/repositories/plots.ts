@@ -1,5 +1,6 @@
 import { getDatabase } from '../database';
 import {
+  type CategoryRow,
   DEFAULT_USER,
   type PayType,
   type PlotRow,
@@ -47,6 +48,81 @@ export function isOneTimePayment(e: unknown): e is OneTimePaymentError {
  */
 /** Pay types that can be used at most once per deal (seller or buyer side). */
 export const ONCE_PAY_TYPES: readonly PayType[] = ONCE_PER_DEAL;
+
+/**
+ * SQL predicate (on a `categories c` alias) matching a seller payment: the
+ * legacy "Plot Payment" category OR any category under the "Seller Payment"
+ * heading (the deal milestones + the owner's custom types). The single source
+ * of this rule, shared by the deal-math summary.
+ */
+const SELLER_PAYMENT_SQL = `(c.name_en = 'Plot Payment' OR c.parent_id = (SELECT id FROM categories WHERE name_en = 'Seller Payment' LIMIT 1))`;
+
+/** As above, for the BUYER side of a standalone sale (legacy "Plot Sale" + custom). */
+const BUYER_PAYMENT_SQL = `(c.name_en = 'Plot Sale' OR c.parent_id = (SELECT id FROM categories WHERE name_en = 'Buyer Payment' LIMIT 1))`;
+
+/** The milestones under a heading (Token/Advance/… + custom), in display order. */
+async function listMilestoneCategories(heading: string): Promise<CategoryRow[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<CategoryRow>(
+    `SELECT c.* FROM categories c
+     WHERE c.parent_id = (SELECT id FROM categories WHERE name_en = ? LIMIT 1)
+     ORDER BY c.sort_order, c.created_at`,
+    heading
+  );
+}
+
+/** Seller-payment milestone categories (deal defaults + the owner's custom types). */
+export function listSellerPaymentCategories(): Promise<CategoryRow[]> {
+  return listMilestoneCategories('Seller Payment');
+}
+
+/** Buyer-payment milestone categories (sale defaults + the owner's custom types). */
+export function listBuyerPaymentCategories(): Promise<CategoryRow[]> {
+  return listMilestoneCategories('Buyer Payment');
+}
+
+/** Category ids already used on this plot for a phase/direction (hide once-only chips). */
+async function listUsedCategoryIds(plotId: string, phase: 'PLOT' | 'SALE', direction: 'IN' | 'OUT'): Promise<string[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ category_id: string }>(
+    `SELECT DISTINCT category_id FROM transactions
+     WHERE plot_id = ? AND phase = ? AND direction = ? AND is_void = 0 AND category_id IS NOT NULL`,
+    plotId,
+    phase,
+    direction
+  );
+  return rows.map((r) => r.category_id);
+}
+
+/** Seller-payment category ids already used on this plot (to hide once-only chips). */
+export function listUsedSellerCategoryIds(plotId: string): Promise<string[]> {
+  return listUsedCategoryIds(plotId, 'PLOT', 'OUT');
+}
+
+/** Buyer-payment category ids already used on this plot's sale. */
+export function listUsedBuyerCategoryIds(plotId: string): Promise<string[]> {
+  return listUsedCategoryIds(plotId, 'SALE', 'IN');
+}
+
+/** Guard: a once-only milestone category (Token/Advance) used at most once for a phase. */
+async function assertCategoryUnused(
+  plotId: string,
+  categoryId: string,
+  name: string,
+  phase: 'PLOT' | 'SALE',
+  direction: 'IN' | 'OUT'
+): Promise<void> {
+  const db = await getDatabase();
+  const dup = await db.getFirstAsync<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE plot_id = ? AND category_id = ? AND phase = ? AND direction = ? AND is_void = 0`,
+    plotId,
+    categoryId,
+    phase,
+    direction
+  );
+  if ((dup?.c ?? 0) > 0) throw new OneTimePaymentError(name as PayType);
+}
 
 /**
  * Which one-time pay types (TOKEN/BAYANA) have ALREADY been used on this plot
@@ -168,6 +244,7 @@ export async function updatePlot(
     sizeUnit: SizeUnit | null;
     dealPrice: number;
     sellerName: string | null;
+    sellerCnic: string | null;
     sellerPhone: string | null;
     transferDate: string | null;
     transferDeadline: string | null;
@@ -179,7 +256,7 @@ export async function updatePlot(
   if (!p) throw new Error(`updatePlot: plot ${id} not found`);
   await db.runAsync(
     `UPDATE plots SET name = ?, society = ?, block = ?, plot_no = ?, size_value = ?, size_unit = ?,
-       deal_price = ?, seller_name = ?, seller_phone = ?, transfer_date = ?, transfer_deadline = ?, status = ?
+       deal_price = ?, seller_name = ?, seller_cnic = ?, seller_phone = ?, transfer_date = ?, transfer_deadline = ?, status = ?
      WHERE id = ?`,
     patch.name ?? p.name,
     patch.society !== undefined ? patch.society : p.society,
@@ -189,12 +266,26 @@ export async function updatePlot(
     patch.sizeUnit !== undefined ? patch.sizeUnit : p.size_unit,
     patch.dealPrice ?? p.deal_price,
     patch.sellerName !== undefined ? patch.sellerName : p.seller_name,
+    patch.sellerCnic !== undefined ? patch.sellerCnic : p.seller_cnic,
     patch.sellerPhone !== undefined ? patch.sellerPhone : p.seller_phone,
     patch.transferDate !== undefined ? patch.transferDate : p.transfer_date,
     patch.transferDeadline !== undefined ? patch.transferDeadline : p.transfer_deadline,
     patch.status ?? p.status,
     id
   );
+}
+
+/**
+ * Mark the plot's ownership transfer as done on `date` — clears it from the
+ * transfer-deadline reminders (which list only plots with a deadline and no
+ * transfer date). A completed project is read-only.
+ */
+export async function markPlotTransferred(plotId: string, date: string): Promise<void> {
+  const plot = await getPlot(plotId);
+  if (!plot) throw new Error(`markPlotTransferred: plot ${plotId} not found`);
+  if (plot.project_id) await assertProjectActive(plot.project_id);
+  const db = await getDatabase();
+  await db.runAsync('UPDATE plots SET transfer_date = ? WHERE id = ?', date, plotId);
 }
 
 /** Delete a plot  blocked if it has any transactions or belongs to a project. */
@@ -213,7 +304,10 @@ export async function deletePlot(id: string): Promise<void> {
 
 export interface PlotPaymentInput {
   plotId: string;
-  payType: PayType;
+  /** Legacy fixed milestone (used by tests/imports); prefer `categoryId`. */
+  payType?: PayType | null;
+  /** The seller-payment category chosen on the sheet (a "Seller Payment" child). */
+  categoryId?: string | null;
   amount: number;
   date: string;
   accountId: string;
@@ -222,19 +316,25 @@ export interface PlotPaymentInput {
   createdBy?: string;
 }
 
+/** Milestone default categories that may be used at most once per deal/sale. */
+const ONCE_ONLY_NAMES = ['Token', 'Advance'];
+
 /**
- * Pay the seller an instalment of the deal (token / bayana / installment /
- * final): an OUT transaction on the chosen account, tagged to the plot with
- * `phase='PLOT'` and the named `pay_type`, plus an optional receipt document.
+ * Pay the seller toward the deal: an OUT transaction tagged to the plot with
+ * `phase='PLOT'`. The milestone is a "Seller Payment" category (Token / Advance
+ * — once each — Installment, Full payment, or a custom type the owner added);
+ * legacy callers may still pass a fixed `payType` (posts to "Plot Payment").
+ * Both count as paid-to-seller.
  *
- * VALIDATION: the seller can never be paid more than what is still owed on
- * the deal  throws `LimitExceededError` (expenses like tax are separate and
- * go through `addPlotExpense`).
+ * VALIDATION: the seller can never be paid more than what is still owed on the
+ * deal  throws `LimitExceededError` (expenses like tax go through
+ * `addPlotExpense`).
  */
 export async function addPlotPayment(input: PlotPaymentInput): Promise<void> {
   const plot = await getPlot(input.plotId);
   if (!plot) throw new Error(`addPlotPayment: plot ${input.plotId} not found`);
   if (input.amount <= 0) throw new Error('addPlotPayment: amount must be positive');
+  if (!input.payType && !input.categoryId) throw new Error('addPlotPayment: a milestone or category is required');
   // A plot inside a COMPLETED project is read-only (V-7).
   if (plot.project_id) await assertProjectActive(plot.project_id);
 
@@ -242,10 +342,20 @@ export async function addPlotPayment(input: PlotPaymentInput): Promise<void> {
   if (input.amount > summary.remaining + 0.001) {
     throw new LimitExceededError(summary.remaining, input.amount);
   }
-  // Token / bayana can only be paid to the seller once per plot.
-  await assertPayTypeUnused(input.plotId, input.payType, 'PLOT', 'OUT');
 
-  const categoryId = await categoryIdByName('Plot Payment', 'EXPENSE', 'پلاٹ کی ادائیگی', true);
+  let categoryId: string;
+  if (input.categoryId) {
+    // A custom/default seller-payment category. Token / Advance are once-only.
+    const cat = await getCategory(input.categoryId);
+    if (cat && ONCE_ONLY_NAMES.includes(cat.name_en)) {
+      await assertCategoryUnused(input.plotId, input.categoryId, cat.name_en, 'PLOT', 'OUT');
+    }
+    categoryId = input.categoryId;
+  } else {
+    // Legacy fixed milestone → the "Plot Payment" category + pay_type.
+    await assertPayTypeUnused(input.plotId, input.payType!, 'PLOT', 'OUT');
+    categoryId = await categoryIdByName('Plot Payment', 'EXPENSE', 'پلاٹ کی ادائیگی', true);
+  }
 
   const txn = await addTransaction({
     direction: 'OUT',
@@ -256,7 +366,7 @@ export async function addPlotPayment(input: PlotPaymentInput): Promise<void> {
     projectId: plot.project_id, // flows into the project if already included
     phase: 'PLOT',
     categoryId,
-    payType: input.payType,
+    payType: input.categoryId ? null : input.payType,
     counterpartyName: plot.seller_name,
     description: input.note ?? null,
     createdBy: input.createdBy,
@@ -352,8 +462,8 @@ export async function getPlotSummary(plotId: string): Promise<PlotSummary> {
 
   const row = await db.getFirstAsync<{ paid: number; expenses: number }>(
     `SELECT
-       COALESCE(SUM(CASE WHEN c.name_en = 'Plot Payment' THEN t.amount ELSE 0 END), 0) AS paid,
-       COALESCE(SUM(CASE WHEN c.name_en IS NULL OR c.name_en <> 'Plot Payment' THEN t.amount ELSE 0 END), 0) AS expenses
+       COALESCE(SUM(CASE WHEN ${SELLER_PAYMENT_SQL} THEN t.amount ELSE 0 END), 0) AS paid,
+       COALESCE(SUM(CASE WHEN ${SELLER_PAYMENT_SQL} THEN 0 ELSE t.amount END), 0) AS expenses
      FROM transactions t
      LEFT JOIN categories c ON c.id = t.category_id
      WHERE t.plot_id = ? AND t.direction = 'OUT' AND t.is_void = 0`,
@@ -366,7 +476,7 @@ export async function getPlotSummary(plotId: string): Promise<PlotSummary> {
   const sold = await db.getFirstAsync<{ s: number }>(
     `SELECT COALESCE(SUM(t.amount), 0) AS s
      FROM transactions t JOIN categories c ON c.id = t.category_id
-     WHERE t.plot_id = ? AND t.direction = 'IN' AND t.is_void = 0 AND c.name_en = 'Plot Sale'`,
+     WHERE t.plot_id = ? AND t.direction = 'IN' AND t.is_void = 0 AND ${BUYER_PAYMENT_SQL}`,
     plotId
   );
 
@@ -414,10 +524,11 @@ export async function setPlotSale(input: {
 }
 
 /**
- * Buyer money for a standalone plot sale: an IN transaction on the chosen
- * account (category "Plot Sale"), tagged to the plot. When the full price has
- * arrived the plot flips to SOLD — it can never be offered to a project again.
- * VALIDATION: the buyer can never pay more than what is still outstanding.
+ * Buyer money for a standalone plot sale: an IN transaction tagged to the plot
+ * (`phase='SALE'`). The milestone is a "Buyer Payment" category (Token/Advance —
+ * once each — Installment, Full payment, or a custom type); legacy callers may
+ * pass a fixed `payType` (posts to "Plot Sale"). When the full price arrives the
+ * plot flips to SOLD. VALIDATION: never more than what is still outstanding.
  */
 export async function addPlotSaleReceipt(input: {
   plotId: string;
@@ -425,6 +536,7 @@ export async function addPlotSaleReceipt(input: {
   date: string;
   accountId: string;
   payType?: PayType | null;
+  categoryId?: string | null;
   receiptUri?: string | null;
   createdBy?: string;
 }): Promise<void> {
@@ -436,10 +548,21 @@ export async function addPlotSaleReceipt(input: {
   if (input.amount > summary.saleOutstanding + 0.001) {
     throw new LimitExceededError(summary.saleOutstanding, input.amount);
   }
-  // Buyer's token / bayana can only be received once per sale.
-  if (input.payType) await assertPayTypeUnused(input.plotId, input.payType, 'SALE', 'IN');
 
-  const categoryId = await categoryIdByName('Plot Sale', 'INCOME', 'پلاٹ کی فروخت', true);
+  let categoryId: string;
+  if (input.categoryId) {
+    // A custom/default buyer-payment category. Token / Advance are once-only.
+    const cat = await getCategory(input.categoryId);
+    if (cat && ONCE_ONLY_NAMES.includes(cat.name_en)) {
+      await assertCategoryUnused(input.plotId, input.categoryId, cat.name_en, 'SALE', 'IN');
+    }
+    categoryId = input.categoryId;
+  } else {
+    // Legacy fixed milestone → the "Plot Sale" category + pay_type.
+    if (input.payType) await assertPayTypeUnused(input.plotId, input.payType, 'SALE', 'IN');
+    categoryId = await categoryIdByName('Plot Sale', 'INCOME', 'پلاٹ کی فروخت', true);
+  }
+
   const txn = await addTransaction({
     direction: 'IN',
     amount: input.amount,
@@ -448,7 +571,7 @@ export async function addPlotSaleReceipt(input: {
     plotId: input.plotId,
     phase: 'SALE',
     categoryId,
-    payType: input.payType ?? null,
+    payType: input.categoryId ? null : input.payType ?? null,
     counterpartyName: plot.buyer_name,
     createdBy: input.createdBy,
   });
@@ -481,11 +604,18 @@ export interface PlotTxnPatch {
   note?: string | null;
 }
 
-/** True when a plot transaction is a seller payment (category "Plot Payment"). */
+/**
+ * True when a plot transaction is a seller payment — the legacy "Plot Payment"
+ * category, or any category under the "Seller Payment" heading.
+ */
 async function isSellerPayment(t: TransactionRow): Promise<boolean> {
   if (!t.category_id) return false;
   const cat = await getCategory(t.category_id);
-  return cat?.name_en === 'Plot Payment';
+  if (!cat) return false;
+  if (cat.name_en === 'Plot Payment') return true;
+  if (!cat.parent_id) return false;
+  const parent = await getCategory(cat.parent_id);
+  return parent?.name_en === 'Seller Payment';
 }
 
 /**

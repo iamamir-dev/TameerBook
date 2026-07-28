@@ -142,6 +142,7 @@ export function CategoriesScreen(): React.JSX.Element {
   const label = useCategoryLabel();
 
   const sectionId = route.params?.sectionId ?? null;
+  const sectionName = route.params?.sectionName ?? null;
   const [type, setType] = useState<CategoryType>(route.params?.type ?? 'EXPENSE');
   const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -157,9 +158,27 @@ export function CategoriesScreen(): React.JSX.Element {
     void load();
   }, [load]);
 
-  // Visible sections (top-level, minus app-managed posting categories).
-  const sections = useMemo(() => (tree ?? []).filter((n) => !HIDDEN.has(n.name_en)), [tree]);
-  const section = sectionId ? sections.find((s) => s.id === sectionId) ?? null : null;
+  // Seller/Buyer Payment aren't their own sections — they're subgroups in Plot.
+  const SUBGROUP_HEADINGS = new Set(['Seller Payment', 'Buyer Payment']);
+  // Labor is managed via the Labor module and Sale via the sale flow, so neither
+  // is shown as a manageable category section here.
+  const HIDDEN_SECTIONS = new Set(['Labor', 'Sale']);
+  // Visible top-level sections (minus app-managed + subgroup + hidden sections).
+  const sections = useMemo(
+    () => (tree ?? []).filter((n) => !HIDDEN.has(n.name_en) && !SUBGROUP_HEADINGS.has(n.name_en) && !HIDDEN_SECTIONS.has(n.name_en)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tree]
+  );
+  // Drill into a section by id or by name (the plot page links here by name).
+  const section = useMemo(() => {
+    if (sectionId) return sections.find((s) => s.id === sectionId) ?? null;
+    if (sectionName) return sections.find((s) => s.name_en === sectionName) ?? null;
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, sectionId, sectionName]);
+  const inDetail = !!(sectionId || sectionName);
+  const sellerSection = useMemo(() => (tree ?? []).find((n) => n.name_en === 'Seller Payment') ?? null, [tree]);
+  const buyerSection = useMemo(() => (tree ?? []).find((n) => n.name_en === 'Buyer Payment') ?? null, [tree]);
   const visibleChildren = (node: CategoryTreeNode) => node.children.filter((c) => !HIDDEN.has(c.name_en));
 
   const resetUnitFields = () => {
@@ -266,10 +285,46 @@ export function CategoriesScreen(): React.JSX.Element {
     );
 
   /* ----------------------------- Section detail ---------------------------- */
-  if (sectionId) {
+  if (inDetail) {
     const children = section ? visibleChildren(section) : [];
     const have = new Set(children.map((c) => c.name_en.toLowerCase()));
     const suggestions = section ? (SECTION_SUGGESTIONS[section.name_en] ?? []).filter((s) => !have.has(s.en.toLowerCase())) : [];
+
+    // A reorderable subgroup (Seller/Buyer Payment) rendered inside the Plot page:
+    // its header, a drag-to-reorder list (defaults locked), and an add button.
+    const subgroup = (node: CategoryTreeNode | null, headerKey: 'sellerPaymentTypes' | 'buyerPaymentTypes') =>
+      node ? (
+        <>
+          <AppText size="overline" weight="bold" color="textSecondary" uppercase style={styles.groupLabel}>
+            {t(headerKey)}
+          </AppText>
+          <AppCard style={styles.card}>
+            {visibleChildren(node).length > 0 ? (
+              <SortableList
+                items={visibleChildren(node)}
+                keyOf={(c) => c.id}
+                rowHeight={44}
+                onReorder={reorderSubs}
+                renderItem={(sub) => (
+                  <View style={styles.subRow}>
+                    <AppIcon name="reorder" size={14} color="textSecondary" />
+                    <AppText size="sm" style={styles.flex} numberOfLines={1}>
+                      {label(sub)}
+                    </AppText>
+                    {rowActions(sub)}
+                  </View>
+                )}
+              />
+            ) : null}
+            <Pressable onPress={() => openAddSub(node.id)} style={styles.addSub} accessibilityRole="button">
+              <AppIcon name="add" size={16} color="accent" />
+              <AppText size="xs" weight="bold" color="accent">
+                {t('addSubcategory')}
+              </AppText>
+            </Pressable>
+          </AppCard>
+        </>
+      ) : null;
 
     return (
       <View style={styles.screen}>
@@ -278,6 +333,18 @@ export function CategoriesScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
         >
+          {/* Plot page mirror: Seller Payment · Buyer Payment · Expenses — the
+              same three groups (and order) the plot page books into. */}
+          {section?.name_en === 'Plot' ? (
+            <>
+              {subgroup(sellerSection, 'sellerPaymentTypes')}
+              {subgroup(buyerSection, 'buyerPaymentTypes')}
+              <AppText size="overline" weight="bold" color="textSecondary" uppercase style={styles.groupLabel}>
+                {t('plotExpensesLabel')}
+              </AppText>
+            </>
+          ) : null}
+
           <AppCard style={styles.card}>
             {children.length > 0 ? (
               <SortableList
@@ -457,6 +524,7 @@ const makeStyles = (theme: Theme) =>
     segBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
     segBtnActive: { backgroundColor: theme.colors.accent },
     content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
+    groupLabel: { marginTop: theme.spacing.xs },
     card: { gap: theme.spacing.sm },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     subRow: {

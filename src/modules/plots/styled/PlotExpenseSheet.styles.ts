@@ -17,4 +17,14 @@ export const makeStyles = (theme: Theme) =>
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.background,
     },
+    catPickRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.spacing.sm },
+    addBtn: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: theme.touch.minTarget,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: theme.colors.accent,
+    },
   });

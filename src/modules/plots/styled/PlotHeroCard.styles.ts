@@ -21,6 +21,7 @@ export const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.border,
       marginVertical: theme.spacing.sm,
     },
+    transferRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
     linkRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     flex: { flex: 1 },
     pressedDim: { opacity: 0.7 },

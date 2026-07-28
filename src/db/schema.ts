@@ -1132,6 +1132,82 @@ ALTER TABLE material_deliveries ADD COLUMN batch_id TEXT;
 ALTER TABLE transactions ADD COLUMN po_batch_id TEXT;
 `;
 
+/**
+ * v30 — a "Seller Payment" heading + its locked default milestones (Token /
+ * Advance / Installment / Full payment). Shown as a reorderable subgroup inside
+ * the Plot page (not a separate section); the owner can add more custom types.
+ * Idempotent — fixed ids so re-runs no-op.
+ */
+export const SCHEMA_V30_SELLER_PAYMENT = `
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-seller-payment', datetime('now'), 'local', NULL, 'Seller Payment', 'بیچنے والے کی ادائیگی', 'EXPENSE', 'rupee', 1, NULL, 1
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Seller Payment');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sp-token', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Seller Payment' LIMIT 1), 'Token', 'ٹوکن', 'EXPENSE', 'rupee', 1, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Seller Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-sp-token');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sp-advance', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Seller Payment' LIMIT 1), 'Advance', 'بیعانہ', 'EXPENSE', 'rupee', 1, NULL, 1
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Seller Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-sp-advance');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sp-installment', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Seller Payment' LIMIT 1), 'Installment', 'قسط', 'EXPENSE', 'rupee', 1, NULL, 2
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Seller Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-sp-installment');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sp-full', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Seller Payment' LIMIT 1), 'Full payment', 'مکمل ادائیگی', 'EXPENSE', 'rupee', 1, NULL, 3
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Seller Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-sp-full');
+`;
+
+/**
+ * v32 — remove the Labor and Sale category SECTIONS (managed via the Labor
+ * module and the sale flow instead). Safe/idempotent: the system posting
+ * categories (Labor Payment, Sale Cost) move to top-level and stay; only
+ * unreferenced pickable sub-categories and the now-empty headings are dropped
+ * (FK-safe — anything an entry still uses is left alone).
+ */
+export const SCHEMA_V32_DROP_LABOR_SALE_SECTIONS = `
+UPDATE categories SET parent_id = NULL WHERE name_en IN ('Labor Payment', 'Sale Cost');
+
+DELETE FROM categories
+ WHERE parent_id IN (SELECT id FROM categories WHERE name_en IN ('Labor', 'Sale'))
+   AND is_system = 0
+   AND id NOT IN (SELECT category_id FROM transactions WHERE category_id IS NOT NULL);
+
+DELETE FROM categories
+ WHERE name_en IN ('Labor', 'Sale')
+   AND id NOT IN (SELECT parent_id FROM categories WHERE parent_id IS NOT NULL)
+   AND id NOT IN (SELECT category_id FROM transactions WHERE category_id IS NOT NULL);
+`;
+
+/**
+ * v33 — a "Buyer Payment" heading + its locked default milestones, mirroring
+ * Seller Payment. Shown as a reorderable subgroup inside the Plot page; its
+ * children tag standalone-sale buyer receipts. Idempotent (fixed ids).
+ */
+export const SCHEMA_V33_BUYER_PAYMENT = `
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-buyer-payment', datetime('now'), 'local', NULL, 'Buyer Payment', 'خریدار کی ادائیگی', 'EXPENSE', 'moneyIn', 1, NULL, 2
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Buyer Payment');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-bp-token', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Buyer Payment' LIMIT 1), 'Token', 'ٹوکن', 'EXPENSE', 'moneyIn', 1, NULL, 0
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Buyer Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-bp-token');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-bp-advance', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Buyer Payment' LIMIT 1), 'Advance', 'بیعانہ', 'EXPENSE', 'moneyIn', 1, NULL, 1
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Buyer Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-bp-advance');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-bp-installment', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Buyer Payment' LIMIT 1), 'Installment', 'قسط', 'EXPENSE', 'moneyIn', 1, NULL, 2
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Buyer Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-bp-installment');
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-bp-full', datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Buyer Payment' LIMIT 1), 'Full payment', 'مکمل ادائیگی', 'EXPENSE', 'moneyIn', 1, NULL, 3
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Buyer Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-bp-full');
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1156,6 +1232,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 27, sql: SCHEMA_V27_BOOKING_SECONDARY_UNIT },
   { version: 28, sql: SCHEMA_V28_DELIVERY_PAYMENT_LINK },
   { version: 29, sql: SCHEMA_V29_PO_BATCH },
+  { version: 30, sql: SCHEMA_V30_SELLER_PAYMENT },
+  // v31 re-runs the (idempotent) seed: a device that applied an earlier
+  // heading-only v30 would otherwise skip the milestone rows.
+  { version: 31, sql: SCHEMA_V30_SELLER_PAYMENT },
+  { version: 32, sql: SCHEMA_V32_DROP_LABOR_SALE_SECTIONS },
+  { version: 33, sql: SCHEMA_V33_BUYER_PAYMENT },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -1184,11 +1266,18 @@ export interface DefaultCategory {
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   // ---- Main headings (top-level) ----
   { name_en: 'Materials', name_ur: 'میٹریل', type: 'EXPENSE', icon: 'material', system: true },
-  { name_en: 'Labor', name_ur: 'مزدوری', type: 'EXPENSE', icon: 'dehari', system: true },
+  // Seller / Buyer Payment are SUBGROUPS shown inside the Plot page (hidden as
+  // their own top-level sections); their children are the deal milestones +
+  // custom types. Buyer types tag INCOME sale receipts (type is a label only).
+  { name_en: 'Seller Payment', name_ur: 'بیچنے والے کی ادائیگی', type: 'EXPENSE', icon: 'rupee', system: true },
+  { name_en: 'Buyer Payment', name_ur: 'خریدار کی ادائیگی', type: 'EXPENSE', icon: 'moneyIn', system: true },
   { name_en: 'Plot', name_ur: 'پلاٹ', type: 'EXPENSE', icon: 'home', system: true },
   { name_en: 'Home Expense', name_ur: 'گھر کا خرچ', type: 'EXPENSE', icon: 'home', system: true },
-  { name_en: 'Sale', name_ur: 'فروخت', type: 'EXPENSE', icon: 'tag', system: true },
   { name_en: 'Misc', name_ur: 'متفرق', type: 'EXPENSE', icon: 'kharcha' },
+
+  // ---- System posting categories (top-level, hidden from the manager) ----
+  { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari', system: true },
+  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag', system: true },
 
   // ---- Materials sub-categories (with default units) ----
   { name_en: 'Cement', name_ur: 'سیمنٹ', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'bori' },
@@ -1201,10 +1290,17 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name_en: 'Electric', name_ur: 'بجلی کا سامان', type: 'EXPENSE', icon: 'tools', parent: 'Materials' },
   { name_en: 'Sanitary', name_ur: 'سینٹری', type: 'EXPENSE', icon: 'tools', parent: 'Materials' },
 
-  // ---- Labor sub-categories ----
-  { name_en: 'Labor Dehari', name_ur: 'مزدور دیہاڑی', type: 'EXPENSE', icon: 'dehari', parent: 'Labor' },
-  { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari', parent: 'Labor', system: true },
-  { name_en: 'Contractor', name_ur: 'ٹھیکیدار', type: 'EXPENSE', icon: 'tools', parent: 'Labor' },
+  // ---- Seller Payment milestones (locked defaults; owner can add more) ----
+  { name_en: 'Token', name_ur: 'ٹوکن', type: 'EXPENSE', icon: 'rupee', parent: 'Seller Payment', system: true },
+  { name_en: 'Advance', name_ur: 'بیعانہ', type: 'EXPENSE', icon: 'rupee', parent: 'Seller Payment', system: true },
+  { name_en: 'Installment', name_ur: 'قسط', type: 'EXPENSE', icon: 'rupee', parent: 'Seller Payment', system: true },
+  { name_en: 'Full payment', name_ur: 'مکمل ادائیگی', type: 'EXPENSE', icon: 'rupee', parent: 'Seller Payment', system: true },
+
+  // ---- Buyer Payment milestones (locked defaults; owner can add more) ----
+  { name_en: 'Token', name_ur: 'ٹوکن', type: 'EXPENSE', icon: 'moneyIn', parent: 'Buyer Payment', system: true },
+  { name_en: 'Advance', name_ur: 'بیعانہ', type: 'EXPENSE', icon: 'moneyIn', parent: 'Buyer Payment', system: true },
+  { name_en: 'Installment', name_ur: 'قسط', type: 'EXPENSE', icon: 'moneyIn', parent: 'Buyer Payment', system: true },
+  { name_en: 'Full payment', name_ur: 'مکمل ادائیگی', type: 'EXPENSE', icon: 'moneyIn', parent: 'Buyer Payment', system: true },
 
   // ---- Plot sub-categories ----
   { name_en: 'Plot Payment', name_ur: 'پلاٹ کی ادائیگی', type: 'EXPENSE', icon: 'home', parent: 'Plot', system: true },
@@ -1215,9 +1311,6 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name_en: 'Groceries', name_ur: 'راشن', type: 'EXPENSE', icon: 'kharcha', parent: 'Home Expense' },
   { name_en: 'Utilities Bill', name_ur: 'یوٹیلٹی بل', type: 'EXPENSE', icon: 'receipt', parent: 'Home Expense' },
   { name_en: 'Rent', name_ur: 'کرایہ', type: 'EXPENSE', icon: 'home', parent: 'Home Expense' },
-
-  // ---- Sale sub-categories ----
-  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag', parent: 'Sale', system: true },
 
   // ---- Income ----
   { name_en: 'Investor Investment', name_ur: 'سرمایہ کاری', type: 'INCOME', icon: 'investor', system: true },

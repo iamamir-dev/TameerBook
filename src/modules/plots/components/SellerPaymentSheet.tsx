@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { AppText, MoneyEntrySheet, ReceiptPhotoField } from '@/components/ui';
+import { AppIcon, AppText, MoneyEntrySheet, ReceiptPhotoField } from '@/components/ui';
 import {
   addPlotPayment,
-  listUsedPayTypes,
-  ONCE_PAY_TYPES,
-  PAY_TYPE_LABEL_KEYS,
-  PAY_TYPES,
+  listSellerPaymentCategories,
+  listUsedSellerCategoryIds,
   updatePlotPayment,
   type AccountWithBalance,
-  type PayType,
+  type CategoryRow,
   type PlotSummary,
   type TransactionRow,
 } from '@/db';
-import { useSaveAction } from '@/hooks';
+import { useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
@@ -29,54 +27,65 @@ interface Props {
   accounts: AccountWithBalance[];
   /** Pass a payment to edit in place; omit/null to add a new one. */
   editing?: TransactionRow | null;
+  /** Jump to Settings → Plot to add a new seller-payment category. */
+  onAddCategory?: () => void;
   onSaved: () => Promise<void>;
 }
 
 interface Form {
-  payType: PayType;
+  categoryId: string | null;
   amount: number;
   accountId: string | null;
   date: string;
   receiptUri: string | null;
 }
 
+/** Seller-payment types that can be used at most once per plot. */
+const ONCE_ONLY = ['Token', 'Advance'];
+
 /**
  * Pay the seller — or edit a seller payment in place — on the shared
- * `MoneyEntrySheet`. Pay-type chips pick the milestone when adding (fixed on
- * edit); a one-time type already used on this plot is hidden. Capped at what is
- * still owed, freeing an edited row's own amount back into the cap.
+ * `MoneyEntrySheet`. The milestone chips are the "Seller Payment" categories
+ * (the deal defaults plus any custom types the owner added in Settings). Token
+ * and Advance can be used once each; the rest repeat. Both count toward the
+ * deal; capped at what is still owed (an edited row's own amount freed).
  */
-export function SellerPaymentSheet({ visible, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
+export function SellerPaymentSheet({ visible, onClose, summary, accounts, editing, onAddCategory, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const { saving, run } = useSaveAction();
+  const catName = useCategoryLabel();
 
-  const [usedPayTypes, setUsedPayTypes] = useState<PayType[]>([]);
-  const available = PAY_TYPES.filter((pt) => !ONCE_PAY_TYPES.includes(pt) || !usedPayTypes.includes(pt));
+  const [cats, setCats] = useState<CategoryRow[]>([]);
+  const [usedIds, setUsedIds] = useState<string[]>([]);
+  const available = cats.filter((c) => !(ONCE_ONLY.includes(c.name_en) && usedIds.includes(c.id)));
 
-  const [form, setForm] = useState<Form>({ payType: 'INSTALLMENT', amount: 0, accountId: null, date: todayISO().slice(0, 10), receiptUri: null });
+  const [form, setForm] = useState<Form>({ categoryId: null, amount: 0, accountId: null, date: todayISO().slice(0, 10), receiptUri: null });
   const patch = (p: Partial<Form>) => setForm((s) => ({ ...s, ...p }));
 
   // Reset only when the sheet opens (avoids wiping the form on data bumps).
   useEffect(() => {
     if (!visible) return;
     setForm({
-      payType: (editing?.pay_type as PayType) ?? 'INSTALLMENT',
+      categoryId: editing?.category_id ?? null,
       amount: editing?.amount ?? 0,
       accountId: editing?.account_id ?? accounts[0]?.id ?? null,
       date: editing?.date ?? todayISO().slice(0, 10),
       receiptUri: null,
     });
-    if (!editing) listUsedPayTypes(summary.plot.id, 'PLOT', 'OUT').then(setUsedPayTypes).catch(() => setUsedPayTypes([]));
+    if (!editing) {
+      listSellerPaymentCategories().then(setCats).catch(() => setCats([]));
+      listUsedSellerCategoryIds(summary.plot.id).then(setUsedIds).catch(() => setUsedIds([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Keep the selected pay-type valid once the used list arrives (add mode only).
+  // Default to the first available milestone once the list arrives (add mode).
   useEffect(() => {
-    if (!editing && !available.some((pt) => pt === form.payType) && available[0]) patch({ payType: available[0] });
+    if (!editing && form.categoryId === null && available[0]) patch({ categoryId: available[0].id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usedPayTypes]);
+  }, [cats, usedIds]);
 
   const ownAmount = editing?.amount ?? 0;
   const remainingCap = summary.remaining + ownAmount;
@@ -90,17 +99,17 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, editin
         : account && form.amount > accountCap
           ? t('insufficientFunds')
           : null;
-  const canSave = form.amount > 0 && form.accountId !== null && !amountError;
+  const canSave = form.amount > 0 && form.accountId !== null && form.categoryId !== null && !amountError;
 
   const onSave = () => {
-    if (!canSave || saving || !form.accountId) return;
+    if (!canSave || saving || !form.accountId || !form.categoryId) return;
     void run(async () => {
       if (editing) {
         await updatePlotPayment(editing.id, { amount: form.amount, date: form.date, accountId: form.accountId! });
       } else {
         await addPlotPayment({
           plotId: summary.plot.id,
-          payType: form.payType,
+          categoryId: form.categoryId!,
           amount: form.amount,
           date: form.date,
           accountId: form.accountId!,
@@ -113,23 +122,30 @@ export function SellerPaymentSheet({ visible, onClose, summary, accounts, editin
   };
 
   const header = editing ? null : (
-    <View style={styles.chipRow}>
-      {available.map((pt) => {
-        const sel = pt === form.payType;
-        return (
-          <Pressable
-            key={pt}
-            onPress={() => patch({ payType: pt })}
-            accessibilityRole="button"
-            accessibilityState={{ selected: sel }}
-            style={[styles.chip, sel && styles.chipActive]}
-          >
-            <AppText size="sm" weight={sel ? 'bold' : 'semibold'} color={sel ? 'accent' : 'textSecondary'}>
-              {t(PAY_TYPE_LABEL_KEYS[pt])}
-            </AppText>
-          </Pressable>
-        );
-      })}
+    <View style={styles.chipHeader}>
+      <View style={styles.chipRow}>
+        {available.map((c) => {
+          const sel = form.categoryId === c.id;
+          return (
+            <Pressable
+              key={c.id}
+              onPress={() => patch({ categoryId: c.id })}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sel }}
+              style={[styles.chip, sel && styles.chipActive]}
+            >
+              <AppText size="xs" weight={sel ? 'bold' : 'semibold'} color={sel ? 'accent' : 'textSecondary'}>
+                {catName(c)}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+      {onAddCategory ? (
+        <Pressable onPress={onAddCategory} accessibilityRole="button" accessibilityLabel={t('addCategoryLabel')} style={styles.addChip}>
+          <AppIcon name="add" size={16} color="accent" />
+        </Pressable>
+      ) : null}
     </View>
   );
 

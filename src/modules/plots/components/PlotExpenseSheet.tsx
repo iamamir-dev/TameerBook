@@ -26,6 +26,8 @@ interface Props {
   accounts: AccountWithBalance[];
   /** Pass an expense to edit in place; omit/null to add a new one. */
   editing?: TransactionRow | null;
+  /** Jump to Settings → Plot to add a new expense category. */
+  onAddCategory?: () => void;
   onSaved: () => Promise<void>;
 }
 
@@ -43,7 +45,7 @@ interface Form {
  * the shared `MoneyEntrySheet`. The category chip offers ONLY the Settings-managed
  * "Plot" categories (via `useModuleCategories('plot')`).
  */
-export function PlotExpenseSheet({ visible, onClose, summary, accounts, editing, onSaved }: Props): React.JSX.Element {
+export function PlotExpenseSheet({ visible, onClose, summary, accounts, editing, onAddCategory, onSaved }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
@@ -114,13 +116,20 @@ export function PlotExpenseSheet({ visible, onClose, summary, accounts, editing,
 
   const header = (
     <>
-      <Pressable onPress={() => setCatSheet(true)} style={styles.catRow} accessibilityRole="button">
-        <AppIcon name="kharcha" size={18} color="primary" />
-        <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={category ? 'textPrimary' : 'textSecondary'}>
-          {category ? catName(category) : t('category')}
-        </AppText>
-        <AppIcon name="forward" size={18} color="textSecondary" />
-      </Pressable>
+      <View style={styles.catPickRow}>
+        <Pressable onPress={() => setCatSheet(true)} style={[styles.catRow, styles.flex]} accessibilityRole="button">
+          <AppIcon name="kharcha" size={18} color="primary" />
+          <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={category ? 'textPrimary' : 'textSecondary'}>
+            {category ? catName(category) : t('category')}
+          </AppText>
+          <AppIcon name="forward" size={18} color="textSecondary" />
+        </Pressable>
+        {onAddCategory ? (
+          <Pressable onPress={onAddCategory} accessibilityRole="button" accessibilityLabel={t('addCategoryLabel')} style={styles.addBtn}>
+            <AppIcon name="add" size={18} color="accent" />
+          </Pressable>
+        ) : null}
+      </View>
       <SelectSheet
         visible={catSheet}
         onClose={() => setCatSheet(false)}
