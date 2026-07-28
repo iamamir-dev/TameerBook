@@ -95,9 +95,11 @@ const HIT = 40;
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
-      backgroundColor: theme.colors.background,
+      backgroundColor: theme.colors.card,
       paddingHorizontal: theme.spacing.lg,
       paddingBottom: theme.spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
     },
     row: {
       flexDirection: 'row',
