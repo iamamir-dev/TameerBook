@@ -12,6 +12,13 @@ export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
 
+  // Disable FK enforcement for the whole run so migrations that rebuild a
+  // referenced table (SQLite's create-copy-drop-rename) don't trip the FK from
+  // a child table. Set OUTSIDE any transaction (it's a no-op inside one); the
+  // OFF state persists through each migration's transaction. Re-enabled after.
+  const hasPending = MIGRATIONS.some((m) => m.version > current);
+  if (hasPending) await db.execAsync('PRAGMA foreign_keys = OFF');
+
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
     // `PRAGMA journal_mode = WAL` (v7) is rejected inside a transaction, so
@@ -30,10 +37,13 @@ export async function runMigrations(db: SQLiteDatabase): Promise<void> {
         await db.execAsync('COMMIT');
       } catch (e) {
         await db.execAsync('ROLLBACK');
+        if (hasPending) await db.execAsync('PRAGMA foreign_keys = ON');
         throw e;
       }
     }
   }
+
+  if (hasPending) await db.execAsync('PRAGMA foreign_keys = ON');
 
   await seedDefaults(db);
 }

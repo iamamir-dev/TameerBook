@@ -297,6 +297,7 @@ export interface TranslationKeys {
   profitShare: string;
   lossShare: string;
   reportTitle: string;
+  plotReport: string;
   settledStatus: string;
   signaturesTitle: string;
   madeWith: string;

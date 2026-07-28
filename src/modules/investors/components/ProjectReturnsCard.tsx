@@ -12,7 +12,8 @@ import { makeStyles } from '../styled/ProjectReturnsCard.styles';
 
 interface ProjectReturnsCardProps {
   returns: InvestorProjectReturn[];
-  onOpenProject: (projectId: string) => void;
+  /** `isPlot` routes to the plot vs project screen. */
+  onOpenProject: (id: string, isPlot: boolean) => void;
 }
 
 /** Per-project invested + realized profit/loss for one investor. */
@@ -33,7 +34,7 @@ export function ProjectReturnsCard({ returns, onOpenProject }: ProjectReturnsCar
           <View key={r.projectId}>
             {i > 0 ? <View style={styles.divider} /> : null}
             <Pressable
-              onPress={() => onOpenProject(r.projectId)}
+              onPress={() => onOpenProject(r.projectId, r.isPlot)}
               accessibilityRole="button"
               accessibilityLabel={r.projectName}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}

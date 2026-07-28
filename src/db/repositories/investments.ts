@@ -7,17 +7,42 @@ import { addDocument } from './documents';
 import { FROM_BALANCE_NOTE } from './capital';
 import { assertProjectActive } from './guards';
 import { getInvestorAvailableBalance } from './investors';
+import { getPlot } from './plots';
 import { LimitExceededError } from './transactions';
 
 export interface InvestmentInput {
   investorId: string;
-  projectId: string;
+  /** The venture receiving the money — EXACTLY ONE of these. */
+  projectId?: string;
+  plotId?: string;
   amount: number;
   date: string;
   /** The account the investor's money landed in (real cash entering). */
   accountId: string;
   receiptUri?: string | null;
   createdBy?: string;
+}
+
+/** The venture a stake belongs to — a project OR a standalone plot flip. */
+type Venture = { col: 'project_id' | 'plot_id'; id: string };
+function resolveVenture(input: { projectId?: string; plotId?: string }): Venture {
+  if (input.projectId) return { col: 'project_id', id: input.projectId };
+  if (input.plotId) return { col: 'plot_id', id: input.plotId };
+  throw new Error('investment: a projectId or plotId is required');
+}
+
+/** A standalone plot can take investor capital only while it's an open flip. */
+async function assertPlotInvestable(plotId: string): Promise<void> {
+  const plot = await getPlot(plotId);
+  if (!plot) throw new Error(`investment: plot ${plotId} not found`);
+  if (plot.project_id) throw new Error('investment: plot belongs to a project — invest via the project');
+  if (plot.settled_at) throw new Error('investment: plot flip is already settled');
+  if (plot.status === 'SOLD') throw new Error('investment: plot is already sold');
+}
+
+async function assertVentureOpen(v: Venture): Promise<void> {
+  if (v.col === 'project_id') await assertProjectActive(v.id);
+  else await assertPlotInvestable(v.id);
 }
 
 /**
@@ -35,12 +60,13 @@ export interface InvestmentInput {
 export async function addInvestment(input: InvestmentInput): Promise<void> {
   const db = await getDatabase();
   if (input.amount <= 0) throw new Error('addInvestment: amount must be positive');
-  await assertProjectActive(input.projectId);
+  const venture = resolveVenture(input);
+  await assertVentureOpen(venture);
   const by = input.createdBy ?? DEFAULT_USER;
   const catId = await categoryIdByName('Investor Investment', 'INCOME', 'سرمایہ کاری', true);
   const existingPi = await db.getFirstAsync<{ id: string }>(
-    'SELECT id FROM project_investors WHERE project_id = ? AND investor_id = ? LIMIT 1',
-    input.projectId,
+    `SELECT id FROM project_investors WHERE ${venture.col} = ? AND investor_id = ? LIMIT 1`,
+    venture.id,
     input.investorId
   );
   const investor = await db.getFirstAsync<{ name: string }>(
@@ -57,12 +83,13 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
       piId = uuid();
       await tx.runAsync(
         `INSERT INTO project_investors
-           (id, created_at, created_by, project_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, NULL)`,
+           (id, created_at, created_by, project_id, plot_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, NULL)`,
         piId,
         createdAt,
         by,
-        input.projectId,
+        venture.col === 'project_id' ? venture.id : null,
+        venture.col === 'plot_id' ? venture.id : null,
         input.investorId,
         input.amount,
         createdAt
@@ -101,7 +128,9 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
       input.amount,
       input.date,
       input.accountId,
-      input.projectId,
+      // Investor capital is NOT tagged to the plot (unlike a project): it keeps
+      // the plot's deal ledger clean. The stake is linked via project_investors.
+      input.projectId ?? null,
       catId,
       investor?.name ?? null,
       input.investorId
@@ -133,7 +162,9 @@ export async function addInvestment(input: InvestmentInput): Promise<void> {
 
 export interface InvestFromBalanceInput {
   investorId: string;
-  projectId: string;
+  /** EXACTLY ONE of these — the venture the balance is deployed into. */
+  projectId?: string;
+  plotId?: string;
   amount: number;
   date: string;
   createdBy?: string;
@@ -151,7 +182,8 @@ export interface InvestFromBalanceInput {
 export async function investFromBalance(input: InvestFromBalanceInput): Promise<void> {
   const db = await getDatabase();
   if (input.amount <= 0) throw new Error('investFromBalance: amount must be positive');
-  await assertProjectActive(input.projectId);
+  const venture = resolveVenture(input);
+  await assertVentureOpen(venture);
 
   const available = await getInvestorAvailableBalance(input.investorId);
   if (input.amount > available + 0.001) {
@@ -160,8 +192,8 @@ export async function investFromBalance(input: InvestFromBalanceInput): Promise<
 
   const by = input.createdBy ?? DEFAULT_USER;
   const existingPi = await db.getFirstAsync<{ id: string }>(
-    'SELECT id FROM project_investors WHERE project_id = ? AND investor_id = ? LIMIT 1',
-    input.projectId,
+    `SELECT id FROM project_investors WHERE ${venture.col} = ? AND investor_id = ? LIMIT 1`,
+    venture.id,
     input.investorId
   );
   const createdAt = nowISO();
@@ -172,12 +204,13 @@ export async function investFromBalance(input: InvestFromBalanceInput): Promise<
       piId = uuid();
       await tx.runAsync(
         `INSERT INTO project_investors
-           (id, created_at, created_by, project_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
-         VALUES (?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, NULL)`,
+           (id, created_at, created_by, project_id, plot_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'ACTIVE', ?, NULL)`,
         piId,
         createdAt,
         by,
-        input.projectId,
+        venture.col === 'project_id' ? venture.id : null,
+        venture.col === 'plot_id' ? venture.id : null,
         input.investorId,
         input.amount,
         createdAt

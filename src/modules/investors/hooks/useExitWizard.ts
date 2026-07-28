@@ -149,16 +149,17 @@ export function useExitWizard(investorId: string) {
   };
 
   const confirm = async (onDone: () => void) => {
-    if (!selectedPart || !scenario || !leaverShare) return;
+    if (!selectedPart || !selectedPart.project_id || !scenario || !leaverShare) return;
     let buyerName = t('scOwnerBuy');
     if (scenario === 'NEW_INVESTOR') buyerName = newName;
     else if (scenario === 'PARTNER_BUY') buyerName = shares.find((s) => s.projectInvestorId === buyerPiId)?.name ?? t('buyer');
     else if (scenario === 'PARTIAL' || scenario === 'COMMITTED_UNPAID') buyerName = '';
     const amount = scenario === 'PARTIAL' ? portion : leaverShare.capital;
+    const projectId = selectedPart.project_id; // narrowed to string by the guard above
 
     const ok = await runSave(async () => {
       await exitInvestor({
-        projectId: selectedPart.project_id,
+        projectId,
         projectInvestorId: selectedPart.id,
         scenario,
         valuationAmount: valuation,

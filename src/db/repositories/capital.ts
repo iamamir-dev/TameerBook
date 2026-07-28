@@ -124,8 +124,18 @@ export interface ProjectCapitalSummary {
  * Each investor's paid-in capital and live ownership % (capital / total
  * capital) for a project. The percentages sum to 100 (when total > 0).
  */
-export async function getProjectCapitalSummary(
-  projectId: string
+export function getProjectCapitalSummary(projectId: string): Promise<ProjectCapitalSummary> {
+  return ventureCapitalSummary('project_id', projectId);
+}
+
+/** Same, for a standalone plot flip (v34 — investors on a plot venture). */
+export function getPlotCapitalSummary(plotId: string): Promise<ProjectCapitalSummary> {
+  return ventureCapitalSummary('plot_id', plotId);
+}
+
+async function ventureCapitalSummary(
+  col: 'project_id' | 'plot_id',
+  id: string
 ): Promise<ProjectCapitalSummary> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<{
@@ -139,9 +149,9 @@ export async function getProjectCapitalSummary(
      FROM project_investors pi
      LEFT JOIN investors inv ON inv.id = pi.investor_id
      LEFT JOIN capital_ledger cl ON cl.project_investor_id = pi.id
-     WHERE pi.project_id = ?
+     WHERE pi.${col} = ?
      GROUP BY pi.id`,
-    projectId
+    id
   );
 
   const totalCapital = rows.reduce((sum, r) => sum + r.capital, 0);
@@ -211,9 +221,12 @@ export async function listInvestorsWithCapital(): Promise<InvestorWithCapital[]>
 }
 
 export interface InvestorProjectReturn {
+  /** The venture id — a project or a standalone plot flip (see `isPlot`). */
   projectId: string;
   projectName: string;
   status: ProjectStatus;
+  /** True when this is a plot flip (navigate to PlotDetail, not ProjectDetail). */
+  isPlot: boolean;
   /** Gross capital put in (INITIAL + ADDITIONAL + TRANSFER_IN). */
   invested: number;
   /** Realized profit (PROFIT_PAYOUT − DONATION) − realized loss (LOSS_ADJ). 0 until settled. */
@@ -222,20 +235,25 @@ export interface InvestorProjectReturn {
 }
 
 /**
- * Per-project history for one investor (every project they're in, incl. settled):
- * how much they put in and their realized profit/loss once the project closed.
+ * Per-venture history for one investor (every project AND standalone plot flip
+ * they're in, incl. settled): how much they put in and their realized
+ * profit/loss once the venture closed.
  */
 export async function getInvestorProjectReturns(investorId: string): Promise<InvestorProjectReturn[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<{
-    project_id: string;
+    venture_id: string;
+    isPlot: number;
     projectName: string;
     status: ProjectStatus;
     pi_status: string;
     invested: number;
     profit: number;
   }>(
-    `SELECT pi.project_id, COALESCE(pr.name, '') AS projectName, pr.status,
+    `SELECT COALESCE(pi.project_id, pi.plot_id) AS venture_id,
+        CASE WHEN pi.plot_id IS NOT NULL THEN 1 ELSE 0 END AS isPlot,
+        COALESCE(pr.name, pl.name, '') AS projectName,
+        COALESCE(pr.status, CASE WHEN pl.settled_at IS NOT NULL THEN 'COMPLETED' ELSE 'ACTIVE' END) AS status,
         pi.status AS pi_status,
         COALESCE(SUM(CASE cl.entry_type
           WHEN 'INITIAL' THEN cl.amount
@@ -248,17 +266,19 @@ export async function getInvestorProjectReturns(investorId: string): Promise<Inv
           WHEN 'LOSS_ADJ' THEN -cl.amount
           ELSE 0 END), 0) AS profit
      FROM project_investors pi
-     JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN plots pl ON pl.id = pi.plot_id
      LEFT JOIN capital_ledger cl ON cl.project_investor_id = pi.id
      WHERE pi.investor_id = ?
      GROUP BY pi.id
-     ORDER BY pr.created_at DESC`,
+     ORDER BY COALESCE(pr.created_at, pl.created_at) DESC`,
     investorId
   );
   return rows.map((r) => ({
-    projectId: r.project_id,
+    projectId: r.venture_id,
     projectName: r.projectName,
     status: r.status,
+    isPlot: r.isPlot === 1,
     invested: r.invested,
     profitOrLoss: r.profit,
     settled: r.pi_status === 'SETTLED',
@@ -300,10 +320,11 @@ export async function listInvestorActivity(investorId: string): Promise<Investor
   );
 
   const caps = await db.getAllAsync<CapitalLedgerRow & { projectName: string }>(
-    `SELECT cl.*, COALESCE(pr.name, '') AS projectName
+    `SELECT cl.*, COALESCE(pr.name, pl.name, '') AS projectName
      FROM capital_ledger cl
      JOIN project_investors pi ON pi.id = cl.project_investor_id
-     JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN plots pl ON pl.id = pi.plot_id
      WHERE pi.investor_id = ?
        AND (cl.entry_type IN (${ACCOUNTING_TYPES})
             OR (cl.entry_type IN ('INITIAL','ADDITIONAL') AND cl.note = '${FROM_BALANCE_NOTE}'))`,

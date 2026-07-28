@@ -270,6 +270,7 @@ export const en: TranslationKeys = {
   profitShare: 'Profit Share',
   lossShare: 'Loss Share',
   reportTitle: 'Settlement Report',
+  plotReport: 'Plot Report',
   settledStatus: 'Project settled',
   signaturesTitle: 'Signatures',
   madeWith: 'Made with TameerBook',

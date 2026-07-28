@@ -33,6 +33,7 @@ import { pickDocumentImage } from '@/utils/photo';
 
 import { PlotCategoryBreakdown } from '../components/PlotCategoryBreakdown';
 import { PlotDocsGrid } from '../components/PlotDocsGrid';
+import { PlotInvestorsSection } from '../components/PlotInvestorsSection';
 import { PlotExpenseSheet } from '../components/PlotExpenseSheet';
 import { PlotHeroCard } from '../components/PlotHeroCard';
 import { PlotSaleCard } from '../components/PlotSaleCard';
@@ -40,6 +41,7 @@ import { PlotSellerCard } from '../components/PlotSellerCard';
 import { SellerPaymentSheet } from '../components/SellerPaymentSheet';
 import { SellPlotSheet, type SellPlotSheetMode } from '../components/SellPlotSheet';
 import { usePlotDetail } from '../hooks/usePlots';
+import { usePlotReport } from '../hooks/usePlotReport';
 import { makeStyles } from '../styled/PlotDetailScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -50,8 +52,9 @@ interface Sheets {
   exp: boolean;
   sell: SellPlotSheetMode | null;
   actions: boolean;
+  menu: boolean;
 }
-const CLOSED: Sheets = { pay: false, exp: false, sell: null, actions: false };
+const CLOSED: Sheets = { pay: false, exp: false, sell: null, actions: false, menu: false };
 
 /**
  * The core plot page — the owner's notebook for one plot: cost summary, seller
@@ -70,6 +73,7 @@ export function PlotDetailScreen(): React.JSX.Element {
   const { summary, linkedProject, accounts, categories, docs, txns } = data;
   const { run: runSave } = useSaveAction();
   const catName = useCategoryLabel();
+  const report = usePlotReport({ summary, txns, categories, linkedProject });
 
   const [sheets, setSheets] = useState<Sheets>(CLOSED);
   const patch = (p: Partial<Sheets>) => setSheets((s) => ({ ...s, ...p }));
@@ -206,11 +210,7 @@ export function PlotDetailScreen(): React.JSX.Element {
       <AppHeader
         title={plot.name}
         onBack={() => navigation.goBack()}
-        rightAction={
-          readOnly
-            ? undefined
-            : { icon: 'edit', onPress: () => navigation.navigate('EditPlot', { plotId: plot.id }), accessibilityLabel: t('editPlot') }
-        }
+        rightAction={{ icon: 'more', onPress: () => patch({ menu: true }), accessibilityLabel: t('actions') }}
       />
 
       <ScrollView
@@ -230,6 +230,10 @@ export function PlotDetailScreen(): React.JSX.Element {
         ) : null}
 
         <PlotCategoryBreakdown rows={breakdownRows} />
+
+        {/* Musharakah investors — standalone flips only (project plots settle
+            with the project). */}
+        {!plot.project_id ? <PlotInvestorsSection plotId={plot.id} locked={readOnly} onChanged={reload} /> : null}
 
         {/* Ledger — the "+" opens the actions drawer. */}
         <View style={styles.sectionHeader}>
@@ -254,6 +258,19 @@ export function PlotDetailScreen(): React.JSX.Element {
         onClose={() => patch({ actions: false })}
         title={plot.name}
         actions={drawerActions}
+      />
+
+      <ActionsDrawer
+        visible={sheets.menu}
+        onClose={() => patch({ menu: false })}
+        title={plot.name}
+        actions={[
+          ...(!readOnly
+            ? [{ icon: 'edit' as const, label: t('editPlot'), onPress: () => { patch({ menu: false }); navigation.navigate('EditPlot', { plotId: plot.id }); } }]
+            : []),
+          { icon: 'print' as const, label: t('printLabel'), onPress: () => { patch({ menu: false }); report.preview(); } },
+          { icon: 'share' as const, label: t('shareLabel'), onPress: () => { patch({ menu: false }); report.share(); } },
+        ]}
       />
 
       <SellerPaymentSheet

@@ -422,6 +422,15 @@ export async function listProjectInvestors(projectId: string): Promise<ProjectIn
   );
 }
 
+/** Participations in a standalone plot flip (v34). */
+export async function listPlotInvestors(plotId: string): Promise<ProjectInvestorRow[]> {
+  const db = await getDatabase();
+  return db.getAllAsync<ProjectInvestorRow>(
+    'SELECT * FROM project_investors WHERE plot_id = ? ORDER BY created_at',
+    plotId
+  );
+}
+
 /** The participation row linking an investor to a project, or null. */
 export async function getProjectInvestor(
   projectId: string,
@@ -456,16 +465,25 @@ export async function setProjectInvestorProfitPct(id: string, profitPct: number)
 }
 
 export interface InvestorParticipation extends ProjectInvestorRow {
+  /** The venture name — a project or a standalone plot flip. */
   projectName: string;
+  /** 1 when this participation is in a plot flip (not a project). */
+  isPlot: number;
 }
 
-/** An investor's participations (not yet settled), with project names. */
+/**
+ * An investor's active participations, with the VENTURE name (a project or a
+ * standalone plot flip). `projectName` holds whichever it is, so existing
+ * consumers keep working; plot ventures also carry `isPlot` for labelling.
+ */
 export async function listInvestorParticipations(investorId: string): Promise<InvestorParticipation[]> {
   const db = await getDatabase();
   return db.getAllAsync<InvestorParticipation>(
-    `SELECT pi.*, COALESCE(pr.name, '') AS projectName
+    `SELECT pi.*, COALESCE(pr.name, pl.name, '') AS projectName,
+            CASE WHEN pi.plot_id IS NOT NULL THEN 1 ELSE 0 END AS isPlot
      FROM project_investors pi
-     JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN projects pr ON pr.id = pi.project_id
+     LEFT JOIN plots pl ON pl.id = pi.plot_id
      WHERE pi.investor_id = ? AND pi.status != 'SETTLED'
      ORDER BY pi.created_at DESC`,
     investorId

@@ -213,6 +213,12 @@ export interface PlotRow extends Base {
   buyer_name: string | null;
   /** User-facing display status (Settings → Statuses); null = none. */
   stage_id: string | null;
+  /** Standalone-flip settlement (mirrors projects): rule kind chosen at settle. */
+  settle_rule: string | null;
+  /** JSON of the rule's inputs + donation % used (for the receipt/summary). */
+  settle_params: string | null;
+  /** Set once the standalone flip is settled — the double-settle guard. */
+  settled_at: string | null;
 }
 
 export interface ProjectRow extends Base {
@@ -317,7 +323,10 @@ export interface InvestorRow extends Base {
 }
 
 export interface ProjectInvestorRow extends Base {
-  project_id: string;
+  /** Exactly one of project_id / plot_id is set — the venture this stake is in. */
+  project_id: string | null;
+  /** Set for a standalone plot-flip participation (v34). */
+  plot_id: string | null;
   investor_id: string;
   committed_amount: number;
   profit_pct: number | null;
@@ -1208,6 +1217,47 @@ SELECT 'cat-bp-full', datetime('now'), 'local', (SELECT id FROM categories WHERE
 WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Buyer Payment') AND NOT EXISTS (SELECT 1 FROM categories WHERE id='cat-bp-full');
 `;
 
+/**
+ * v34 — make investor participation polymorphic over a "venture": a
+ * `project_investors` row now belongs to EITHER a project OR a standalone plot
+ * flip (exactly one). Rebuilds the table to relax `project_id NOT NULL` and add
+ * `plot_id`; `capital_ledger` (keyed by project_investor_id) is untouched, so an
+ * investor's capital ledger spans projects AND plot flips as one identity.
+ * Also gives plots the settle bookkeeping columns projects already have.
+ * (Runs with FK enforcement disabled by the migration runner — safe rebuild.)
+ */
+export const SCHEMA_V34_VENTURE_INVESTORS = `
+CREATE TABLE project_investors_new (
+  id               TEXT PRIMARY KEY NOT NULL,
+  created_at       TEXT NOT NULL,
+  created_by       TEXT NOT NULL DEFAULT 'local',
+  project_id       TEXT,
+  plot_id          TEXT,
+  investor_id      TEXT NOT NULL,
+  committed_amount REAL NOT NULL DEFAULT 0,
+  profit_pct       REAL,
+  status           TEXT NOT NULL DEFAULT 'ACTIVE',
+  joined_at        TEXT,
+  exited_at        TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects (id),
+  FOREIGN KEY (plot_id) REFERENCES plots (id),
+  FOREIGN KEY (investor_id) REFERENCES investors (id),
+  CHECK ((project_id IS NULL) + (plot_id IS NULL) = 1)
+);
+INSERT INTO project_investors_new
+    (id, created_at, created_by, project_id, plot_id, investor_id, committed_amount, profit_pct, status, joined_at, exited_at)
+  SELECT id, created_at, created_by, project_id, NULL, investor_id, committed_amount, profit_pct, status, joined_at, exited_at
+  FROM project_investors;
+DROP TABLE project_investors;
+ALTER TABLE project_investors_new RENAME TO project_investors;
+CREATE INDEX IF NOT EXISTS idx_pi_project ON project_investors (project_id);
+CREATE INDEX IF NOT EXISTS idx_pi_plot ON project_investors (plot_id);
+
+ALTER TABLE plots ADD COLUMN settle_rule TEXT;
+ALTER TABLE plots ADD COLUMN settle_params TEXT;
+ALTER TABLE plots ADD COLUMN settled_at TEXT;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1238,6 +1288,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 31, sql: SCHEMA_V30_SELLER_PAYMENT },
   { version: 32, sql: SCHEMA_V32_DROP_LABOR_SALE_SECTIONS },
   { version: 33, sql: SCHEMA_V33_BUYER_PAYMENT },
+  { version: 34, sql: SCHEMA_V34_VENTURE_INVESTORS },
 ];
 
 /* -------------------------------------------------------------------------- */

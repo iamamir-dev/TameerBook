@@ -72,6 +72,8 @@ import {
   addInvestment,
   addInvestorPayment,
   getInvestorSummary,
+  getPlotSettlementSummary,
+  settlePlot,
   getUdhaar,
   createCompany,
   getActiveCompanyId,
@@ -147,6 +149,14 @@ class Cleanup {
       await db.runAsync('DELETE FROM projects WHERE id = ?', id);
     }
     for (const id of this.plots) {
+      // Plot-flip investors (v34): clear their capital ledger + participations
+      // before the plot, so the plot_id FK doesn't block the delete.
+      await db.runAsync(
+        `DELETE FROM capital_ledger WHERE project_investor_id IN
+           (SELECT id FROM project_investors WHERE plot_id = ?)`,
+        id
+      );
+      await db.runAsync('DELETE FROM project_investors WHERE plot_id = ?', id);
       await db.runAsync('DELETE FROM transactions WHERE plot_id = ?', id);
       await db.runAsync('DELETE FROM plots WHERE id = ?', id);
     }
@@ -329,6 +339,54 @@ async function testPlotEditDelete(): Promise<TestResult> {
     checks.push(['receipt deleted → OWNED / received 0', (await getPlot(plot.id))?.status === 'OWNED' && near(s.saleReceived, 0)]);
 
     return report('T-PLOT-ED edit/delete in place (+ un-sell)', checks);
+  } finally {
+    await c.run();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  T-PLOT-INV  investors + settlement on a standalone plot flip (v34)        */
+/* -------------------------------------------------------------------------- */
+async function testPlotInvestorsSettlement(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST INV-Acc', type: 'CASH', openingBalance: 5000 });
+    c.accounts.push(acc.id);
+    const inv = await addInvestor({ name: 'DBTEST Flip-Investor', committedAmount: 0 });
+    c.investors.push(inv.id);
+    const plot = await createPlot({ name: 'DBTEST Flip', dealPrice: 1000 });
+    c.plots.push(plot.id);
+    const checks: Check[] = [];
+
+    // Investor stakes 600; owner will cover the residual cost.
+    await addInvestment({ investorId: inv.id, plotId: plot.id, amount: 600, date: D, accountId: acc.id });
+    // Buy the plot (pay the seller 1000) and flip it for 1500.
+    await addPlotPayment({ plotId: plot.id, payType: 'FINAL', amount: 1000, date: D, accountId: acc.id });
+    await setPlotSale({ plotId: plot.id, salePrice: 1500, buyerName: 'DBTEST Buyer' });
+    await addPlotSaleReceipt({ plotId: plot.id, amount: 1500, date: D, accountId: acc.id, payType: 'FINAL' });
+
+    let s = await getPlotSettlementSummary(plot.id);
+    // cost basis 1000, revenue 1500 → net +500; investor 600 / owner 400 = 60/40.
+    checks.push(['net profit 500', near(s.net, 500) && s.isProfit]);
+    checks.push(['investor invested 600 / owner 400', near(s.investorsInvested, 600) && near(s.owner.invested, 400)]);
+    const invRow = s.investors.find((r) => r.investorId === inv.id)!;
+    checks.push(['ownership 60% / 40%', near(invRow.ownershipPct, 60, 0.5) && near(s.owner.ownershipPct, 40, 0.5)]);
+    checks.push(['by-ownership profit 300 to investor', near(invRow.profitOrLoss, 300, 1)]);
+
+    // Settle by ownership (no charity), paying from the sale account.
+    await settlePlot(plot.id, { kind: 'ownership' }, { payoutAccountId: acc.id, donationPct: 0 });
+    const settled = await getPlot(plot.id);
+    checks.push(['plot marked SOLD + settled', settled?.status === 'SOLD' && !!settled?.settled_at]);
+
+    // Investor realized ~300 profit; capital returned (staked back to 0).
+    const summary = await getInvestorSummary(inv.id);
+    checks.push(['investor realized profit 300', near(summary.profit, 300, 1)]);
+    checks.push(['investor capital returned (staked 0)', near(summary.staked, 0, 1)]);
+
+    // Double-settle is blocked.
+    checks.push(['second settle blocked', await expectThrow(() => settlePlot(plot.id, { kind: 'ownership' }, { payoutAccountId: acc.id }), 'PROJECT_CLOSED')]);
+
+    return report('T-PLOT-INV plot investors + settlement', checks);
   } finally {
     await c.run();
   }
@@ -1209,6 +1267,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testAccountBalances,
     testPlotMath,
     testPlotEditDelete,
+    testPlotInvestorsSettlement,
     testLaborAccrual,
     testSaleAndProjectCost,
     testSettlementProfitWithDonation,

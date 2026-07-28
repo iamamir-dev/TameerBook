@@ -136,7 +136,9 @@ export function InvestorProfileScreen(): React.JSX.Element {
 
         <ProjectReturnsCard
           returns={returns}
-          onOpenProject={(projectId) => navigation.navigate('ProjectDetail', { projectId })}
+          onOpenProject={(id, isPlot) =>
+            isPlot ? navigation.navigate('PlotDetail', { plotId: id }) : navigation.navigate('ProjectDetail', { projectId: id })
+          }
         />
 
         <View

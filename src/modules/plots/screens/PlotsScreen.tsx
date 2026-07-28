@@ -11,6 +11,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 
 import { PlotCard } from '../components/PlotCard';
+import { PlotCardSkeleton } from '../components/PlotCardSkeleton';
 import { usePlotsList } from '../hooks/usePlots';
 import { makeStyles } from '../styled/PlotsScreen.styles';
 
@@ -24,7 +25,7 @@ export function PlotsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const { data } = usePlotsList();
+  const { data, loaded } = usePlotsList();
   const { plots } = data;
   const [query, setQuery] = useState('');
 
@@ -41,7 +42,16 @@ export function PlotsScreen(): React.JSX.Element {
         rightAction={{ icon: 'add', onPress: () => navigation.navigate('NewPlot'), accessibilityLabel: t('newPlot') }}
       />
 
-      {plots.length === 0 ? (
+      {!loaded ? (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_BAR_CLEARANCE }]}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <PlotCardSkeleton key={i} />
+          ))}
+        </ScrollView>
+      ) : plots.length === 0 ? (
         <EmptyState
           bottomInset={insets.bottom + FLOATING_BAR_CLEARANCE}
           icon="plot"

@@ -273,6 +273,7 @@ export const ur: TranslationKeys = {
   profitShare: 'منافع کا حصہ',
   lossShare: 'نقصان کا حصہ',
   reportTitle: 'حساب رپورٹ',
+  plotReport: 'پلاٹ رپورٹ',
   settledStatus: 'پراجیکٹ کا حساب مکمل',
   signaturesTitle: 'دستخط',
   madeWith: 'TameerBook سے تیار کردہ',
