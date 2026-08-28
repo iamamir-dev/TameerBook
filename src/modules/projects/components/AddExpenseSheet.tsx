@@ -16,7 +16,7 @@ import {
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
-import { addTransaction, type AccountWithBalance, type CategoryRow } from '@/db';
+import { addTransaction, updateTransaction, type AccountWithBalance, type CategoryRow, type TransactionRow } from '@/db';
 import { useCategoryLabel, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -31,6 +31,8 @@ interface AddExpenseSheetProps {
   /** Construction-phase expense categories (pre-filtered by the screen). */
   categories: CategoryRow[];
   accounts: AccountWithBalance[];
+  /** Pass an expense to edit in place; omit/null to add a new one. */
+  editing?: TransactionRow | null;
   onSaved: () => Promise<void>;
 }
 
@@ -44,6 +46,7 @@ export function AddExpenseSheet({
   projectId,
   categories,
   accounts,
+  editing,
   onSaved,
 }: AddExpenseSheetProps): React.JSX.Element {
   const theme = useTheme();
@@ -65,12 +68,13 @@ export function AddExpenseSheet({
   accountsRef.current = accounts;
   useEffect(() => {
     if (!visible) return;
-    setAmount(0);
-    setCategoryId(null);
-    setQty(0);
-    setNote('');
-    setDate(todayISO().slice(0, 10));
-    setAccountId((prev) => prev ?? accountsRef.current[0]?.id ?? null);
+    setAmount(editing?.amount ?? 0);
+    setCategoryId(editing?.category_id ?? null);
+    setQty(editing?.qty ?? 0);
+    setNote(editing?.description ?? '');
+    setDate(editing?.date ?? todayISO().slice(0, 10));
+    setAccountId((prev) => editing?.account_id ?? prev ?? accountsRef.current[0]?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const categoryOptions: SelectOption[] = useMemo(
@@ -85,6 +89,10 @@ export function AddExpenseSheet({
 
   const selectedCategory = categories.find((c) => c.id === categoryId) ?? null;
   const selectedAccount = accounts.find((a) => a.id === accountId) ?? null;
+  const ownAmount = editing?.amount ?? 0;
+  const accountCap = selectedAccount
+    ? selectedAccount.balance + (editing && editing.account_id === selectedAccount.id ? ownAmount : 0)
+    : 0;
   const unit: UnitDef | null = selectedCategory?.default_unit
     ? { primary: selectedCategory.default_unit, secondary: selectedCategory.secondary_unit, factor: selectedCategory.secondary_factor }
     : null;
@@ -92,17 +100,28 @@ export function AddExpenseSheet({
   const onSave = (): void => {
     if (amount <= 0 || !accountId || !categoryId) return;
     void run(async () => {
-      await addTransaction({
-        direction: 'OUT',
-        amount,
-        date,
-        accountId,
-        projectId,
-        phase: 'CONSTRUCTION',
-        categoryId,
-        qty: qty > 0 ? qty : null,
-        description: note || null,
-      });
+      if (editing) {
+        await updateTransaction(editing.id, {
+          amount,
+          date,
+          accountId,
+          categoryId,
+          qty: qty > 0 ? qty : null,
+          description: note || null,
+        });
+      } else {
+        await addTransaction({
+          direction: 'OUT',
+          amount,
+          date,
+          accountId,
+          projectId,
+          phase: 'CONSTRUCTION',
+          categoryId,
+          qty: qty > 0 ? qty : null,
+          description: note || null,
+        });
+      }
       onClose();
       await onSaved();
     });
@@ -112,14 +131,14 @@ export function AddExpenseSheet({
     <AppSheet
       visible={visible}
       onClose={onClose}
-      title={t('addExpense')}
+      title={editing ? t('editExpense') : t('addExpense')}
       footer={
         <AppButton
           label={t('save')}
           icon="check"
           onPress={onSave}
           loading={saving}
-          disabled={amount <= 0 || !accountId || !categoryId || (!!selectedAccount && amount > selectedAccount.balance)}
+          disabled={amount <= 0 || !accountId || !categoryId || (!!selectedAccount && amount > accountCap)}
         />
       }
     >
@@ -141,7 +160,7 @@ export function AddExpenseSheet({
         onChange={setAmount}
         floating
         surface={theme.colors.card}
-        error={amount > 0 && !!selectedAccount && amount > selectedAccount.balance ? t('insufficientFunds') : null}
+        error={amount > 0 && !!selectedAccount && amount > accountCap ? t('insufficientFunds') : null}
       />
 
       <AccountPickerRow accounts={accounts} selectedId={accountId} onSelect={setAccountId} />

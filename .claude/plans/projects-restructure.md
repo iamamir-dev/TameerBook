@@ -44,8 +44,9 @@ one pass. Shared foundations first.
 - [x] **On-hold / Reactivate / Cancel** lifecycle (repo guards + ⋯ menu)
 
 ## Phase 4 — Construction + Sale phases
-- [ ] ConstructionDetail: `useConstructionDetail` + styled; worker card
-      component; edit/delete-in-place for expenses
+- [x] ConstructionDetail: `useConstructionDetail` + styled; WorkerCard
+      component; edit/delete-in-place for plain expenses (AddExpenseSheet edit
+      mode incl. qty via TransactionPatch.qty; linked rows stay module-owned)
 - [x] SaleDetail: `useSaleDetail` + styled; SaleReceiptSheet / SaleCostSheet /
       EditDealSheet on the shared kit (3 hand-rolled Modals gone);
       edit/delete-in-place for receipts + costs (repo: updateSaleReceipt /

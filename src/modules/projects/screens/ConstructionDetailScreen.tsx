@@ -1,13 +1,9 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import dayjs from 'dayjs';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { StageBadge } from '@/components/StageBadge';
-import { AddExpenseSheet } from '../components/AddExpenseSheet';
-import { CategoryBars } from '../components/CategoryBars';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { AddWorkerSheet, WorkerSheet } from '@/modules/labor';
 import {
@@ -20,29 +16,23 @@ import {
   type LedgerRow,
 } from '@/components/ui';
 import {
-  getConstructionSummary,
-  getProject,
-  listAccountsWithBalance,
-  listCategories,
-  listLaborers,
-  listProjectLaborers,
-  listProjectPhaseTransactions,
   markAllPresentForProject,
-  type AccountWithBalance,
-  type CategoryRow,
-  type ConstructionSummary,
-  type LaborerRow,
+  voidTransaction,
   type ProjectLaborerSummary,
-  type ProjectRow,
   type TransactionRow,
 } from '@/db';
-import { useCategoryLabel, useFocusReload, useModuleCategories, useSaveAction, useToast } from '@/hooks';
+import { useCategoryLabel, useModuleCategories, useSaveAction, useToast } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
 import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
+
+import { AddExpenseSheet } from '../components/AddExpenseSheet';
+import { CategoryBars } from '../components/CategoryBars';
+import { WorkerCard } from '../components/WorkerCard';
+import { useConstructionDetail } from '../hooks/useConstructionDetail';
+import { makeStyles } from '../styled/ConstructionDetailScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'ConstructionDetail'>;
@@ -50,8 +40,8 @@ type Route = RouteProp<RootStackParamList, 'ConstructionDetail'>;
 /**
  * Construction-phase home for a project: the true build cost (cash spend +
  * accrued labor), category breakdown, quick expense entry, the labor khata
- * (attendance + wage balances + payments), and the phase ledger. Milestone
- * progress lives on Project Detail (UC-11).
+ * (attendance + wage balances + payments), and the phase ledger — plain
+ * expenses editable in place. Thin orchestrator over useConstructionDetail.
  */
 export function ConstructionDetailScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -61,42 +51,20 @@ export function ConstructionDetailScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  const [summary, setSummary] = useState<ConstructionSummary | null>(null);
-  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
-  const [project, setProject] = useState<ProjectRow | null>(null);
-  const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [workers, setWorkers] = useState<ProjectLaborerSummary[]>([]);
-  const [allLaborers, setAllLaborers] = useState<LaborerRow[]>([]);
-  const [txns, setTxns] = useState<TransactionRow[]>([]);
+  const { data, reload } = useConstructionDetail(projectId);
+  const { summary, project, accounts, workers, allLaborers, txns } = data;
+  const { saving, run: runSave } = useSaveAction();
+  const { toast, showToast } = useToast();
+  const catLabel = useCategoryLabel();
+  // Construction expense categories come straight from Settings (Materials
+  // section) via the scope hook — one source of truth, no inline filtering.
+  const { data: constructionCats } = useModuleCategories('construction');
 
-  // Sheets
+  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [editingTxn, setEditingTxn] = useState<TransactionRow | null>(null);
   const [worker, setWorker] = useState<ProjectLaborerSummary | null>(null);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
-
-  const loadData = useCallback(async () => {
-    const [sum, proj, cats, accs, wkrs, tx, labs] = await Promise.all([
-      getConstructionSummary(projectId, dayjs().format('YYYY-MM')),
-      getProject(projectId),
-      listCategories(),
-      listAccountsWithBalance(),
-      listProjectLaborers(projectId),
-      listProjectPhaseTransactions(projectId, 'CONSTRUCTION'),
-      listLaborers(),
-    ]);
-    setSummary(sum);
-    setProject(proj);
-    setCategories(cats);
-    setAccounts(accs);
-    setWorkers(wkrs);
-    setTxns(tx);
-    setAllLaborers(labs);
-  }, [projectId]);
-
-  const { reload } = useFocusReload(loadData);
-  const { run: runSave } = useSaveAction();
-  const { toast, showToast } = useToast();
 
   // A completed project's construction phase is read-only history.
   const completed = project?.status === 'COMPLETED';
@@ -110,27 +78,42 @@ export function ConstructionDetailScreen(): React.JSX.Element {
     });
   };
 
-  const catLabel = useCategoryLabel();
-  const catNameById = useCallback(
-    (id: string | null): string => {
-      if (!id) return '';
-      const c = categories.find((x) => x.id === id);
-      return c ? catLabel(c) : '';
-    },
-    [categories, catLabel]
-  );
+  const catById = useMemo(() => new Map(constructionCats.map((c) => [c.id, c])), [constructionCats]);
+  const catNameById = (id: string | null): string => {
+    const c = id ? catById.get(id) : undefined;
+    return c ? catLabel(c) : '';
+  };
 
-  // Construction expense categories come straight from Settings via the scope
-  // hook (the Materials section + standalone leaves like Misc) — one source of
-  // truth, no inline filtering. Labor is handled by the Labor module.
-  const { data: constructionCats } = useModuleCategories('construction');
+  /** Plain expenses edit here; rows linked to labor / POs / transfers are
+   *  corrected in their own module, so they get no Edit/Delete footer. */
+  const isPlainExpense = (txn: TransactionRow): boolean =>
+    txn.direction === 'OUT' && !txn.labor_id && !txn.booking_id && !txn.transfer_id && !txn.udhaar_id;
+
+  const onEditTxn = (txn: TransactionRow) => {
+    setTxnDetail(null);
+    setEditingTxn(txn);
+  };
+
+  const onDeleteTxn = (txn: TransactionRow) => {
+    Alert.alert(t('delete'), t('deleteConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: () =>
+          void runSave(async () => {
+            await voidTransaction(txn.id);
+            setTxnDetail(null);
+            await reload();
+          }),
+      },
+    ]);
+  };
 
   const availableLaborers = useMemo(
     () => allLaborers.filter((l) => !workers.some((w) => w.laborer.id === l.id)),
     [allLaborers, workers]
   );
-
-  /* -------------------------------- ledger -------------------------------- */
 
   const ledgerRows: LedgerRow[] = useMemo(
     () =>
@@ -139,11 +122,12 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         title: txn.description || catNameById(txn.category_id) || txn.counterparty_name || t('kharcha'),
         date: txn.date,
         amount: txn.amount,
-        direction: txn.direction === 'IN' ? 'in' : 'out',
+        direction: txn.direction === 'IN' ? ('in' as const) : ('out' as const),
         typeLabel: catNameById(txn.category_id) || undefined,
         onPress: () => setTxnDetail(txn),
       })),
-    [txns, catNameById, t]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [txns, catById, t]
   );
 
   return (
@@ -154,7 +138,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + theme.spacing.xxxl }]}
       >
-        {/* Hero  the true build cost (cash spend + accrued labor) */}
+        {/* Hero — the true build cost (cash spend + accrued labor) */}
         <AppCard style={styles.hero}>
           <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
             {t('constructionCost')}
@@ -163,19 +147,17 @@ export function ConstructionDetailScreen(): React.JSX.Element {
             {formatRupees(summary?.total ?? 0)}
           </AppText>
           <AppText size="sm" weight="semibold" color="textSecondary">
-            {t('thisMonth')}: {formatRupees(summary?.thisMonth ?? 0)}
+            {`${t('thisMonth')}: ${formatRupees(summary?.thisMonth ?? 0)}`}
           </AppText>
         </AppCard>
 
-        {/* Top categories */}
         <CategoryBars byCategory={summary?.byCategory ?? []} laborAccrued={summary?.laborAccrued ?? 0} />
 
         {!completed ? (
           <AppButton label={t('addConstructionExpense')} icon="kharcha" onPress={() => setExpenseOpen(true)} />
         ) : null}
 
-        {/* Labor on THIS project only. The worker's full khata (all projects
-            + company history) lives in the company-level Labor section. */}
+        {/* Labor on THIS project only — the full khata lives in Labor. */}
         <View style={styles.sectionHeader}>
           <AppText size="lg" weight="bold">
             {t('laborTitle')}
@@ -206,70 +188,7 @@ export function ConstructionDetailScreen(): React.JSX.Element {
           </AppCard>
         ) : (
           workers.map((w) => (
-            // On a completed project the card is informational only — the
-            // pay/attendance sheet never opens.
-            <AppCard key={w.projectLaborer.id} compact onPress={completed ? undefined : () => setWorker(w)}>
-              {/* Header — name + wage on the left, today's status on the right. */}
-              <View style={styles.workerTop}>
-                <View style={styles.flex}>
-                  <AppText size="md" weight="bold" numberOfLines={1}>
-                    {w.laborer.name}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary">
-                    {`${t('dailyWage')}: ${formatRupees(w.projectLaborer.daily_wage)} · ${w.balance.daysFull + w.balance.daysHalf} ${t('daysLabel')}`}
-                  </AppText>
-                </View>
-                {w.todayStatus ? (
-                  <StageBadge
-                    tone={w.todayStatus === 'FULL' ? 'success' : w.todayStatus === 'HALF' ? 'gold' : 'danger'}
-                    label={t(
-                      w.todayStatus === 'FULL' ? 'attFull' : w.todayStatus === 'HALF' ? 'attHalf' : 'attAbsent'
-                    )}
-                  />
-                ) : (
-                  <AppText size="xs" weight="semibold" color="textSecondary">
-                    {t('notMarkedToday')}
-                  </AppText>
-                )}
-              </View>
-
-              {/* One stretched math line — earned | taken | balance. */}
-              <View style={styles.workerColumns}>
-                <View style={styles.workerCol}>
-                  <AppText size="sm" weight="semibold" tabular numberOfLines={1} adjustsFontSizeToFit>
-                    {formatRupees(w.balance.accrued)}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                    {t('earnedLabel')}
-                  </AppText>
-                </View>
-                <View style={styles.workerColDivider} />
-                <View style={styles.workerCol}>
-                  <AppText size="sm" weight="semibold" color="danger" tabular numberOfLines={1} adjustsFontSizeToFit>
-                    {formatRupees(w.balance.paid)}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                    {t('takenLabel')}
-                  </AppText>
-                </View>
-                <View style={styles.workerColDivider} />
-                <View style={styles.workerCol}>
-                  <AppText
-                    size="sm"
-                    weight="bold"
-                    color={w.balance.balance > 0 ? 'danger' : 'success'}
-                    tabular
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    {formatRupees(w.balance.balance)}
-                  </AppText>
-                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                    {t('wageBalance')}
-                  </AppText>
-                </View>
-              </View>
-            </AppCard>
+            <WorkerCard key={w.projectLaborer.id} worker={w} onPress={completed ? undefined : () => setWorker(w)} />
           ))
         )}
 
@@ -284,13 +203,16 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         </AppCard>
       </ScrollView>
 
-      {/* ------------------------------- sheets -------------------------------- */}
       <AddExpenseSheet
-        visible={expenseOpen}
-        onClose={() => setExpenseOpen(false)}
+        visible={expenseOpen || !!editingTxn}
+        onClose={() => {
+          setExpenseOpen(false);
+          setEditingTxn(null);
+        }}
         projectId={projectId}
         categories={constructionCats}
         accounts={accounts}
+        editing={editingTxn}
         onSaved={reload}
       />
       <WorkerSheet worker={worker} onClose={() => setWorker(null)} accounts={accounts} onSaved={reload} />
@@ -301,39 +223,24 @@ export function ConstructionDetailScreen(): React.JSX.Element {
         availableLaborers={availableLaborers}
         onSaved={reload}
       />
-      <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
+      <TransactionDetailSheet
+        txn={txnDetail}
+        onClose={() => setTxnDetail(null)}
+        footer={
+          txnDetail && !completed && isPlainExpense(txnDetail) ? (
+            <View style={styles.detailActions}>
+              <View style={styles.flex}>
+                <AppButton label={t('edit')} icon="edit" variant="secondary" onPress={() => onEditTxn(txnDetail)} />
+              </View>
+              <View style={styles.flex}>
+                <AppButton label={t('delete')} icon="trash" variant="danger" onPress={() => onDeleteTxn(txnDetail)} loading={saving} />
+              </View>
+            </View>
+          ) : undefined
+        }
+      />
 
       <Toast message={toast} />
     </View>
   );
 }
-
-const makeStyles = (theme: Theme) =>
-  StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.colors.background },
-    flex: { flex: 1 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
-    /* hero */
-    hero: { gap: theme.spacing.xs },
-    /* sections */
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: theme.spacing.sm,
-    },
-    emptyText: { paddingVertical: theme.spacing.md },
-    headerActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg },
-    /* worker cards */
-    workerColumns: {
-      flexDirection: 'row',
-      alignItems: 'stretch',
-      marginTop: theme.spacing.sm,
-      borderTopWidth: 0.5,
-      borderTopColor: theme.colors.border,
-      paddingTop: theme.spacing.sm,
-    },
-    workerCol: { flex: 1, alignItems: 'center', gap: 2 },
-    workerColDivider: { width: 0.5, backgroundColor: theme.colors.border, marginVertical: 2 },
-    workerTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-  });

@@ -226,6 +226,8 @@ export interface TransactionPatch {
   categoryId?: string | null;
   accountId?: string | null;
   description?: string | null;
+  /** Material quantity in the category's unit (construction expenses). */
+  qty?: number | null;
 }
 
 /**
@@ -297,12 +299,13 @@ export async function applyTransactionPatch(
   }
 
   await db.runAsync(
-    'UPDATE transactions SET amount = ?, date = ?, category_id = ?, account_id = ?, description = ? WHERE id = ?',
+    'UPDATE transactions SET amount = ?, date = ?, category_id = ?, account_id = ?, description = ?, qty = ? WHERE id = ?',
     amount,
     patch.date ?? existing.date,
     patch.categoryId !== undefined ? patch.categoryId : existing.category_id,
     accountId,
     patch.description !== undefined ? patch.description : existing.description,
+    patch.qty !== undefined ? patch.qty : existing.qty,
     existing.id
   );
 }
