@@ -35,7 +35,11 @@ one pass. Shared foundations first.
 ## Phase 2 — Projects list + New-project wizard
 - [x] ProjectsScreen thin + styled; auto-status card (dropped stage props);
       store `loaded` skeleton; ProjectCard + ProjectCardSkeleton components
-- [ ] NewProjectWizard: `useNewProject` hook + styled; reuse AddPlotSheet
+- [x] NewProjectWizard: styled extracted + logic fixes. Decisions: state stays
+      local (wizard-y, incl. the fresh-plot auto-select focus effect — a hook
+      adds indirection, not value); the inline selectable plot cards are kept
+      over AddPlotSheet (a required wizard choice reads better as visible cards
+      than a drawer)
 
 ## Phase 3 — Project detail (god component)  ✅
 - [x] `useProjectDetail` (useFocusData, drained 13 useState) + styled
@@ -61,10 +65,11 @@ one pass. Shared foundations first.
       shown derived; removed the misleading editable investors-pool field, the
       sum-to-100 gate, and the two no-op "AI-look" lines
 - [x] styled file; RuleInfo Modal → AppSheet
-- [ ] `useSettlement` hook extraction (data-load) — deferred (screen state is
-      wizard-y; low value vs risk)
-- [ ] DB tests for the settle path (project settle already covered indirectly;
-      add explicit test in Phase 6)
+- [x] `useSettlement` hook extraction — resolved: intentionally NOT extracted
+      (wizard state + settledRef receipt-freeze are screen-local by design)
+- [x] Settle-path DB coverage: testSettlementProfitWithDonation,
+      testSettlementLossIncludesOwner, T-PLOT-INV and T-SALE-ED exercise
+      compute/settle for projects + plot flips end-to-end
 
 ## Phase 6 — Schema cleanup + full audit
 - [x] Migration v37: dropped dead `milestones` + `stages` tables, dropped
