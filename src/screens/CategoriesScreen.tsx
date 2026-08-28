@@ -525,6 +525,10 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: theme.spacing.sm,
       paddingLeft: theme.spacing.md,
+      // Rows are fixed-height (SortableList); a light hairline separates items.
+      height: '100%',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
     },
     addSub: {
       flexDirection: 'row',
