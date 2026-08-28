@@ -234,11 +234,77 @@ export async function getProjectSummary(id: string): Promise<ProjectSummary | nu
   };
 }
 
-/** All projects with summaries, newest first. */
+/**
+ * All projects with summaries, newest first. Computed in a FIXED number of
+ * aggregate queries (was N+1: ~6 queries per project via getProjectSummary),
+ * so the list — refreshed on nearly every screen focus — stays fast on low-end
+ * phones. Same numbers as getProjectSummary, assembled in JS.
+ */
 export async function listProjectSummaries(): Promise<ProjectSummary[]> {
+  const db = await getDatabase();
   const projects = await listProjects();
-  const summaries = await Promise.all(projects.map((p) => getProjectSummary(p.id)));
-  return summaries.filter((s): s is ProjectSummary => s !== null);
+  if (projects.length === 0) return [];
+  const company = requireCompanyId();
+
+  const [txnRows, laborRows, saleRows] = await Promise.all([
+    db.getAllAsync<{
+      project_id: string;
+      totalIn: number;
+      totalOut: number;
+      plotCost: number;
+      saleCost: number;
+      constructionCash: number;
+    }>(
+      `SELECT project_id,
+         COALESCE(SUM(CASE WHEN direction = 'IN' THEN amount ELSE 0 END), 0) AS totalIn,
+         COALESCE(SUM(CASE WHEN direction = 'OUT' THEN amount ELSE 0 END), 0) AS totalOut,
+         COALESCE(SUM(CASE WHEN phase = 'PLOT' AND direction = 'OUT' THEN amount ELSE 0 END), 0) AS plotCost,
+         COALESCE(SUM(CASE WHEN phase = 'SALE' AND direction = 'OUT' THEN amount ELSE 0 END), 0) AS saleCost,
+         COALESCE(SUM(CASE WHEN phase = 'CONSTRUCTION' AND labor_id IS NULL
+                           THEN (CASE direction WHEN 'OUT' THEN amount ELSE -amount END) ELSE 0 END), 0) AS constructionCash
+       FROM transactions
+       WHERE is_void = 0 AND project_id IS NOT NULL AND company_id = ?
+       GROUP BY project_id`,
+      company
+    ),
+    db.getAllAsync<{ project_id: string; accrued: number }>(
+      `SELECT pl.project_id, COALESCE(SUM(la.wage_accrued), 0) AS accrued
+       FROM project_laborers pl
+       LEFT JOIN labor_attendance la ON la.project_laborer_id = pl.id
+       GROUP BY pl.project_id`
+    ),
+    db.getAllAsync<{ project_id: string; agreed: number; received: number }>(
+      `SELECT s.project_id, s.agreed_price AS agreed,
+         COALESCE(SUM(CASE WHEN sr.is_void = 0 THEN sr.amount ELSE 0 END), 0) AS received
+       FROM sales s
+       LEFT JOIN sale_receipts sr ON sr.sale_id = s.id
+       GROUP BY s.id`
+    ),
+  ]);
+
+  const txnBy = new Map(txnRows.map((r) => [r.project_id, r]));
+  const laborBy = new Map(laborRows.map((r) => [r.project_id, r.accrued]));
+  const saleBy = new Map(saleRows.map((r) => [r.project_id, r]));
+
+  return projects.map((project) => {
+    const t = txnBy.get(project.id);
+    const plotCost = t?.plotCost ?? 0;
+    const saleCost = t?.saleCost ?? 0;
+    const constructionCost = (t?.constructionCash ?? 0) + (laborBy.get(project.id) ?? 0);
+    const cost: ProjectCost = { plotCost, constructionCost, saleCost, totalCost: plotCost + constructionCost + saleCost };
+    const sale = saleBy.get(project.id);
+    const agreed = sale?.agreed ?? 0;
+    const received = sale?.received ?? 0;
+    return {
+      project,
+      progressPercent: lifecyclePercent(project, cost, { agreed, received, outstanding: Math.max(0, agreed - received) }),
+      totalIn: t?.totalIn ?? 0,
+      totalOut: t?.totalOut ?? 0,
+      cost,
+      saleDeal: agreed,
+      saleReceived: received,
+    };
+  });
 }
 
 export interface ProjectCost {

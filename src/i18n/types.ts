@@ -345,6 +345,10 @@ export interface TranslationKeys {
   projectSummary: string;
   statusDone: string;
   statusCancelled: string;
+  statusSettled: string;
+  statusOnHold: string;
+  statusConstruction: string;
+  statusPlanning: string;
   statusOrdered: string;
   statusPartial: string;
   statusToPay: string;
