@@ -59,9 +59,9 @@ describe('scopeCategoriesToContext', () => {
     }
   });
 
-  it('construction = Materials + Labor subs + standalone leaves', () => {
+  it('construction = Materials subs + standalone leaves (Labor is module-managed)', () => {
     expect(names(scopeCategoriesToContext(expenseAll, 'construction')).sort()).toEqual(
-      ['Cement', 'Labor Dehari', 'Misc'].sort()
+      ['Cement', 'Misc'].sort()
     );
   });
 

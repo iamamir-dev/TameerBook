@@ -36,7 +36,7 @@ import {
   type ProjectRow,
   type TransactionRow,
 } from '@/db';
-import { useCategoryLabel, useFocusReload, useSaveAction, useToast } from '@/hooks';
+import { useCategoryLabel, useFocusReload, useModuleCategories, useSaveAction, useToast } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -120,17 +120,10 @@ export function ConstructionDetailScreen(): React.JSX.Element {
     [categories, catLabel]
   );
 
-  // Construction-relevant EXPENSE categories: the Materials + Labor headings'
-  // sub-categories plus stand-alone leaves. Home/Plot/Sale subs stay on their
-  // own pages — Groceries or Registry never belong on a construction expense.
-  const constructionCats = useMemo(() => {
-    const parents = new Set(categories.map((c) => c.parent_id).filter(Boolean) as string[]);
-    const headId = (name: string) => categories.find((c) => !c.parent_id && c.name_en === name)?.id;
-    const allowed = new Set([headId('Materials'), headId('Labor'), null]);
-    return categories.filter(
-      (c) => c.type === 'EXPENSE' && !c.is_system && !parents.has(c.id) && allowed.has(c.parent_id)
-    );
-  }, [categories]);
+  // Construction expense categories come straight from Settings via the scope
+  // hook (the Materials section + standalone leaves like Misc) — one source of
+  // truth, no inline filtering. Labor is handled by the Labor module.
+  const { data: constructionCats } = useModuleCategories('construction');
 
   const availableLaborers = useMemo(
     () => allLaborers.filter((l) => !workers.some((w) => w.laborer.id === l.id)),

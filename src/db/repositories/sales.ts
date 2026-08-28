@@ -207,17 +207,22 @@ export async function getSaleSummary(projectId: string): Promise<SaleSummary> {
   return { sale, receipts, receiptsTotal, outstanding: sale.agreed_price - receiptsTotal, costs };
 }
 
-/** Seller-side cost (dealer commission / tax / …) as a SALE-phase expense. */
+/**
+ * Seller-side cost (dealer commission / tax / …) as a SALE-phase expense.
+ * Prefer a Settings-managed "Sale" category (`categoryId`); legacy callers may
+ * still pass a free-text `name`, which books to the fixed "Sale Cost" category.
+ */
 export async function addSaleCost(input: {
   projectId: string;
-  name: string;
+  categoryId?: string | null;
+  name?: string | null;
   amount: number;
   date: string;
   accountId: string;
   createdBy?: string;
 }): Promise<void> {
   await assertProjectActive(input.projectId);
-  const categoryId = await categoryIdByName('Sale Cost', 'EXPENSE', 'فروخت کے اخراجات', true);
+  const categoryId = input.categoryId ?? (await categoryIdByName('Sale Cost', 'EXPENSE', 'فروخت کے اخراجات', true));
   await addTransaction({
     direction: 'OUT',
     amount: input.amount,
@@ -226,7 +231,7 @@ export async function addSaleCost(input: {
     projectId: input.projectId,
     phase: 'SALE',
     categoryId,
-    description: input.name,
+    description: input.name?.trim() || null,
     createdBy: input.createdBy,
   });
 }

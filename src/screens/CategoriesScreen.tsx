@@ -160,9 +160,9 @@ export function CategoriesScreen(): React.JSX.Element {
 
   // Seller/Buyer Payment aren't their own sections — they're subgroups in Plot.
   const SUBGROUP_HEADINGS = new Set(['Seller Payment', 'Buyer Payment']);
-  // Labor is managed via the Labor module and Sale via the sale flow, so neither
-  // is shown as a manageable category section here.
-  const HIDDEN_SECTIONS = new Set(['Labor', 'Sale']);
+  // Labor is managed via the Labor module, so it isn't a manageable category
+  // section here (Sale is shown — projects book sale costs against it).
+  const HIDDEN_SECTIONS = new Set(['Labor']);
   // Visible top-level sections (minus app-managed + subgroup + hidden sections).
   const sections = useMemo(
     () => (tree ?? []).filter((n) => !HIDDEN.has(n.name_en) && !SUBGROUP_HEADINGS.has(n.name_en) && !HIDDEN_SECTIONS.has(n.name_en)),

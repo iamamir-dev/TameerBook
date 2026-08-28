@@ -21,7 +21,9 @@ export type CategoryContext =
 /** Heading `name_en`s that anchor each expense context. */
 const CONTEXT_HEADINGS: Record<'plot' | 'construction' | 'home' | 'sale', string[]> = {
   plot: ['Plot'],
-  construction: ['Materials', 'Labor'],
+  // Labor is managed via the Labor module, so construction categories are the
+  // Materials section (+ standalone leaves like Misc).
+  construction: ['Materials'],
   home: ['Home Expense'],
   sale: ['Sale'],
 };

@@ -1258,6 +1258,34 @@ ALTER TABLE plots ADD COLUMN settle_params TEXT;
 ALTER TABLE plots ADD COLUMN settled_at TEXT;
 `;
 
+/**
+ * v35 — re-introduce the "Sale" category section for PROJECT sale costs (it was
+ * dropped in v32 when it was only plot-relevant; projects genuinely need it).
+ * Re-parents the legacy system "Sale Cost" under it and seeds the common
+ * sale-cost categories so the sale-cost sheet picks from Settings like every
+ * other flow. Idempotent (fixed ids / name guards).
+ */
+export const SCHEMA_V35_SALE_SECTION = `
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT 'cat-sale', datetime('now'), 'local', NULL, 'Sale', 'فروخت', 'EXPENSE', 'tag', 1, NULL, 5
+WHERE EXISTS (SELECT 1 FROM categories) AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = 'Sale' AND parent_id IS NULL);
+
+UPDATE categories SET parent_id = (SELECT id FROM categories WHERE name_en = 'Sale' AND parent_id IS NULL LIMIT 1)
+  WHERE name_en = 'Sale Cost' AND parent_id IS NULL;
+
+INSERT INTO categories (id, created_at, created_by, parent_id, name_en, name_ur, type, icon, is_system, default_unit, sort_order)
+SELECT lower(hex(randomblob(16))), datetime('now'), 'local', (SELECT id FROM categories WHERE name_en='Sale' AND parent_id IS NULL LIMIT 1), v.en, v.ur, 'EXPENSE', 'tag', 0, NULL, v.ord
+FROM (
+  SELECT 'Dealer Commission' AS en, 'ڈیلر کمیشن' AS ur, 0 AS ord
+  UNION ALL SELECT 'Transfer Cost', 'ٹرانسفر خرچ', 1
+  UNION ALL SELECT 'Advertising', 'اشتہار', 2
+  UNION ALL SELECT 'Legal/Documentation', 'قانونی/دستاویزات', 3
+  UNION ALL SELECT 'Gain Tax', 'گین ٹیکس', 4
+) v
+WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Sale' AND parent_id IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = v.en AND parent_id = (SELECT id FROM categories WHERE name_en='Sale' AND parent_id IS NULL LIMIT 1));
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1289,6 +1317,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 32, sql: SCHEMA_V32_DROP_LABOR_SALE_SECTIONS },
   { version: 33, sql: SCHEMA_V33_BUYER_PAYMENT },
   { version: 34, sql: SCHEMA_V34_VENTURE_INVESTORS },
+  { version: 35, sql: SCHEMA_V35_SALE_SECTION },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -1324,11 +1353,19 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name_en: 'Buyer Payment', name_ur: 'خریدار کی ادائیگی', type: 'EXPENSE', icon: 'moneyIn', system: true },
   { name_en: 'Plot', name_ur: 'پلاٹ', type: 'EXPENSE', icon: 'home', system: true },
   { name_en: 'Home Expense', name_ur: 'گھر کا خرچ', type: 'EXPENSE', icon: 'home', system: true },
+  { name_en: 'Sale', name_ur: 'فروخت', type: 'EXPENSE', icon: 'tag', system: true },
   { name_en: 'Misc', name_ur: 'متفرق', type: 'EXPENSE', icon: 'kharcha' },
 
   // ---- System posting categories (top-level, hidden from the manager) ----
   { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari', system: true },
-  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag', system: true },
+  { name_en: 'Sale Cost', name_ur: 'فروخت کے اخراجات', type: 'EXPENSE', icon: 'tag', parent: 'Sale', system: true },
+
+  // ---- Sale sub-categories (seller-side costs; owner can add more) ----
+  { name_en: 'Dealer Commission', name_ur: 'ڈیلر کمیشن', type: 'EXPENSE', icon: 'tag', parent: 'Sale' },
+  { name_en: 'Transfer Cost', name_ur: 'ٹرانسفر خرچ', type: 'EXPENSE', icon: 'tag', parent: 'Sale' },
+  { name_en: 'Advertising', name_ur: 'اشتہار', type: 'EXPENSE', icon: 'tag', parent: 'Sale' },
+  { name_en: 'Legal/Documentation', name_ur: 'قانونی/دستاویزات', type: 'EXPENSE', icon: 'receipt', parent: 'Sale' },
+  { name_en: 'Gain Tax', name_ur: 'گین ٹیکس', type: 'EXPENSE', icon: 'receipt', parent: 'Sale' },
 
   // ---- Materials sub-categories (with default units) ----
   { name_en: 'Cement', name_ur: 'سیمنٹ', type: 'EXPENSE', icon: 'material', parent: 'Materials', unit: 'bori' },
