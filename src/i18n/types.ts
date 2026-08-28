@@ -146,7 +146,6 @@ export interface TranslationKeys {
   categories: string;
   noCategoriesYet: string;
   addCategoryLabel: string;
-  addSubcategory: string;
   defaultUnit: string;
   secondaryUnit: string;
   name: string;

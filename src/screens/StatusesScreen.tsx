@@ -183,7 +183,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
+    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.md },
     card: { gap: theme.spacing.sm },
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     colorDot: { width: 12, height: 12, borderRadius: 6 },

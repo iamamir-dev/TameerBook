@@ -363,7 +363,7 @@ const makeStyles = (theme: Theme) =>
       borderRadius: theme.radius.pill,
     },
     segBtnActive: { backgroundColor: theme.colors.primary },
-    content: { paddingHorizontal: theme.spacing.lg },
+    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg },
     emptyText: { paddingVertical: theme.spacing.xl },
     daySection: { marginBottom: theme.spacing.md, gap: theme.spacing.xs },
     dayHeader: { marginLeft: theme.spacing.xs },

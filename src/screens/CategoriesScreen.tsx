@@ -293,6 +293,12 @@ export function CategoriesScreen(): React.JSX.Element {
             {t(headerKey)}
           </AppText>
           <AppCard style={styles.card}>
+            <Pressable onPress={() => openAddSub(node.id)} style={styles.addSub} accessibilityRole="button">
+              <AppIcon name="add" size={16} color="accent" />
+              <AppText size="xs" weight="bold" color="accent">
+                {t('addCategoryLabel')}
+              </AppText>
+            </Pressable>
             {visibleChildren(node).length > 0 ? (
               <SortableList
                 items={visibleChildren(node)}
@@ -310,12 +316,6 @@ export function CategoriesScreen(): React.JSX.Element {
                 )}
               />
             ) : null}
-            <Pressable onPress={() => openAddSub(node.id)} style={styles.addSub} accessibilityRole="button">
-              <AppIcon name="add" size={16} color="accent" />
-              <AppText size="xs" weight="bold" color="accent">
-                {t('addSubcategory')}
-              </AppText>
-            </Pressable>
           </AppCard>
         </>
       ) : null;
@@ -340,6 +340,12 @@ export function CategoriesScreen(): React.JSX.Element {
           ) : null}
 
           <AppCard style={styles.card}>
+            <Pressable onPress={() => section && openAddSub(section.id)} style={styles.addSub} accessibilityRole="button">
+              <AppIcon name="add" size={16} color="accent" />
+              <AppText size="xs" weight="bold" color="accent">
+                {t('addCategoryLabel')}
+              </AppText>
+            </Pressable>
             {children.length > 0 ? (
               <SortableList
                 items={children}
@@ -380,12 +386,6 @@ export function CategoriesScreen(): React.JSX.Element {
               </View>
             ) : null}
 
-            <Pressable onPress={() => section && openAddSub(section.id)} style={styles.addSub} accessibilityRole="button">
-              <AppIcon name="add" size={16} color="accent" />
-              <AppText size="xs" weight="bold" color="accent">
-                {t('addSubcategory')}
-              </AppText>
-            </Pressable>
           </AppCard>
         </ScrollView>
 
@@ -471,7 +471,7 @@ export function CategoriesScreen(): React.JSX.Element {
           <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
-              {editor?.mode === 'edit' ? t('edit') : t('addSubcategory')}
+              {editor?.mode === 'edit' ? t('edit') : t('addCategoryLabel')}
             </AppText>
             <FloatingLabelInput label={t('name')} value={name} onChangeText={setName} />
             {showUnit ? (
@@ -516,7 +516,7 @@ const makeStyles = (theme: Theme) =>
     },
     segBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
     segBtnActive: { backgroundColor: theme.colors.accent },
-    content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md },
+    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.md },
     groupLabel: { marginTop: theme.spacing.xs },
     card: { gap: theme.spacing.sm },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },

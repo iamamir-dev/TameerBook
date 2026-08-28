@@ -128,7 +128,6 @@ export const ur: TranslationKeys = {
   categories: 'اقسام',
   noCategoriesYet: 'ابھی کوئی قسم نہیں',
   addCategoryLabel: 'قسم شامل کریں',
-  addSubcategory: 'ذیلی قسم شامل کریں',
   defaultUnit: 'ڈیفالٹ یونٹ',
   secondaryUnit: 'ذیلی یونٹ',
   name: 'نام',

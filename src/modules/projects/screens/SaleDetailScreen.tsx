@@ -566,7 +566,7 @@ const makeStyles = (theme: Theme) =>
       paddingVertical: theme.spacing.sm,
     },
     receiptThumb: { width: 44, height: 44, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
-    content: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },
+    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.lg },
     newDeal: { gap: theme.spacing.md },
     hero: {
       backgroundColor: theme.colors.card,

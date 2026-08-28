@@ -125,7 +125,6 @@ export const en: TranslationKeys = {
   categories: 'categories',
   noCategoriesYet: 'No categories yet',
   addCategoryLabel: 'Add category',
-  addSubcategory: 'Add sub-category',
   defaultUnit: 'Default unit',
   secondaryUnit: 'Sub-unit',
   name: 'Name',

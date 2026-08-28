@@ -6,7 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    dots: { flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
+    dots: { flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.sm, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm },
     dot: { width: 8, height: 8, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     dotActive: { backgroundColor: theme.colors.accent, width: 20 },
     dotDone: { backgroundColor: theme.colors.accentSoft },
