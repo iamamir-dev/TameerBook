@@ -27,12 +27,10 @@ import {
   listLaborersWithTotals,
   listPlots,
   listRecentTransactions,
-  listStages,
   resolveTxnModuleTarget,
   type TxnModuleTarget,
   listTransferDeadlines,
   SIZE_UNIT_LABEL_KEYS,
-  type StageRow,
   type AccountWithBalance,
   type CategoryRow,
   type PlotRow,
@@ -52,7 +50,8 @@ import type { Theme } from '@/theme/theme';
 import { groupTxnActivity } from '@/utils/bookingBatch';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
-import { softToneColor, stageTone, type ColorKey } from '@/utils/tones';
+import { softToneColor, type ColorKey } from '@/utils/tones';
+import { projectStatusMeta } from '@/modules/projects';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -92,10 +91,9 @@ export function HomeScreen(): React.JSX.Element {
   const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
   const [ownedPlots, setOwnedPlots] = useState<PlotRow[]>([]);
   const [laborOwed, setLaborOwed] = useState(0);
-  const [stages, setStages] = useState<StageRow[]>([]);
 
   const loadData = useCallback(async () => {
-    const [tot, accs, ud, txns, cats, deadlines, companyAssets, stageRows, plots, workers] = await Promise.all([
+    const [tot, accs, ud, txns, cats, deadlines, companyAssets, plots, workers] = await Promise.all([
       getTotalBalance(),
       listAccountsWithBalance(),
       getUdhaarTotals(),
@@ -103,7 +101,6 @@ export function HomeScreen(): React.JSX.Element {
       listCategories(),
       listTransferDeadlines(),
       getCompanyAssets(),
-      Promise.all([listStages('PROJECT'), listStages('PLOT')]).then(([a, b]) => [...a, ...b]),
       // Optional sections only pay their query cost when switched on.
       sections.plots ? listPlots() : Promise.resolve<PlotRow[]>([]),
       sections.labor ? listLaborersWithTotals() : Promise.resolve([]),
@@ -119,7 +116,6 @@ export function HomeScreen(): React.JSX.Element {
     setTxnTarget(Object.fromEntries(targets.filter(([, tt]) => tt) as [string, TxnModuleTarget][]));
     setCategories(cats);
     setDeadlineWarn(nearestTransferDeadline(deadlines));
-    setStages(stageRows);
     // Show every plot still held (OWNED first, then IN_PROJECT); sold ones
     // are history and stay off the dashboard.
     setOwnedPlots(
@@ -135,15 +131,6 @@ export function HomeScreen(): React.JSX.Element {
   }, [refreshProjects, loadData]);
 
   useFocusReload(load);
-
-  const stageOf = useCallback((id: string | null) => stages.find((x) => x.id === id) ?? null, [stages]);
-  const stageName = useCallback(
-    (id: string | null): string | null => {
-      const st = stageOf(id);
-      return st ? (language === 'ur' ? st.name_ur : st.name_en) : null;
-    },
-    [stageOf, language]
-  );
 
   const catLabel = useCategoryLabel();
   const catName = useCallback(
@@ -412,10 +399,15 @@ export function HomeScreen(): React.JSX.Element {
                           .join(' · ')}
                       </AppText>
                     </View>
-                    <StageBadge
-                      tone={(() => { const st = stageOf(p.stage_id); return st ? stageTone(st) : p.status === 'OWNED' ? 'success' : 'primary'; })()}
-                      label={stageName(p.stage_id) ?? t(p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
-                    />
+    {(() => {
+                      const forSale = p.status === 'OWNED' && (p.sale_price ?? 0) > 0;
+                      return (
+                        <StageBadge
+                          tone={forSale ? 'accent' : p.status === 'OWNED' ? 'success' : 'primary'}
+                          label={t(forSale ? 'statusForSale' : p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
+                        />
+                      );
+                    })()}
                   </Pressable>
                 ))
               )}
@@ -444,8 +436,6 @@ export function HomeScreen(): React.JSX.Element {
               <ProjectCard
                 key={summary.project.id}
                 summary={summary}
-                stageLabel={stageName(summary.project.stage_id)}
-                stageBadgeTone={(() => { const st = stageOf(summary.project.stage_id); return st ? stageTone(st) : null; })()}
                 onPress={() => navigation.navigate('ProjectDetail', { projectId: summary.project.id })}
               />
             ))}
@@ -551,15 +541,9 @@ function SectionTile({
 
 function ProjectCard({
   summary,
-  stageLabel,
-  stageBadgeTone,
   onPress,
 }: {
   summary: ProjectSummary;
-  /** User-set display status (Settings → Statuses); null = none. */
-  stageLabel: string | null;
-  /** The status's own color; null = default tone. */
-  stageBadgeTone: ColorKey | null;
   onPress: () => void;
 }): React.JSX.Element {
   const theme = useTheme();
@@ -568,16 +552,14 @@ function ProjectCard({
   const { project, progressPercent } = summary;
   const completed = project.status === 'COMPLETED';
   const percent = completed ? 100 : Math.round(progressPercent);
+  const status = projectStatusMeta(summary);
 
   return (
     <AppCard onPress={onPress} style={styles.projectCard}>
       <AppText size="md" weight="semibold" numberOfLines={1}>
         {project.name}
       </AppText>
-      <StageBadge
-        tone={stageLabel && stageBadgeTone ? stageBadgeTone : completed ? 'success' : 'accent'}
-        label={stageLabel ?? (completed ? t('statusDone') : t('statusCurrent'))}
-      />
+      <StageBadge tone={status.tone} label={t(status.labelKey)} />
 
       <View style={styles.progressTrackWrap}>
         <ProgressBar percent={percent} tone={completed ? 'success' : 'accent'} />

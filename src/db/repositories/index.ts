@@ -1,6 +1,5 @@
 /** Repository barrel  typed data access for every table. */
 export * from './guards';
-export * from './stages';
 export * from './companies';
 export * from './accounts';
 export * from './projects';

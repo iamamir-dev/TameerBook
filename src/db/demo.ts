@@ -39,13 +39,11 @@ export const TABLE_NAMES = [
   'project_laborers',
   'labor_attendance',
   'udhaar',
-  'milestones',
   'documents',
   'sales',
   'sale_receipts',
   'material_bookings',
   'material_deliveries',
-  'stages',
 ] as const;
 
 /** Row count per table (for the DevTools dashboard). */

@@ -222,14 +222,6 @@ export function SettingsScreen(): React.JSX.Element {
             onPress={() => navigation.navigate('Categories')}
           />
 
-          <Divider />
-
-          {/* Display statuses for projects & plots */}
-          <SettingRow
-            icon="tag"
-            label={t('statusesTitle')}
-            onPress={() => navigation.navigate('Statuses')}
-          />
 
           <Divider />
 

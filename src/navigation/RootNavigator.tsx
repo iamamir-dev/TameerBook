@@ -36,7 +36,6 @@ import { QuickEntryScreen } from '@/screens/QuickEntryScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { CategoriesScreen } from '@/screens/CategoriesScreen';
 import { SignatureScreen } from '@/screens/SignatureScreen';
-import { StatusesScreen } from '@/screens/StatusesScreen';
 import { CompanyDetailScreen } from '@/screens/CompanyDetailScreen';
 import { ReportsScreen } from '@/screens/ReportsScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
@@ -115,7 +114,6 @@ export function RootNavigator(): React.JSX.Element {
       {/* Reports hub (reached from Settings) */}
       <Stack.Screen name="Reports" component={ReportsScreen} />
       <Stack.Screen name="Categories" component={CategoriesScreen} />
-      <Stack.Screen name="Statuses" component={StatusesScreen} />
       <Stack.Screen name="Signature" component={SignatureScreen} />
       <Stack.Screen name="CompanyDetail" component={CompanyDetailScreen} />
       <Stack.Screen name="Allocation" component={AllocationScreen} />

@@ -11,7 +11,6 @@ import {
   isOneTimePayment,
   isPlotUnavailable,
   isProfitPctRange,
-  isStageInUse,
   isProjectClosed,
   isWageNotSet,
   isWorkerInactive,
@@ -65,7 +64,6 @@ export function useSaveAction(): SaveAction {
         else if (isInvestorAlreadyExited(e)) Alert.alert(t('investorAlreadyExited'));
         else if (isProfitPctRange(e)) Alert.alert(t('profitPctRange'));
         else if (isCategoryInUse(e)) Alert.alert(t('categoryInUse'));
-        else if (isStageInUse(e)) Alert.alert(t('stageInUse'));
         else {
           reportError('screen:save', e);
           Alert.alert(t('errorTitle'), t('errorBody'));

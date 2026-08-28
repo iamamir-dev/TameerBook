@@ -198,11 +198,6 @@ export interface TranslationKeys {
   netWorthLabel: string;
   addConstructionExpense: string;
   yesterday: string;
-  statusesTitle: string;
-  addStatus: string;
-  setStatusLabel: string;
-  noStatus: string;
-  stageInUse: string;
   preferencesSection: string;
   setTransferDeadline: string;
   clearDeadline: string;

@@ -7,3 +7,4 @@ export { SettlementScreen } from './screens/SettlementScreen';
 export { NewProjectWizard } from './screens/NewProjectWizard';
 export { PhotoDiaryScreen } from './screens/PhotoDiaryScreen';
 export { MaterialEntryScreen } from './screens/MaterialEntryScreen';
+export { projectStatusMeta } from './utils/status';

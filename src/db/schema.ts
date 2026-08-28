@@ -50,33 +50,6 @@ export const SIZE_UNIT_LABEL_KEYS = {
   SQYD: 'unitSqyd',
 } as const satisfies Record<SizeUnit, string>;
 
-/** User-manageable display statuses (Settings → Statuses), per module. */
-export const STAGE_MODULES = ['PROJECT', 'PLOT'] as const;
-export type StageModule = (typeof STAGE_MODULES)[number];
-
-export interface StageRow {
-  id: string;
-  created_at: string;
-  created_by: string;
-  module: StageModule;
-  name_en: string;
-  name_ur: string;
-  sort_order: number;
-  /** Theme tone key ('primary' | 'accent' | 'gold' | 'success' | 'danger'); null = auto by position. */
-  color: string | null;
-}
-
-/** Seeded once (and after a wipe); the user manages the rest in Settings. */
-export const DEFAULT_STAGES: { module: StageModule; name_en: string; name_ur: string }[] = [
-  { module: 'PROJECT', name_en: 'Planning', name_ur: 'منصوبہ بندی' },
-  { module: 'PROJECT', name_en: 'Under Construction', name_ur: 'زیر تعمیر' },
-  { module: 'PROJECT', name_en: 'Finishing', name_ur: 'فنشنگ' },
-  { module: 'PROJECT', name_en: 'Ready for Sale', name_ur: 'برائے فروخت' },
-  { module: 'PLOT', name_en: 'Transfer Pending', name_ur: 'ٹرانسفر باقی' },
-  { module: 'PLOT', name_en: 'Possession', name_ur: 'قبضہ' },
-  { module: 'PLOT', name_en: 'Ready to Sell', name_ur: 'برائے فروخت' },
-];
-
 /** Named instalments of a property deal (seller side or buyer side). */
 export const PAY_TYPES = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
 export type PayType = (typeof PAY_TYPES)[number];
@@ -135,9 +108,6 @@ export const CAPITAL_ENTRY_TYPES = [
   'DONATION',
 ] as const;
 export type CapitalEntryType = (typeof CAPITAL_ENTRY_TYPES)[number];
-
-export const MILESTONE_STATUSES = ['PENDING', 'IN_PROGRESS', 'DONE'] as const;
-export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number];
 
 export const LABORER_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
 export type LaborerStatus = (typeof LABORER_STATUSES)[number];
@@ -346,15 +316,6 @@ export interface CapitalLedgerRow extends Base {
   doc_id: string | null;
 }
 
-export interface MilestoneRow extends Base {
-  project_id: string;
-  name: string;
-  sequence: number;
-  pct_weight: number;
-  status: MilestoneStatus;
-  completed_date: string | null;
-}
-
 export interface DocumentRow extends Base {
   entity_type: string;
   entity_id: string;
@@ -369,7 +330,6 @@ export interface SaleRow extends Base {
   /** Free-text buyer (may not be saved as a party). */
   buyer_name: string | null;
   agreed_price: number;
-  completed_at: string | null;
 }
 
 export interface SaleReceiptRow extends Base {
@@ -380,7 +340,6 @@ export interface SaleReceiptRow extends Base {
   account_id: string | null;
   /** Named instalment from the buyer (TOKEN/BAYANA/...). */
   pay_type: PayType | null;
-  doc_id: string | null;
   /** The paired cash transaction (v12+); voiding it voids this receipt too. */
   txn_id: string | null;
   is_void: number; // 0 | 1
@@ -1299,6 +1258,23 @@ DELETE FROM categories
    AND id NOT IN (SELECT category_id FROM transactions WHERE category_id IS NOT NULL);
 `;
 
+/**
+ * v37 — retire two dead subsystems and two dead columns:
+ *  - `milestones`: the checklist was replaced by phase-derived lifecycle
+ *    progress; no repository ever read or wrote it.
+ *  - `stages`: user-managed display statuses are gone — project & plot status
+ *    is auto-derived from real state (the stage_id columns stay as harmless
+ *    vestiges so existing rows never break).
+ *  - `sale_receipts.doc_id` (always NULL — photos attach to the transaction)
+ *    and `sales.completed_at` (never set — completion lives on the project).
+ */
+export const SCHEMA_V37_RETIRE_DEAD = `
+DROP TABLE IF EXISTS milestones;
+DROP TABLE IF EXISTS stages;
+ALTER TABLE sale_receipts DROP COLUMN doc_id;
+ALTER TABLE sales DROP COLUMN completed_at;
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1332,6 +1308,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 34, sql: SCHEMA_V34_VENTURE_INVESTORS },
   { version: 35, sql: SCHEMA_V35_SALE_SECTION },
   { version: 36, sql: SCHEMA_V36_SECTIONS_ONLY },
+  { version: 37, sql: SCHEMA_V37_RETIRE_DEAD },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -1443,25 +1420,6 @@ export interface DefaultAccount {
 /** Seeded once on first run so entries always have somewhere to post. */
 export const DEFAULT_ACCOUNTS: DefaultAccount[] = [
   { name: 'Cash in Hand', type: 'CASH' },
-];
-
-export interface DefaultMilestone {
-  name: string;
-  sequence: number;
-  pct_weight: number;
-}
-
-/** 9 default construction milestones (pct weights sum to 100). */
-export const DEFAULT_MILESTONES: DefaultMilestone[] = [
-  { name: 'Foundation', sequence: 1, pct_weight: 15 },
-  { name: 'Ground Slab', sequence: 2, pct_weight: 15 },
-  { name: 'First Floor Slab', sequence: 3, pct_weight: 15 },
-  { name: 'Plaster', sequence: 4, pct_weight: 12 },
-  { name: 'Tile', sequence: 5, pct_weight: 10 },
-  { name: 'Wood', sequence: 6, pct_weight: 10 },
-  { name: 'Paint', sequence: 7, pct_weight: 8 },
-  { name: 'Fittings', sequence: 8, pct_weight: 8 },
-  { name: 'Complete', sequence: 9, pct_weight: 7 },
 ];
 
 /** Default actor stamped on `created_by` when none is supplied. */

@@ -36,7 +36,6 @@ export type RootStackParamList = {
   // Reports hub (reached from Settings)
   Reports: undefined;
   Categories: { sectionId?: string; sectionName?: string; type?: 'EXPENSE' | 'INCOME' } | undefined;
-  Statuses: undefined;
   Signature: undefined;
   CompanyDetail: undefined;
   Allocation: undefined;

@@ -67,11 +67,16 @@ one pass. Shared foundations first.
       add explicit test in Phase 6)
 
 ## Phase 6 — Schema cleanup + full audit
-- [ ] Drop dead `milestones` table (migration) + MilestoneRow + DEFAULT_MILESTONES
-- [ ] Drop `stages` table + Statuses screen + `stages.ts` + Settings entry + nav
-- [ ] Remove `sale_receipts.doc_id`, `sales.completed_at` / `completeSale`
+- [x] Migration v37: dropped dead `milestones` + `stages` tables, dropped
+      `sale_receipts.doc_id` + `sales.completed_at` columns
+- [x] Removed StatusesScreen + stages repo + nav route + Settings row + dead
+      i18n keys + stageTone/STAGE_TONES; Home rails auto-derive status
+- [x] Removed MilestoneRow/DEFAULT_MILESTONES + stage types/seeds
+- [x] demo/tests/stress updated for the removed tables
+- [x] Removed `completeSale` fn + NewSale.completedAt; createSale/addSaleReceipt
+      INSERTs no longer reference the dropped columns
 - [ ] Theme-token sweep (no hardcoded colors/px); validation guards; logic audit
-- [ ] Update demo/tests/stress for removed tables
+- [ ] NewProjectWizard hook + styled (Phase 2 leftover)
 
 Risk: Phase 6 migrations (drop stages/milestones) are FK-safe via the runner's
 FK-off; Phase 5 touches the money-critical settle path — most careful + DB tests.

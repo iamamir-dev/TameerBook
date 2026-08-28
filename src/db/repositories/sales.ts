@@ -24,7 +24,6 @@ export interface NewSale {
   agreedPrice: number;
   buyerPartyId?: string | null;
   buyerName?: string | null;
-  completedAt?: string | null;
   createdBy?: string;
 }
 
@@ -32,23 +31,17 @@ export async function createSale(input: NewSale): Promise<SaleRow> {
   const db = await getDatabase();
   const id = uuid();
   await db.runAsync(
-    `INSERT INTO sales (id, created_at, created_by, project_id, buyer_party_id, buyer_name, agreed_price, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sales (id, created_at, created_by, project_id, buyer_party_id, buyer_name, agreed_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     id,
     nowISO(),
     input.createdBy ?? DEFAULT_USER,
     input.projectId,
     input.buyerPartyId ?? null,
     input.buyerName ?? null,
-    input.agreedPrice,
-    input.completedAt ?? null
+    input.agreedPrice
   );
   return (await db.getFirstAsync<SaleRow>('SELECT * FROM sales WHERE id = ?', id))!;
-}
-
-export async function completeSale(id: string, completedAt: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('UPDATE sales SET completed_at = ? WHERE id = ?', completedAt, id);
 }
 
 export interface NewSaleReceipt {
@@ -118,8 +111,8 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
       createdBy: input.createdBy,
     });
     await tx.runAsync(
-      `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, doc_id, txn_id, is_void)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0)`,
+      `INSERT INTO sale_receipts (id, created_at, created_by, sale_id, amount, date, account_id, pay_type, txn_id, is_void)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       id,
       nowISO(),
       input.createdBy ?? DEFAULT_USER,

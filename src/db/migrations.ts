@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { DEFAULT_CATEGORIES, DEFAULT_STAGES, DEFAULT_USER, MIGRATIONS } from './schema';
+import { DEFAULT_CATEGORIES, DEFAULT_USER, MIGRATIONS } from './schema';
 import { nowISO, uuid } from './uuid';
 
 /**
@@ -84,17 +84,4 @@ export async function seedDefaults(db: SQLiteDatabase): Promise<void> {
     });
   }
 
-  const stageCount = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) AS c FROM stages');
-  if ((stageCount?.c ?? 0) === 0) {
-    await db.withExclusiveTransactionAsync(async (tx) => {
-      for (let i = 0; i < DEFAULT_STAGES.length; i++) {
-        const st = DEFAULT_STAGES[i];
-        await tx.runAsync(
-          `INSERT INTO stages (id, created_at, created_by, module, name_en, name_ur, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          uuid(), createdAt, DEFAULT_USER, st.module, st.name_en, st.name_ur, i
-        );
-      }
-    });
-  }
 }

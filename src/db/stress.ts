@@ -53,7 +53,6 @@ import {
   listPurchaseOrders,
   listRecentTransactions,
   listSellerPaymentCategories,
-  listStages,
   listUdhaar,
   markAttendance,
   markPlotTransferred,
@@ -394,8 +393,6 @@ export async function seedStressData(
   const homeCats = childrenOf('Home Expense');
   const sellerCats = await listSellerPaymentCategories();
   const buyerCats = await listBuyerPaymentCategories();
-  const projStages = await listStages('PROJECT');
-  const plotStages = await listStages('PLOT');
   // Token / Advance are once-per-deal; everything else may repeat.
   const onceOnly = (c: CategoryRow) => c.name_en === 'Token' || c.name_en === 'Advance';
 
@@ -462,7 +459,6 @@ export async function seedStressData(
     });
     soloPlots.push(plot.id);
     bump('plots');
-    if (plotStages.length) await setPlotStage(plot.id, pick(rng, plotStages).id);
 
     await paySellerPlan(plot.id, deal, boughtDaysAgo, rng() < 0.75);
     await plotSideExpenses(plot.id, boughtDaysAgo);
@@ -535,10 +531,6 @@ export async function seedStressData(
     projects.push(project.id);
     projectStart[project.id] = startedDaysAgo;
     bump('projects');
-
-    if (projStages.length) {
-      await setProjectStage(project.id, pick(rng, projStages).id);
-    }
 
     // Investor participation, then their real money arriving.
     const backers: string[] = [];
@@ -978,17 +970,6 @@ export async function seedStressData(
   }
 }
 
-/** Stage assignment isn't exposed as a repository call; mirror its one UPDATE. */
-async function setProjectStage(projectId: string, stageId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('UPDATE projects SET stage_id = ? WHERE id = ?', stageId, projectId);
-}
-
-async function setPlotStage(plotId: string, stageId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('UPDATE plots SET stage_id = ? WHERE id = ?', stageId, plotId);
-}
-
 async function countStressCompanies(): Promise<number> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<{ c: number }>(
@@ -1097,7 +1078,6 @@ export async function clearStressData(): Promise<void> {
     await run(`DELETE FROM project_laborers WHERE project_id IN (${P})`, ids);
     await run(`DELETE FROM project_investors WHERE project_id IN (${P}) OR plot_id IN (${L})`, [...ids, ...ids]);
     await run(`DELETE FROM sales WHERE project_id IN (${P})`, ids);
-    await run(`DELETE FROM milestones WHERE project_id IN (${P})`, ids);
     await run(`DELETE FROM material_bookings WHERE company_id IN (${inList})`, ids);
     await run(`DELETE FROM transactions WHERE company_id IN (${inList})`, ids);
     // Break the projects ↔ plots cycle before dropping either side.
@@ -1358,7 +1338,6 @@ export async function runStressBenchmark(): Promise<BenchRow[]> {
           listRecentTransactions(8),
           listCategories(),
           getCompanyAssets(),
-          listStages('PROJECT'),
           listPlots(),
           listLaborersWithTotals(),
         ]),

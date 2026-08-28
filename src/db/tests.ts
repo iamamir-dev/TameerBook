@@ -147,7 +147,6 @@ class Cleanup {
         id
       );
       await db.runAsync('DELETE FROM project_laborers WHERE project_id = ?', id);
-      await db.runAsync('DELETE FROM milestones WHERE project_id = ?', id);
       // Unlink any plot still pointing at this project before deleting it.
       await db.runAsync('UPDATE plots SET project_id = NULL WHERE project_id = ?', id);
       await db.runAsync('DELETE FROM projects WHERE id = ?', id);
