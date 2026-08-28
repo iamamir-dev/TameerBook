@@ -72,6 +72,10 @@ export interface ColorPalette {
   track: string;
   /** Overlay/scrim behind modals and sheets. */
   overlay: string;
+  /** Full-screen image viewer backdrop (near-black in both modes). */
+  lightboxBackdrop: string;
+  /** Translucent control chip floating on the lightbox. */
+  lightboxControl: string;
 }
 
 const lightColors: ColorPalette = {
@@ -104,6 +108,8 @@ const lightColors: ColorPalette = {
 
   track: '#EFECE4',
   overlay: 'rgba(28, 27, 24, 0.45)',
+  lightboxBackdrop: 'rgba(0, 0, 0, 0.92)',
+  lightboxControl: 'rgba(255, 255, 255, 0.15)',
 };
 
 const darkColors: ColorPalette = {
@@ -140,6 +146,8 @@ const darkColors: ColorPalette = {
 
   track: '#2A2820',
   overlay: 'rgba(0, 0, 0, 0.62)',
+  lightboxBackdrop: 'rgba(0, 0, 0, 0.92)',
+  lightboxControl: 'rgba(255, 255, 255, 0.15)',
 };
 
 /* -------------------------------------------------------------------------- */

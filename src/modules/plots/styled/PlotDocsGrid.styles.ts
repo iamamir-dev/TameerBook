@@ -25,17 +25,4 @@ export const makeStyles = (theme: Theme) =>
       backgroundColor: 'rgba(0,0,0,0.6)',
     },
     add: { width: 96, height: 96 },
-    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
-    viewerImage: { width: '100%', height: '80%' },
-    viewerClose: {
-      position: 'absolute',
-      top: theme.spacing.xxxl,
-      right: theme.spacing.lg,
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
   });

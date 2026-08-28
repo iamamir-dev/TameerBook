@@ -1,12 +1,11 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
+  AddPartySheet,
   AmountInput,
   AppButton,
   AppHeader,
@@ -17,13 +16,13 @@ import {
   QtyUnitRow,
   SelectSheet,
   StickyFooter,
+  Toast,
   type IconKey,
   type MaterialSelection,
   type SelectOption,
 } from '@/components/ui';
 import {
   addDocument,
-  addParty,
   addTransaction,
   listAccountsWithBalance,
   listParties,
@@ -52,7 +51,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
   const projects = useProjectsStore((s) => s.items);
@@ -80,7 +78,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [accountSheet, setAccountSheet] = useState(false);
   const [partySheet, setPartySheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
-  const [newPartyName, setNewPartyName] = useState('');
 
   const { saving, run: runSave } = useSaveAction();
   const { toast, showToast } = useToast();
@@ -158,19 +155,6 @@ export function MaterialEntryScreen(): React.JSX.Element {
     setReceiptUri(null);
     setFormNonce((n) => n + 1);
     showToast(t('savedToast'));
-  };
-
-  const onAddParty = async () => {
-    const name = newPartyName.trim();
-    if (!name) return;
-    const ok = await runSave(async () => {
-      const created = await addParty({ type: 'SUPPLIER', name });
-      await loadParties();
-      setPartyId(created.id);
-    });
-    if (!ok) return;
-    setNewPartyName('');
-    setAddPartyOpen(false);
   };
 
   if (projects.length === 0) {
@@ -307,28 +291,17 @@ export function MaterialEntryScreen(): React.JSX.Element {
         title={t('supplier')}
         onSelect={(o) => (o.id === ADD_PARTY_ID ? setAddPartyOpen(true) : setPartyId(o.id))}
       />
-      <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-            <View style={styles.grabber} />
-            <AppText size="lg" weight="bold">
-              {t('addNew')}
-            </AppText>
-            <FloatingLabelInput label={t('supplier')} value={newPartyName} onChangeText={setNewPartyName} />
-            <AppButton label={t('save')} icon="check" onPress={onAddParty} />
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <AddPartySheet
+        visible={addPartyOpen}
+        onClose={() => setAddPartyOpen(false)}
+        label={t('supplier')}
+        partyType="SUPPLIER"
+        onCreated={(created) => {
+          void loadParties().then(() => setPartyId(created.id));
+        }}
+      />
 
-      {toast ? (
-        <Animated.View entering={FadeInDown} exiting={FadeOutDown} style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}>
-          <AppIcon name="checkCircle" size={20} color="onPrimary" />
-          <AppText size="sm" weight="bold" color="onPrimary">
-            {toast}
-          </AppText>
-        </Animated.View>
-      ) : null}
+      <Toast message={toast} />
     </View>
   );
 }
@@ -339,18 +312,6 @@ const makeStyles = (theme: Theme) =>
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, gap: theme.spacing.md },
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg, padding: theme.spacing.xl },
-    toast: {
-      position: 'absolute',
-      alignSelf: 'center',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.success,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: theme.spacing.xl,
-      paddingVertical: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
     chip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -363,18 +324,4 @@ const makeStyles = (theme: Theme) =>
       minHeight: theme.touch.minTarget,
     },
     thumb: { width: 40, height: 40, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
   });

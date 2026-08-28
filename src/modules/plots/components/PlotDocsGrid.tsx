@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
-import { AddPhotoTile, AppIcon, AppText } from '@/components/ui';
+import { AddPhotoTile, AppText, ImageLightbox } from '@/components/ui';
 import type { DocumentRow } from '@/db';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -57,14 +57,7 @@ export function PlotDocsGrid({ docs, readOnly, onAdd }: Props): React.JSX.Elemen
         {!readOnly ? <AddPhotoTile label={t('addDocument')} onPress={onAdd} style={styles.add} /> : null}
       </View>
 
-      <Modal visible={viewer !== null} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
-        <View style={styles.viewer}>
-          {viewer ? <Image source={{ uri: viewer }} style={styles.viewerImage} resizeMode="contain" /> : null}
-          <Pressable onPress={() => setViewer(null)} accessibilityRole="button" style={styles.viewerClose}>
-            <AppIcon name="close" size={28} color="onHero" />
-          </Pressable>
-        </View>
-      </Modal>
+      <ImageLightbox uri={viewer} onClose={() => setViewer(null)} />
     </>
   );
 }

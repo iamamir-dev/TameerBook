@@ -2,10 +2,10 @@ import { type RouteProp, useNavigation, useRoute } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppHeader, AppIcon, AppText } from '@/components/ui';
+import { AppButton, AppHeader, AppText, ImageLightbox } from '@/components/ui';
 import { addDocument, type DocumentRow, getProject, listDocuments, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -106,14 +106,7 @@ export function PhotoDiaryScreen(): React.JSX.Element {
         )}
       </ScrollView>
 
-      <Modal visible={viewer !== null} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
-        <View style={styles.viewer}>
-          {viewer ? <Image source={{ uri: viewer }} style={styles.viewerImage} resizeMode="contain" /> : null}
-          <Pressable onPress={() => setViewer(null)} accessibilityRole="button" style={styles.close}>
-            <AppIcon name="close" size={28} color="onHero" />
-          </Pressable>
-        </View>
-      </Modal>
+      <ImageLightbox uri={viewer} onClose={() => setViewer(null)} />
     </View>
   );
 }
@@ -129,17 +122,4 @@ const makeStyles = (theme: Theme) =>
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
     cell: { width: '32%', aspectRatio: 1 },
     thumb: { width: '100%', height: '100%', borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
-    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
-    viewerImage: { width: '100%', height: '80%' },
-    close: {
-      position: 'absolute',
-      top: theme.spacing.xxxl,
-      right: theme.spacing.lg,
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
   });

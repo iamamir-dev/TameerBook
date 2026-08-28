@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { AddPhotoTile, AppCard, AppIcon, AppText } from '@/components/ui';
+import { AddPhotoTile, AppCard, AppText, ImageLightbox } from '@/components/ui';
 import type { DocumentRow } from '@/db';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -36,7 +35,6 @@ export function ProjectGalleryCard({
 }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const [viewer, setViewer] = useState<string | null>(null);
 
@@ -91,24 +89,7 @@ export function ProjectGalleryCard({
         )}
       </AppCard>
 
-      {/* Full-screen lightbox */}
-      <Modal
-        visible={viewer !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setViewer(null)}
-      >
-        <View style={styles.viewer}>
-          {viewer ? <Image source={{ uri: viewer }} style={styles.viewerImage} resizeMode="contain" /> : null}
-          <Pressable
-            onPress={() => setViewer(null)}
-            accessibilityRole="button"
-            style={[styles.close, { top: insets.top + theme.spacing.md }]}
-          >
-            <AppIcon name="close" size={28} color="onHero" />
-          </Pressable>
-        </View>
-      </Modal>
+      <ImageLightbox uri={viewer} onClose={() => setViewer(null)} />
     </View>
   );
 }
@@ -138,18 +119,6 @@ const makeStyles = (theme: Theme) =>
       ...StyleSheet.absoluteFillObject,
       borderRadius: theme.radius.md,
       backgroundColor: theme.colors.overlay,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
-    viewerImage: { width: '100%', height: '80%' },
-    close: {
-      position: 'absolute',
-      right: theme.spacing.lg,
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.15)',
       alignItems: 'center',
       justifyContent: 'center',
     },

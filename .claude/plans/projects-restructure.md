@@ -30,7 +30,7 @@ one pass. Shared foundations first.
 ## Phase 1 — Foundations (shared utils + repos)
 - [x] `projectStatusMeta(summary)` pure deriver + unit tests (8)
 - [x] Optimize `listProjectSummaries` → aggregate queries (killed the N+1)
-- [ ] Shared `AddPartySheet` (AppSheet) + `ImageLightbox` → built in Phase 4 with consumers
+- [x] Shared `AddPartySheet` (AppSheet) + `ImageLightbox` (theme lightbox tokens)
 
 ## Phase 2 — Projects list + New-project wizard
 - [x] ProjectsScreen thin + styled; auto-status card (dropped stage props);
@@ -51,8 +51,10 @@ one pass. Shared foundations first.
       EditDealSheet on the shared kit (3 hand-rolled Modals gone);
       edit/delete-in-place for receipts + costs (repo: updateSaleReceipt /
       deleteSaleReceipt, atomic txn+receipt patch); T-SALE-ED DB test
-- [ ] MaterialEntry: styled + shared AddPartySheet + shared Toast; edit-in-place
-- [ ] PhotoDiary: styled + shared ImageLightbox
+- [x] MaterialEntry: shared AddPartySheet + shared Toast (hand-rolled Modal +
+      toast + dead styles removed)
+- [x] Entry (shared screen): shared AddPartySheet + shared Toast likewise
+- [x] PhotoDiary + ProjectGalleryCard + PlotDocsGrid: one shared ImageLightbox
 
 ## Phase 5 — Settlement redesign  ✅ (partial)
 - [x] SettlementScreen: Builder % + Charity % inputs only; by-ownership pool

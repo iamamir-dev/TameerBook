@@ -9,23 +9,23 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
   AmountInput,
+  AddPartySheet,
   AppButton,
   AppHeader,
   AppIcon,
   AppText,
+  Toast,
   DateField,
   ICONS,
   SelectSheet,
@@ -35,7 +35,6 @@ import {
 } from '@/components/ui';
 import {
   addDocument,
-  addParty,
   addTransaction,
   type AccountWithBalance,
   type CategoryRow,
@@ -121,7 +120,6 @@ export function EntryScreen(): React.JSX.Element {
   const [partySheet, setPartySheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
   const [addPartyOpen, setAddPartyOpen] = useState(false);
-  const [newPartyName, setNewPartyName] = useState('');
 
   const { toast, showToast } = useToast();
   const { saving, run: runSave } = useSaveAction();
@@ -255,19 +253,6 @@ export function EntryScreen(): React.JSX.Element {
   const onPickReceipt = async () => {
     const uri = await captureReceipt().catch(swallow('entry:receipt'));
     if (uri) setReceiptUri(uri);
-  };
-
-  const onAddParty = async () => {
-    const name = newPartyName.trim();
-    if (!name) return;
-    const ok = await runSave(async () => {
-      const created = await addParty({ type: direction === 'OUT' ? 'SUPPLIER' : 'BUYER', name });
-      await loadParties();
-      setPartyId(created.id);
-    });
-    if (!ok) return;
-    setNewPartyName('');
-    setAddPartyOpen(false);
   };
 
   return (
@@ -419,19 +404,7 @@ export function EntryScreen(): React.JSX.Element {
         </StickyFooter>
       </KeyboardAvoidingView>
 
-      {/* Toast */}
-      {toast ? (
-        <Animated.View
-          entering={FadeInDown}
-          exiting={FadeOutDown}
-          style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}
-        >
-          <AppIcon name="checkCircle" size={20} color="onPrimary" />
-          <AppText size="sm" weight="bold" color="onPrimary">
-            {toast}
-          </AppText>
-        </Animated.View>
-      ) : null}
+      <Toast message={toast} />
 
       {/* Sheets */}
       <SelectSheet
@@ -459,23 +432,15 @@ export function EntryScreen(): React.JSX.Element {
         title={t('party')}
         onSelect={(o) => (o.id === ADD_PARTY_ID ? setAddPartyOpen(true) : setPartyId(o.id))}
       />
-      {/* Add-party modal */}
-      <Modal visible={addPartyOpen} transparent animationType="fade" onRequestClose={() => setAddPartyOpen(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-        <Pressable style={styles.backdrop} onPress={() => setAddPartyOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          <AppText size="lg" weight="bold">
-            {t('addNew')}
-          </AppText>
-          <FloatingLabelInput label={t('party')} value={newPartyName} onChangeText={setNewPartyName} />
-          <AppButton label={t('save')} icon="check" onPress={onAddParty} />
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <AddPartySheet
+        visible={addPartyOpen}
+        onClose={() => setAddPartyOpen(false)}
+        label={t('party')}
+        partyType={direction === 'OUT' ? 'SUPPLIER' : 'BUYER'}
+        onCreated={(created) => {
+          void loadParties().then(() => setPartyId(created.id));
+        }}
+      />
     </View>
   );
 }
@@ -548,30 +513,4 @@ const makeStyles = (theme: Theme) =>
       padding: theme.spacing.sm,
     },
     receiptThumb: { width: 44, height: 44, borderRadius: theme.radius.sm, backgroundColor: theme.colors.track },
-    toast: {
-      position: 'absolute',
-      alignSelf: 'center',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.success,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: theme.spacing.xl,
-      paddingVertical: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    sheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
   });
