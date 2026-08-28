@@ -261,10 +261,16 @@ export async function updateTransaction(id: string, patch: TransactionPatch): Pr
  * OUT overdraw guard, computed excluding this row's own effect. Used by
  * `updateTransaction` (after its linked-row guards) AND by module editors that
  * own their linked-row validation — booking / labor payments, where the derived
- * remaining is re-checked by the caller before this runs.
+ * remaining is re-checked by the caller before this runs. Pass `executor` to
+ * run inside an open transaction (e.g. a sale-receipt edit that must patch the
+ * cash row and the receipt row atomically).
  */
-export async function applyTransactionPatch(existing: TransactionRow, patch: TransactionPatch): Promise<void> {
-  const db = await getDatabase();
+export async function applyTransactionPatch(
+  existing: TransactionRow,
+  patch: TransactionPatch,
+  executor?: SQLiteExecutor
+): Promise<void> {
+  const db = executor ?? (await getDatabase());
   if (existing.is_void === 1) throw new Error('applyTransactionPatch: cannot edit a void row');
 
   const amount = patch.amount ?? existing.amount;

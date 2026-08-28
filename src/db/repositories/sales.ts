@@ -10,7 +10,14 @@ import { categoryIdByName } from './categories';
 import { addDocument } from './documents';
 import { assertProjectActive } from './guards';
 import { ONCE_PAY_TYPES, OneTimePaymentError } from './plots';
-import { addTransaction, insertTransaction, LimitExceededError } from './transactions';
+import {
+  addTransaction,
+  applyTransactionPatch,
+  getTransaction,
+  insertTransaction,
+  LimitExceededError,
+  voidTransaction,
+} from './transactions';
 
 export interface NewSale {
   projectId: string;
@@ -135,6 +142,69 @@ export async function addSaleReceipt(input: NewSaleReceipt): Promise<SaleReceipt
   }
 
   return (await db.getFirstAsync<SaleReceiptRow>('SELECT * FROM sale_receipts WHERE id = ?', id))!;
+}
+
+export interface SaleReceiptPatch {
+  amount?: number;
+  date?: string;
+  accountId?: string;
+}
+
+/** The live receipt behind a Buyer-Receipt transaction (+ its sale), or throws. */
+async function receiptByTxn(txnId: string): Promise<{ receipt: SaleReceiptRow; sale: SaleRow }> {
+  const db = await getDatabase();
+  const receipt = await db.getFirstAsync<SaleReceiptRow>(
+    'SELECT * FROM sale_receipts WHERE txn_id = ? AND is_void = 0',
+    txnId
+  );
+  if (!receipt) throw new Error(`saleReceipt: no live receipt for txn ${txnId}`);
+  const sale = await db.getFirstAsync<SaleRow>('SELECT * FROM sales WHERE id = ?', receipt.sale_id);
+  if (!sale) throw new Error(`saleReceipt: sale ${receipt.sale_id} not found`);
+  return { receipt, sale };
+}
+
+/**
+ * Edit a buyer receipt IN PLACE (rule 8): re-checks the agreed-price cap with
+ * this receipt's own amount freed, then patches the cash transaction and the
+ * sale_receipts row in ONE transaction — settlement revenue and the account
+ * ledger can never diverge.
+ */
+export async function updateSaleReceipt(txnId: string, patch: SaleReceiptPatch): Promise<void> {
+  const db = await getDatabase();
+  const { receipt, sale } = await receiptByTxn(txnId);
+  await assertProjectActive(sale.project_id);
+  const txn = await getTransaction(txnId);
+  if (!txn) throw new Error(`updateSaleReceipt: txn ${txnId} not found`);
+
+  const amount = patch.amount ?? receipt.amount;
+  if (amount <= 0) throw new Error('updateSaleReceipt: amount must be positive');
+  const received = await db.getFirstAsync<{ s: number }>(
+    'SELECT COALESCE(SUM(amount), 0) AS s FROM sale_receipts WHERE sale_id = ? AND is_void = 0',
+    sale.id
+  );
+  const cap = sale.agreed_price - ((received?.s ?? 0) - receipt.amount);
+  if (amount > cap + 0.001) throw new LimitExceededError(cap, amount);
+
+  await db.withExclusiveTransactionAsync(async (tx) => {
+    await applyTransactionPatch(txn, { amount: patch.amount, date: patch.date, accountId: patch.accountId }, tx);
+    await tx.runAsync(
+      'UPDATE sale_receipts SET amount = ?, date = ?, account_id = ? WHERE id = ?',
+      amount,
+      patch.date ?? receipt.date,
+      patch.accountId ?? receipt.account_id,
+      receipt.id
+    );
+  });
+}
+
+/**
+ * Remove a buyer receipt: voids the cash transaction — `voidTransaction`
+ * already flags the linked sale_receipts row void, so outstanding reopens.
+ */
+export async function deleteSaleReceipt(txnId: string): Promise<void> {
+  const { sale } = await receiptByTxn(txnId);
+  await assertProjectActive(sale.project_id);
+  await voidTransaction(txnId);
 }
 
 export async function listSaleReceipts(saleId: string): Promise<SaleReceiptRow[]> {

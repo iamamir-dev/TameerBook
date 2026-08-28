@@ -24,6 +24,7 @@ import {
   deletePlotTransaction,
   getPlot,
   listPlotTransactions,
+  listProjectPhaseTransactions,
   setPlotSale,
   updatePlotExpense,
   updatePlotPayment,
@@ -36,6 +37,9 @@ import {
   listInvestorsWithCapacity,
   markProjectCompleted,
   addSaleReceipt,
+  updateSaleReceipt,
+  deleteSaleReceipt,
+  updateTransaction,
   addTransaction,
   attachLaborerToProject,
   addDelivery,
@@ -1257,6 +1261,64 @@ async function testCrossProjectDelivery(): Promise<TestResult> {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  T-SALE-ED  buyer receipts + sale costs edit/delete in place               */
+/* -------------------------------------------------------------------------- */
+async function testSaleEditDelete(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST SE-Acc', type: 'CASH', openingBalance: 10_000 });
+    c.accounts.push(acc.id);
+    const project = await createProject({ name: 'DBTEST SE-Proj' });
+    c.projects.push(project.id);
+    const checks: Check[] = [];
+
+    const sale = await upsertSale(project.id, { agreedPrice: 1000, buyerName: 'DBTEST Buyer' });
+    await addSaleReceipt({ saleId: sale.id, amount: 400, date: D, accountId: acc.id, payType: 'TOKEN' });
+    let sum = await getSaleSummary(project.id);
+    const receiptTxnId = sum.receipts[0]?.txn_id as string;
+    checks.push(['receipt 400 → outstanding 600', near(sum.receiptsTotal, 400) && near(sum.outstanding, 600)]);
+
+    // Edit up within the cap: receipt + txn + account all move together.
+    await updateSaleReceipt(receiptTxnId, { amount: 700 });
+    sum = await getSaleSummary(project.id);
+    checks.push(['edited 400→700 → outstanding 300', near(sum.receiptsTotal, 700) && near(sum.outstanding, 300)]);
+    checks.push(['account got 700', near(await getAccountBalance(acc.id), 10_700)]);
+
+    // Over the agreed price is blocked (own amount freed: cap = 1000).
+    checks.push([
+      'edit above agreed price blocked',
+      await expectThrow(() => updateSaleReceipt(receiptTxnId, { amount: 1200 }), 'LIMIT_EXCEEDED'),
+    ]);
+
+    // Sale cost on a Settings "Sale" category; edit it in place.
+    const saleCat = (await getCategoryByNameEn('Dealer Commission')) ?? (await getCategoryByNameEn('Sale Cost'));
+    await addSaleCost({ projectId: project.id, categoryId: saleCat!.id, amount: 100, date: D, accountId: acc.id });
+    sum = await getSaleSummary(project.id);
+    checks.push(['cost 100 → costs 100', near(sum.costs, 100)]);
+    const costTxn = (await listProjectPhaseTransactions(project.id, 'SALE')).find((x) => x.direction === 'OUT')!;
+    await updateTransaction(costTxn.id, { amount: 150 });
+    sum = await getSaleSummary(project.id);
+    checks.push(['cost edited 100→150', near(sum.costs, 150)]);
+
+    // Delete the receipt: outstanding reopens, cash reverses.
+    await deleteSaleReceipt(receiptTxnId);
+    sum = await getSaleSummary(project.id);
+    checks.push(['receipt deleted → outstanding 1000', near(sum.receiptsTotal, 0) && near(sum.outstanding, 1000)]);
+    checks.push(['account back to 9850', near(await getAccountBalance(acc.id), 9_850)]);
+
+    // Delete the cost too.
+    await voidTransaction(costTxn.id);
+    sum = await getSaleSummary(project.id);
+    checks.push(['cost deleted → costs 0', near(sum.costs, 0)]);
+    checks.push(['account restored', near(await getAccountBalance(acc.id), 10_000)]);
+
+    return report('T-SALE-ED sale receipts + costs edit/delete', checks);
+  } finally {
+    await c.run();
+  }
+}
+
 export async function runDbTests(): Promise<TestResult[]> {
   // Everything is company-scoped now  run the whole suite inside a throwaway
   // test company, then restore the user's active company and delete it.
@@ -1268,6 +1330,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testPlotMath,
     testPlotEditDelete,
     testPlotInvestorsSettlement,
+    testSaleEditDelete,
     testLaborAccrual,
     testSaleAndProjectCost,
     testSettlementProfitWithDonation,

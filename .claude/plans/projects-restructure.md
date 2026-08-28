@@ -46,8 +46,10 @@ one pass. Shared foundations first.
 ## Phase 4 — Construction + Sale phases
 - [ ] ConstructionDetail: `useConstructionDetail` + styled; worker card
       component; edit/delete-in-place for expenses
-- [ ] SaleDetail: `useSaleDetail` + styled; extract SaleReceiptSheet /
-      SaleCostSheet / EditDealSheet onto AppSheet; edit/delete-in-place
+- [x] SaleDetail: `useSaleDetail` + styled; SaleReceiptSheet / SaleCostSheet /
+      EditDealSheet on the shared kit (3 hand-rolled Modals gone);
+      edit/delete-in-place for receipts + costs (repo: updateSaleReceipt /
+      deleteSaleReceipt, atomic txn+receipt patch); T-SALE-ED DB test
 - [ ] MaterialEntry: styled + shared AddPartySheet + shared Toast; edit-in-place
 - [ ] PhotoDiary: styled + shared ImageLightbox
 
