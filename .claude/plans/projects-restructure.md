@@ -37,11 +37,11 @@ one pass. Shared foundations first.
       store `loaded` skeleton; ProjectCard + ProjectCardSkeleton components
 - [ ] NewProjectWizard: `useNewProject` hook + styled; reuse AddPlotSheet
 
-## Phase 3 — Project detail (god component)
-- [ ] `useProjectDetail` (useFocusData, drains 15 useState) + styled
-- [ ] Remove stage pill + stage sheet (auto status); section components
-- [ ] Full **project PDF report** (`useProjectReport`) via shared engine
-- [ ] **On-hold / Cancel** lifecycle UI + guards
+## Phase 3 — Project detail (god component)  ✅
+- [x] `useProjectDetail` (useFocusData, drained 13 useState) + styled
+- [x] Removed stage pill + stage sheet (auto-status badge in hero)
+- [x] Full **project PDF report** (`useProjectReport`) via shared engine
+- [x] **On-hold / Reactivate / Cancel** lifecycle (repo guards + ⋯ menu)
 
 ## Phase 4 — Construction + Sale phases
 - [ ] ConstructionDetail: `useConstructionDetail` + styled; worker card

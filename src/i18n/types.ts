@@ -479,6 +479,11 @@ export interface TranslationKeys {
   // Project lifecycle & validations
   markCompleted: string;
   markCompletedTitle: string;
+  putOnHold: string;
+  reactivate: string;
+  cancelProject: string;
+  cancelProjectTitle: string;
+  cancelProjectBody: string;
   markCompletedBody: string;
   warnLaborDues: string;
   warnBuyerOwes: string;

@@ -171,6 +171,34 @@ export async function markProjectCompleted(id: string): Promise<void> {
   await db.runAsync("UPDATE projects SET status = 'COMPLETED' WHERE id = ?", id);
 }
 
+/** Pause an ACTIVE project (no money moves; reversible via reactivateProject). */
+export async function setProjectOnHold(id: string): Promise<void> {
+  const p = await getProject(id);
+  if (!p) throw new Error(`setProjectOnHold: project ${id} not found`);
+  if (p.status !== 'ACTIVE') throw new Error(`setProjectOnHold: project is ${p.status}, not ACTIVE`);
+  const db = await getDatabase();
+  await db.runAsync("UPDATE projects SET status = 'ON_HOLD' WHERE id = ?", id);
+}
+
+/** Resume a paused (ON_HOLD) project. */
+export async function reactivateProject(id: string): Promise<void> {
+  const p = await getProject(id);
+  if (!p) throw new Error(`reactivateProject: project ${id} not found`);
+  if (p.status !== 'ON_HOLD') throw new Error(`reactivateProject: project is ${p.status}, not ON_HOLD`);
+  const db = await getDatabase();
+  await db.runAsync("UPDATE projects SET status = 'ACTIVE' WHERE id = ?", id);
+}
+
+/** Cancel a not-yet-completed project (never settled). Freezes it; no money moves. */
+export async function cancelProject(id: string): Promise<void> {
+  const p = await getProject(id);
+  if (!p) throw new Error(`cancelProject: project ${id} not found`);
+  if (p.settled_at) throw new Error('cancelProject: a settled project cannot be cancelled');
+  if (p.status === 'COMPLETED') throw new Error('cancelProject: project already completed');
+  const db = await getDatabase();
+  await db.runAsync("UPDATE projects SET status = 'CANCELLED' WHERE id = ?", id);
+}
+
 /** Per-project donation % override (null = use the Settings default). */
 export async function setProjectDonationPct(id: string, pct: number | null): Promise<void> {
   const db = await getDatabase();
