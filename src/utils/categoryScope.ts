@@ -28,8 +28,13 @@ const CONTEXT_HEADINGS: Record<'plot' | 'construction' | 'home' | 'sale', string
   sale: ['Sale'],
 };
 
-/** Contexts that also include top-level standalone leaves (e.g. "Misc"). */
-const STANDALONE_CONTEXTS = new Set<CategoryContext>(['plot', 'construction', 'general']);
+/**
+ * Only the GENERIC entry grid shows section-less top-level leaves. Every module
+ * picker is sections-only: a category is bookable in a module because it lives
+ * in that module's section (Materials / Plot / Sale / …), never because it
+ * floats at the top level. Keeps Settings the single, structured source.
+ */
+const STANDALONE_CONTEXTS = new Set<CategoryContext>(['general']);
 
 /**
  * Given ALL categories of the right type, return only the bookable LEAF

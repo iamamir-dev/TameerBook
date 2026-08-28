@@ -392,7 +392,6 @@ export async function seedStressData(
   const materialCats = childrenOf('Materials');
   const plotCats = childrenOf('Plot').filter((c) => c.name_en !== 'Plot Payment');
   const homeCats = childrenOf('Home Expense');
-  const miscCat = byName('Misc');
   const sellerCats = await listSellerPaymentCategories();
   const buyerCats = await listBuyerPaymentCategories();
   const projStages = await listStages('PROJECT');
@@ -802,7 +801,7 @@ export async function seedStressData(
   /* --- household expenses + transfers -------------------------------- */
   step('Household + transfers', preset.homeExpenses + Math.floor(preset.homeExpenses / 20));
   for (let i = 0; i < preset.homeExpenses; i++) {
-    const cat = homeCats.length ? pick(rng, homeCats) : miscCat;
+    const cat = homeCats.length ? pick(rng, homeCats) : null;
     await attempt('homeExpenses', () =>
       addTransaction({
         direction: 'OUT',
@@ -922,7 +921,7 @@ export async function seedStressData(
   async function plotSideExpenses(plotId: string, boughtDaysAgo: number): Promise<void> {
     const rounds = 1 + Math.floor(rng() * 3);
     for (let k = 0; k < rounds; k++) {
-      const cat = plotCats.length ? pick(rng, plotCats) : miscCat;
+      const cat = plotCats.length ? pick(rng, plotCats) : null;
       if (!cat) return;
       await attempt('plotExpenses', () =>
         addPlotExpense({

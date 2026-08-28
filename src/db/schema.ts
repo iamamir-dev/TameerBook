@@ -1286,6 +1286,19 @@ WHERE EXISTS (SELECT 1 FROM categories WHERE name_en='Sale' AND parent_id IS NUL
   AND NOT EXISTS (SELECT 1 FROM categories WHERE name_en = v.en AND parent_id = (SELECT id FROM categories WHERE name_en='Sale' AND parent_id IS NULL LIMIT 1));
 `;
 
+/**
+ * v36 — categories are sections-only: every bookable category lives inside a
+ * section (Materials / Plot / Sale / …). The floating top-level "Misc" leaf is
+ * removed when nothing references it; if entries exist it survives (their
+ * history must not break) but no picker offers it any more.
+ */
+export const SCHEMA_V36_SECTIONS_ONLY = `
+DELETE FROM categories
+ WHERE name_en = 'Misc' AND parent_id IS NULL AND is_system = 0
+   AND id NOT IN (SELECT parent_id FROM categories WHERE parent_id IS NOT NULL)
+   AND id NOT IN (SELECT category_id FROM transactions WHERE category_id IS NOT NULL);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1318,6 +1331,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 33, sql: SCHEMA_V33_BUYER_PAYMENT },
   { version: 34, sql: SCHEMA_V34_VENTURE_INVESTORS },
   { version: 35, sql: SCHEMA_V35_SALE_SECTION },
+  { version: 36, sql: SCHEMA_V36_SECTIONS_ONLY },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -1354,7 +1368,6 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name_en: 'Plot', name_ur: 'پلاٹ', type: 'EXPENSE', icon: 'home', system: true },
   { name_en: 'Home Expense', name_ur: 'گھر کا خرچ', type: 'EXPENSE', icon: 'home', system: true },
   { name_en: 'Sale', name_ur: 'فروخت', type: 'EXPENSE', icon: 'tag', system: true },
-  { name_en: 'Misc', name_ur: 'متفرق', type: 'EXPENSE', icon: 'kharcha' },
 
   // ---- System posting categories (top-level, hidden from the manager) ----
   { name_en: 'Labor Payment', name_ur: 'مزدور کی ادائیگی', type: 'EXPENSE', icon: 'dehari', system: true },

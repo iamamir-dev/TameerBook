@@ -34,7 +34,7 @@ const plotPayment = cat({ id: 'c-plotpay', name_en: 'Plot Payment', parent_id: '
 const transferFees = cat({ id: 'c-transfee', name_en: 'Transfer Fees & Tax', parent_id: 'h-plot' });
 const groceries = cat({ id: 'c-groc', name_en: 'Groceries', parent_id: 'h-home' });
 const saleCost = cat({ id: 'c-salecost', name_en: 'Sale Cost', parent_id: 'h-sale', is_system: 1 });
-const misc = cat({ id: 'c-misc', name_en: 'Misc' }); // standalone leaf
+const misc = cat({ id: 'c-misc', name_en: 'Misc' }); // legacy standalone leaf (pre-v36)
 
 const expenseAll = [
   materials, labor, plot, home, sale,
@@ -59,18 +59,13 @@ describe('scopeCategoriesToContext', () => {
     }
   });
 
-  it('construction = Materials subs + standalone leaves (Labor is module-managed)', () => {
-    expect(names(scopeCategoriesToContext(expenseAll, 'construction')).sort()).toEqual(
-      ['Cement', 'Misc'].sort()
-    );
+  it('construction = Materials subs only (sections-only; Labor is module-managed)', () => {
+    expect(names(scopeCategoriesToContext(expenseAll, 'construction'))).toEqual(['Cement']);
   });
 
-  it('plot = Plot subs + standalone leaves, no Groceries', () => {
+  it('plot = Plot subs only (sections-only), no Groceries or floating leaves', () => {
     const out = names(scopeCategoriesToContext(expenseAll, 'plot'));
-    expect(out).toContain('Transfer Fees & Tax');
-    expect(out).toContain('Misc');
-    expect(out).not.toContain('Groceries');
-    expect(out).not.toContain('Cement');
+    expect(out).toEqual(['Transfer Fees & Tax']);
   });
 
   it('home = Home Expense subs only (no standalone Misc)', () => {

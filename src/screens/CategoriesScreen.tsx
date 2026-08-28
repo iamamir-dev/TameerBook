@@ -27,7 +27,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type CategoriesRoute = RouteProp<RootStackParamList, 'Categories'>;
 
 type Editor =
-  | { mode: 'addMain' }
   | { mode: 'addSub'; parentId: string }
   | { mode: 'edit'; cat: CategoryRow; isSub: boolean };
 
@@ -185,11 +184,6 @@ export function CategoriesScreen(): React.JSX.Element {
     setUnit('');
     setSecUnit('');
     setSecFactor('');
-  };
-  const openAddMain = () => {
-    setName('');
-    resetUnitFields();
-    setEditor({ mode: 'addMain' });
   };
   const openAddSub = (parentId: string) => {
     setName('');
@@ -463,7 +457,6 @@ export function CategoriesScreen(): React.JSX.Element {
           );
         })}
 
-        <AppButton label={t('addCategoryLabel')} icon="add" variant="secondary" onPress={openAddMain} />
       </ScrollView>
 
       {renderEditor()}
@@ -478,7 +471,7 @@ export function CategoriesScreen(): React.JSX.Element {
           <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
-              {editor?.mode === 'edit' ? t('edit') : editor?.mode === 'addSub' ? t('addSubcategory') : t('addCategoryLabel')}
+              {editor?.mode === 'edit' ? t('edit') : t('addSubcategory')}
             </AppText>
             <FloatingLabelInput label={t('name')} value={name} onChangeText={setName} />
             {showUnit ? (
