@@ -41,7 +41,7 @@ import {
 } from '@/db';
 import { PAY_TYPE_LABEL_KEYS, PAY_TYPES, type PayType } from '@/db/schema';
 import { ONCE_PAY_TYPES } from '@/db';
-import { useAccountOptions, useFocusReload, useSaveAction } from '@/hooks';
+import { useAccountOptions, useCategoryLabel, useFocusReload, useModuleCategories, useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -93,10 +93,12 @@ export function SaleDetailScreen(): React.JSX.Element {
     if (uri) setReceiptUri(uri);
   };
 
-  // Expense sheet.
+  // Expense sheet — sale costs pick a Settings-managed "Sale" category.
   const [expenseOpen, setExpenseOpen] = useState(false);
-  const [expenseName, setExpenseName] = useState('');
+  const [expenseCategoryId, setExpenseCategoryId] = useState<string | null>(null);
+  const [expenseNote, setExpenseNote] = useState('');
   const [expenseAmount, setExpenseAmount] = useState(0);
+  const [expenseCatSheet, setExpenseCatSheet] = useState(false);
 
   // Edit-deal sheet.
   const [editOpen, setEditOpen] = useState(false);
@@ -108,6 +110,8 @@ export function SaleDetailScreen(): React.JSX.Element {
   const [accountSheet, setAccountSheet] = useState(false);
 
   const { saving, run: runSave } = useSaveAction();
+  const { data: saleCats } = useModuleCategories('sale');
+  const catLabel = useCategoryLabel();
 
   const load = useCallback(async () => {
     const [sum, proj, rows, accs, buyerRows] = await Promise.all([
@@ -187,11 +191,12 @@ export function SaleDetailScreen(): React.JSX.Element {
   };
 
   const onSaveExpense = async () => {
-    if (expenseAmount <= 0 || !accountId || !expenseName.trim()) return;
+    if (expenseAmount <= 0 || !accountId || !expenseCategoryId) return;
     const ok = await runSave(async () => {
       await addSaleCost({
         projectId,
-        name: expenseName.trim(),
+        categoryId: expenseCategoryId,
+        name: expenseNote.trim() || null,
         amount: expenseAmount,
         date: todayISO(),
         accountId,
@@ -199,7 +204,8 @@ export function SaleDetailScreen(): React.JSX.Element {
     });
     if (!ok) return;
     setExpenseOpen(false);
-    setExpenseName('');
+    setExpenseCategoryId(null);
+    setExpenseNote('');
     setExpenseAmount(0);
     await reload();
   };
@@ -418,7 +424,13 @@ export function SaleDetailScreen(): React.JSX.Element {
           <AppText size="lg" weight="bold" center>
             {t('addExpense')}
           </AppText>
-          <FloatingLabelInput label={t('note')} value={expenseName} onChangeText={setExpenseName} />
+          <Pressable onPress={() => setExpenseCatSheet(true)} style={styles.accountChip} accessibilityRole="button">
+            <AppIcon name="tag" size={18} color="primary" />
+            <AppText size="sm" weight="semibold" numberOfLines={1} style={styles.flex} color={expenseCategoryId ? 'textPrimary' : 'textSecondary'}>
+              {expenseCategoryId ? catLabel(saleCats.find((c) => c.id === expenseCategoryId)!) : t('category')}
+            </AppText>
+            <AppIcon name="forward" size={18} color="textSecondary" />
+          </Pressable>
           <AmountInput
             label={t('amount')}
             value={expenseAmount}
@@ -427,6 +439,7 @@ export function SaleDetailScreen(): React.JSX.Element {
             surface={theme.colors.card}
           />
           {accountChip}
+          <FloatingLabelInput label={t('note')} value={expenseNote} onChangeText={setExpenseNote} />
           <AppButton
             label={t('save')}
             icon="check"
@@ -435,7 +448,7 @@ export function SaleDetailScreen(): React.JSX.Element {
             disabled={
               expenseAmount <= 0 ||
               !accountId ||
-              !expenseName.trim() ||
+              !expenseCategoryId ||
               (!!selectedAccount && expenseAmount > selectedAccount.balance)
             }
           />
@@ -497,6 +510,16 @@ export function SaleDetailScreen(): React.JSX.Element {
         title={t('selectAccount')}
         searchable={false}
         onSelect={(o) => setAccountId(o.id)}
+      />
+
+      <SelectSheet
+        visible={expenseCatSheet}
+        onClose={() => setExpenseCatSheet(false)}
+        options={saleCats.map((c) => ({ id: c.id, label: catLabel(c) }))}
+        selectedId={expenseCategoryId ?? undefined}
+        title={t('category')}
+        searchable={false}
+        onSelect={(o) => setExpenseCategoryId(o.id)}
       />
       <TransactionDetailSheet txn={txnDetail} onClose={() => setTxnDetail(null)} />
     </View>
