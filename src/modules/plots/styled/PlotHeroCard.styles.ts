@@ -13,7 +13,7 @@ export const makeStyles = (theme: Theme) =>
       alignSelf: 'flex-start',
       paddingVertical: 4,
       paddingHorizontal: 10,
-      borderRadius: 999,
+      borderRadius: theme.radius.pill,
       marginTop: 4,
     },
     divider: {

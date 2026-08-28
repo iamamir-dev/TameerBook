@@ -22,7 +22,7 @@ export const makeStyles = (theme: Theme) =>
       paddingVertical: 2,
       paddingHorizontal: theme.spacing.xs,
       borderRadius: theme.radius.pill,
-      backgroundColor: 'rgba(0,0,0,0.6)',
+      backgroundColor: theme.colors.overlay,
     },
     add: { width: 96, height: 96 },
   });

@@ -449,7 +449,6 @@ export const en: TranslationKeys = {
   sectionActive: 'Active',
   sectionCompleted: 'Completed',
   addPlot: 'Add plot',
-  noPlotChoice: 'No plot \u2014 you can add one later',
   ownerFunded: 'Owner-funded \u2014 no investors',
   plotTaken: 'This plot was just added to another project.',
   payTypeOnce: 'This payment can only be added once for this plot.',

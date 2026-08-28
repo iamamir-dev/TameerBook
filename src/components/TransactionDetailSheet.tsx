@@ -4,7 +4,7 @@ import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppIcon, AppText } from '@/components/ui';
+import { AppIcon, AppText, ImageLightbox } from '@/components/ui';
 import {
   getAccount,
   getCategory,
@@ -136,18 +136,7 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
       ) : null}
 
       {/* Full-screen receipt viewer */}
-      <Modal visible={viewer} transparent animationType="fade" onRequestClose={() => setViewer(false)}>
-        <View style={styles.viewer}>
-          {receiptUri ? <Image source={{ uri: receiptUri }} style={styles.viewerImage} resizeMode="contain" /> : null}
-          <Pressable
-            onPress={() => setViewer(false)}
-            accessibilityRole="button"
-            style={[styles.viewerClose, { top: insets.top + theme.spacing.md }]}
-          >
-            <AppIcon name="close" size={28} color="onHero" />
-          </Pressable>
-        </View>
-      </Modal>
+      <ImageLightbox uri={viewer ? receiptUri : null} onClose={() => setViewer(false)} />
     </Modal>
   );
 }
@@ -223,19 +212,7 @@ const makeStyles = (theme: Theme) =>
       width: 32,
       height: 32,
       borderRadius: 16,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
-    viewerImage: { width: '100%', height: '85%' },
-    viewerClose: {
-      position: 'absolute',
-      right: theme.spacing.lg,
-      width: 48,
-      height: 48,
-      borderRadius: theme.radius.pill,
-      backgroundColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: theme.colors.overlay,
       alignItems: 'center',
       justifyContent: 'center',
     },

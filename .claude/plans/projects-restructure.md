@@ -75,8 +75,13 @@ one pass. Shared foundations first.
 - [x] demo/tests/stress updated for the removed tables
 - [x] Removed `completeSale` fn + NewSale.completedAt; createSale/addSaleReceipt
       INSERTs no longer reference the dropped columns
-- [ ] Theme-token sweep (no hardcoded colors/px); validation guards; logic audit
-- [ ] NewProjectWizard hook + styled (Phase 2 leftover)
+- [x] Theme-token sweep in owned modules: TransactionDetailSheet viewer → shared
+      ImageLightbox + overlay token; PlotDocsGrid chip + PlotHeroCard radius
+      tokenized. (Legacy screens — Onboarding/Accounts/Udhaar/etc. — keep their
+      colors for their own module passes.)
+- [x] NewProjectWizard: styled file extracted; dead "no plot" review branch
+      removed (plot is required); Create gated on plot; dead noPlotChoice key
+      dropped
 
 Risk: Phase 6 migrations (drop stages/milestones) are FK-safe via the runner's
 FK-off; Phase 5 touches the money-critical settle path — most careful + DB tests.

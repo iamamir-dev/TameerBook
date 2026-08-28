@@ -452,7 +452,6 @@ export const ur: TranslationKeys = {
   sectionActive: 'جاری',
   sectionCompleted: 'مکمل',
   addPlot: 'پلاٹ شامل کریں',
-  noPlotChoice: 'پلاٹ نہیں — بعد میں شامل کر سکتے ہیں',
   ownerFunded: 'مالک کا سرمایہ — کوئی سرمایہ کار نہیں',
   plotTaken: 'یہ پلاٹ ابھی کسی اور پروجیکٹ میں شامل ہو گیا ہے۔',
   payTypeOnce: 'یہ ادائیگی اس پلاٹ کے لیے صرف ایک بار شامل کی جا سکتی ہے۔',

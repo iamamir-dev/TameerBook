@@ -488,7 +488,6 @@ export interface TranslationKeys {
   sectionActive: string;
   sectionCompleted: string;
   addPlot: string;
-  noPlotChoice: string;
   ownerFunded: string;
   plotTaken: string;
   payTypeOnce: string;
