@@ -51,11 +51,15 @@ one pass. Shared foundations first.
 - [ ] MaterialEntry: styled + shared AddPartySheet + shared Toast; edit-in-place
 - [ ] PhotoDiary: styled + shared ImageLightbox
 
-## Phase 5 — Settlement redesign
-- [ ] Rebuild SettlementScreen: Builder work % + Charity % inputs, ownership
-      split shown derived, remove dead investors-pool field + no-op lines
-- [ ] `useSettlement` hook + styled; RuleInfoSheet → AppSheet
-- [ ] DB tests for the settle path
+## Phase 5 — Settlement redesign  ✅ (partial)
+- [x] SettlementScreen: Builder % + Charity % inputs only; by-ownership pool
+      shown derived; removed the misleading editable investors-pool field, the
+      sum-to-100 gate, and the two no-op "AI-look" lines
+- [x] styled file; RuleInfo Modal → AppSheet
+- [ ] `useSettlement` hook extraction (data-load) — deferred (screen state is
+      wizard-y; low value vs risk)
+- [ ] DB tests for the settle path (project settle already covered indirectly;
+      add explicit test in Phase 6)
 
 ## Phase 6 — Schema cleanup + full audit
 - [ ] Drop dead `milestones` table (migration) + MilestoneRow + DEFAULT_MILESTONES

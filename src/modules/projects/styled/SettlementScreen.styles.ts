@@ -1,0 +1,62 @@
+import { StyleSheet } from 'react-native';
+
+import type { Theme } from '@/theme/theme';
+
+export const makeStyles = (theme: Theme) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.colors.background },
+    flex: { flex: 1 },
+    dots: { flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
+    dot: { width: 8, height: 8, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
+    dotActive: { backgroundColor: theme.colors.accent, width: 20 },
+    dotDone: { backgroundColor: theme.colors.accentSoft },
+    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    hero: { borderRadius: theme.radius.hero, padding: theme.spacing.xl, gap: theme.spacing.xs, ...theme.shadows.card },
+    lossNote: { backgroundColor: theme.colors.dangerSoft },
+    stepLine: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm },
+    stepNum: {
+      width: 20,
+      height: 20,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 1,
+    },
+    row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.xs },
+    rowBetween: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+    ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
+    pctCol: { width: 64, textAlign: 'right' },
+    person: { paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
+    inputsCard: { gap: theme.spacing.md },
+    derivedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      backgroundColor: theme.colors.accentSoft,
+      borderRadius: theme.radius.md,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.md,
+    },
+    reportHero: { alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xl },
+    reportCheck: {
+      width: 72,
+      height: 72,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.success,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: theme.spacing.xs,
+    },
+    accountChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
+    },
+  });

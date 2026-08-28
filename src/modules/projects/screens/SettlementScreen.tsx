@@ -1,8 +1,7 @@
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
@@ -10,6 +9,7 @@ import {
   AppCard,
   AppHeader,
   AppIcon,
+  AppSheet,
   AppText,
   AppToggle,
   LoadErrorState,
@@ -32,10 +32,11 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
-import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { type DistributionRule, type DistributionRuleKind } from '@/utils/settlementMath';
+
+import { makeStyles } from '../styled/SettlementScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type SettleRoute = RouteProp<RootStackParamList, 'Settlement'>;
@@ -91,10 +92,9 @@ function PctInput({
  */
 export function SettlementScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const { projectId } = useRoute<SettleRoute>().params;
-  const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
   const refreshProjects = useProjectsStore((s) => s.refresh);
 
@@ -110,10 +110,10 @@ export function SettlementScreen(): React.JSX.Element {
   // After confirm: the frozen numbers the report step renders from.
   const [reportData, setReportData] = useState<Settlement | null>(null);
 
-  // THE rule: builder's work share first, rest by ownership, charity per
-  // person (with opt-out). All percentages editable here.
+  // THE rule: builder's work share first, charity per person (opt-out), and the
+  // REST is split by ownership. The owner enters just two numbers (builder % +
+  // charity %); the by-ownership pool is derived, never a field to balance.
   const [ownerPct, setOwnerPct] = useState(20);
-  const [investorsPct, setInvestorsPct] = useState(70);
   const [optOut, setOptOut] = useState<Record<string, boolean>>({});
 
   const { saving, run: runSave } = useSaveAction();
@@ -139,17 +139,16 @@ export function SettlementScreen(): React.JSX.Element {
     setPeriod(p ? { start: p.start_date ?? p.created_at, end: p.settled_at } : null);
     setPlot(p?.plot_id ? await getPlot(p.plot_id) : null);
     setDonationPct(dPct);
-    setInvestorsPct(Math.max(0, 100 - 20 - dPct));
   }, [projectId]);
   const { loadFailed, reload } = useFocusReload(load);
 
-  // The three-way split must total exactly 100 — live-checked, Next gated.
-  const pctSum = Math.round((ownerPct + investorsPct + donationPct) * 100) / 100;
-  const sumOk = Math.abs(pctSum - 100) <= 0.01;
-  /** Cap an edited field so the trio can never exceed 100. */
-  const capTo100 = (others: number) => (v: number) => Math.max(0, Math.min(v, Math.max(0, 100 - others)));
+  // Builder % + charity % can never exceed 100; the rest is split by ownership.
+  const capTo100 = (other: number) => (v: number) => Math.max(0, Math.min(v, Math.max(0, 100 - other)));
+  const byOwnershipPct = Math.max(0, Math.round((100 - ownerPct - donationPct) * 10) / 10);
+  const sumOk = ownerPct + donationPct <= 100.01;
 
   const rule: DistributionRule = useMemo(() => ({ kind: 'ownerFirst', ownerPct }), [ownerPct]);
+  const infoRuleMeta = RULES.find((x) => x.kind === infoRule) ?? null;
 
   const report = useSettlementReport({
     projectName,
@@ -336,29 +335,30 @@ export function SettlementScreen(): React.JSX.Element {
                 </Pressable>
               </View>
 
-              {/* The three-way split: builder + investors + charity = 100%. */}
+              {/* Two inputs only: builder's work share + charity. The rest is
+                  split by ownership automatically (shown, not entered). */}
               <AppCard style={styles.inputsCard}>
                 <PctInput
                   label={t('ownerWorkSharePct')}
                   value={ownerPct}
-                  onChange={(v) => setOwnerPct(capTo100(investorsPct + donationPct)(v))}
+                  onChange={(v) => setOwnerPct(capTo100(donationPct)(v))}
                 />
-                <PctInput
-                  label={t('investorsPoolPct')}
-                  value={investorsPct}
-                  onChange={(v) => setInvestorsPct(capTo100(ownerPct + donationPct)(v))}
-                />
-                <AppText size="xs" color="textSecondary">
-                  {t('ruleOwnershipHint')}
-                </AppText>
                 <PctInput
                   label={t('sadaqahPct')}
                   value={donationPct}
-                  onChange={(v) => setDonationPct(capTo100(ownerPct + investorsPct)(v))}
+                  onChange={(v) => setDonationPct(capTo100(ownerPct)(v))}
                 />
-                {/* Live calculator — must land exactly on 100%. */}
-                <AppText size="sm" weight="bold" color={sumOk ? 'success' : 'danger'} tabular>
-                  {`${ownerPct}% + ${investorsPct}% + ${donationPct}% = ${pctSum}%${sumOk ? ' ✓' : ` — ${t('sumMustBe100')}`}`}
+                {/* Derived: what's left goes to everyone by ownership share. */}
+                <View style={styles.derivedRow}>
+                  <AppText size="sm" weight="semibold" color="textSecondary" style={styles.flex}>
+                    {t('investorsPoolPct')}
+                  </AppText>
+                  <AppText size="md" weight="bold" color="accent" tabular>
+                    {`${byOwnershipPct}%`}
+                  </AppText>
+                </View>
+                <AppText size="xs" color="textSecondary">
+                  {t('ruleOwnershipHint')}
                 </AppText>
               </AppCard>
 
@@ -502,50 +502,41 @@ export function SettlementScreen(): React.JSX.Element {
         onSelect={(o) => setAccountId(o.id)}
       />
 
-      {/* Rule explainer sheet — structured: heading, prose, numbered steps. */}
-      <Modal visible={infoRule !== null} transparent animationType="slide" onRequestClose={() => setInfoRule(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setInfoRule(null)} accessibilityRole="button" />
-        <View style={[styles.infoSheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-          <View style={styles.grabber} />
-          {(() => {
-            const r = RULES.find((x) => x.kind === infoRule);
-            if (!r) return null;
-            return (
-              <>
-                <AppText size="lg" weight="bold">
-                  {t(r.labelKey)}
-                </AppText>
-
-                <AppText size="sm" weight="bold" color="accent">
-                  {t('infoWhatTitle')}
-                </AppText>
-                <AppText size="sm" color="textSecondary">
-                  {t(r.descKey)}
-                </AppText>
-
-                <AppText size="sm" weight="bold" color="accent">
-                  {t('infoCalcTitle')}
-                </AppText>
-                {t(r.calcKey)
-                  .split('\n')
-                  .map((line, i) => (
-                    <View key={i} style={styles.stepLine}>
-                      <View style={styles.stepNum}>
-                        <AppText size="xs" weight="bold" color="onAccent">
-                          {String(i + 1)}
-                        </AppText>
-                      </View>
-                      <AppText size="sm" color="textSecondary" style={styles.flex}>
-                        {line}
-                      </AppText>
-                    </View>
-                  ))}
-              </>
-            );
-          })()}
-          <AppButton label={t('done')} icon="check" onPress={() => setInfoRule(null)} />
-        </View>
-      </Modal>
+      {/* Rule explainer — structured: heading, prose, numbered steps. */}
+      <AppSheet
+        visible={infoRule !== null}
+        onClose={() => setInfoRule(null)}
+        title={infoRuleMeta ? t(infoRuleMeta.labelKey) : ''}
+        footer={<AppButton label={t('done')} icon="check" onPress={() => setInfoRule(null)} fullWidth />}
+      >
+        {infoRuleMeta ? (
+          <>
+            <AppText size="sm" weight="bold" color="accent">
+              {t('infoWhatTitle')}
+            </AppText>
+            <AppText size="sm" color="textSecondary">
+              {t(infoRuleMeta.descKey)}
+            </AppText>
+            <AppText size="sm" weight="bold" color="accent">
+              {t('infoCalcTitle')}
+            </AppText>
+            {t(infoRuleMeta.calcKey)
+              .split('\n')
+              .map((line, i) => (
+                <View key={i} style={styles.stepLine}>
+                  <View style={styles.stepNum}>
+                    <AppText size="xs" weight="bold" color="onAccent">
+                      {String(i + 1)}
+                    </AppText>
+                  </View>
+                  <AppText size="sm" color="textSecondary" style={styles.flex}>
+                    {line}
+                  </AppText>
+                </View>
+              ))}
+          </>
+        ) : null}
+      </AppSheet>
 
       <StickyFooter>
         <AppButton
@@ -556,10 +547,6 @@ export function SettlementScreen(): React.JSX.Element {
           disabled={!canNext}
         />
       </StickyFooter>
-      {/* keep insets referenced for tablet safe-areas */}
-      <View style={{ height: insets.bottom * 0 }} />
-      {/* language kept for RTL-aware future tweaks */}
-      {language ? null : null}
     </View>
   );
 }
@@ -588,77 +575,3 @@ function PRow({
     </View>
   );
 }
-
-const makeStyles = (theme: Theme) =>
-  StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.colors.background },
-    flex: { flex: 1 },
-    dots: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: theme.spacing.sm,
-      paddingBottom: theme.spacing.sm,
-    },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.track },
-    dotActive: { backgroundColor: theme.colors.accent, width: 20 },
-    dotDone: { backgroundColor: theme.colors.accentSoft },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
-    hero: {
-      borderRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.xs,
-      ...theme.shadows.card,
-    },
-    lossNote: { backgroundColor: theme.colors.dangerSoft },
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },
-    infoSheet: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.card,
-      borderTopLeftRadius: theme.radius.hero,
-      borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.md,
-      ...theme.shadows.raised,
-    },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    stepLine: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm },
-    stepNum: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      backgroundColor: theme.colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 1,
-    },
-    row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.xs },
-    ruled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
-    pctCol: { width: 64, textAlign: 'right' },
-    person: { paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
-    inputsCard: { gap: theme.spacing.md },
-    reportHero: { alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xl },
-    reportCheck: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor: theme.colors.success,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: theme.spacing.xs,
-    },
-    accountChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.md,
-      borderWidth: 1.5,
-      borderColor: theme.colors.border,
-      paddingHorizontal: theme.spacing.lg,
-      minHeight: theme.touch.minTarget,
-    },
-    rowBetween: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-  });
