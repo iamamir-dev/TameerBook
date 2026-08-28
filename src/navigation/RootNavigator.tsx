@@ -9,7 +9,6 @@ import { AccountsScreen } from '@/screens/AccountsScreen';
 import { BookingsScreen, NewPurchaseOrderScreen, PurchaseOrderDetailScreen } from '@/modules/bookings';
 import { CashScreen } from '@/screens/CashScreen';
 import { ComingSoonScreen } from '@/screens/ComingSoonScreen';
-import { ConstructionDetailScreen } from '@/screens/ConstructionDetailScreen';
 import { DevToolsScreen } from '@/screens/DevToolsScreen';
 import { EntryScreen } from '@/screens/EntryScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
@@ -21,13 +20,18 @@ import {
   InvestorsScreen,
 } from '@/modules/investors';
 import { LaborerDetailScreen, LaborScreen } from '@/modules/labor';
-import { MaterialEntryScreen } from '@/screens/MaterialEntryScreen';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
-import { NewProjectWizard } from '@/screens/NewProjectWizard';
-import { PhotoDiaryScreen } from '@/screens/PhotoDiaryScreen';
 import { EditPlotScreen, NewPlotScreen, PlotDetailScreen, PlotsScreen } from '@/modules/plots';
-import { ProjectDetailScreen } from '@/screens/ProjectDetailScreen';
-import { ProjectsScreen } from '@/screens/ProjectsScreen';
+import {
+  ConstructionDetailScreen,
+  MaterialEntryScreen,
+  NewProjectWizard,
+  PhotoDiaryScreen,
+  ProjectDetailScreen,
+  ProjectsScreen,
+  SaleDetailScreen,
+  SettlementScreen,
+} from '@/modules/projects';
 import { QuickEntryScreen } from '@/screens/QuickEntryScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { CategoriesScreen } from '@/screens/CategoriesScreen';
@@ -35,9 +39,7 @@ import { SignatureScreen } from '@/screens/SignatureScreen';
 import { StatusesScreen } from '@/screens/StatusesScreen';
 import { CompanyDetailScreen } from '@/screens/CompanyDetailScreen';
 import { ReportsScreen } from '@/screens/ReportsScreen';
-import { SaleDetailScreen } from '@/screens/SaleDetailScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
-import { SettlementScreen } from '@/screens/SettlementScreen';
 import { TransactionsScreen } from '@/screens/TransactionsScreen';
 import { TransferScreen } from '@/screens/TransferScreen';
 import { UdhaarDetailScreen } from '@/screens/UdhaarDetailScreen';

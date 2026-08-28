@@ -6,8 +6,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StageBadge } from '@/components/StageBadge';
-import { AddExpenseSheet } from '@/components/construction/AddExpenseSheet';
-import { CategoryBars } from '@/components/construction/CategoryBars';
+import { AddExpenseSheet } from '../components/AddExpenseSheet';
+import { CategoryBars } from '../components/CategoryBars';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { AddWorkerSheet, WorkerSheet } from '@/modules/labor';
 import {

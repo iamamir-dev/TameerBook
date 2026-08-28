@@ -10,11 +10,11 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InvestorSheet, type InvestorInclusion, type InvestorOption } from '@/modules/investors';
-import { AddPlotSheet } from '@/components/project/AddPlotSheet';
-import { PhaseCardsSection } from '@/components/project/PhaseCardsSection';
-import { ProjectCostCard } from '@/components/project/ProjectCostCard';
-import { ProjectGalleryCard } from '@/components/project/ProjectGalleryCard';
-import { ProjectSummaryCard, SettleAction, type SettleActionProps } from '@/components/project/ProjectSummaryCard';
+import { AddPlotSheet } from '../components/AddPlotSheet';
+import { PhaseCardsSection } from '../components/PhaseCardsSection';
+import { ProjectCostCard } from '../components/ProjectCostCard';
+import { ProjectGalleryCard } from '../components/ProjectGalleryCard';
+import { ProjectSummaryCard, SettleAction, type SettleActionProps } from '../components/ProjectSummaryCard';
 import {
   AppCard,
   AppHeader,
