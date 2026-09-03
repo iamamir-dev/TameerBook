@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { Answer } from '@/ai';
-import { AppIcon, AppText } from '@/components/ui';
+import { AppIcon, AppText, MonthCalendar, type DayVisual } from '@/components/ui';
+import { ATT_LABEL, ATT_SOFT, ATT_TONE } from '@/modules/labor';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -77,6 +78,37 @@ export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPi
       </View>
 
       {answer.chart ? <AnswerChart chart={answer.chart} /> : null}
+
+      {answer.calendar ? (
+        <View style={styles.calendar}>
+          {(() => {
+            const cal = answer.calendar;
+            return (
+              <>
+          <MonthCalendar
+            initialMonth={cal.month}
+            selected={null}
+            onSelectDate={() => undefined}
+            dayVisual={(date: string): DayVisual | null => {
+              const s = cal.days[date];
+              return s ? { bg: theme.colors[ATT_SOFT[s]], tone: ATT_TONE[s] } : null;
+            }}
+          />
+          <View style={styles.legend}>
+            {(['FULL', 'HALF', 'ABSENT'] as const).map((s) => (
+              <View key={s} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: theme.colors[ATT_SOFT[s]] }]} />
+                <AppText size="xs" color="textSecondary">
+                  {`${t(ATT_LABEL[s])} · ${s === 'FULL' ? cal.full : s === 'HALF' ? cal.half : cal.absent}`}
+                </AppText>
+              </View>
+            ))}
+          </View>
+              </>
+            );
+          })()}
+        </View>
+      ) : null}
 
       {list.map((item, li) => (
         <Pressable

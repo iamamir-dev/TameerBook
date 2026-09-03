@@ -698,6 +698,7 @@ export const ur: TranslationKeys = {
   aiNewPlot: 'نیا پلاٹ',
   aiReadyToAdd: 'شامل کرنے کے لیے تیار',
   poLabelShort: 'آرڈر',
+  aiDaysLabel: 'دن حاضر',
   aiWillWrite: 'یہ ریکارڈ ہو جائے گا',
   aiWage: 'دیہاڑی',
   aiOpeningBalance: 'ابتدائی بیلنس',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { AppText } from '@/components/ui';
 import { useTheme } from '@/theme';
@@ -61,10 +61,14 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
         const marker = /^([-•*]|\d+[.)])\s+/.exec(line);
         const heading = /^#{1,3}\s+/.test(line) || (/[:：]$/.test(line) && line.length <= 40 && !marker);
         if (heading) {
+          // Sections read as blocks: a rule above every heading except the first.
+          const first = !blocks.slice(0, i).some((x) => x.kind === 'line' && x.text);
           return (
-            <AppText key={i} size="sm" weight="bold" style={styles.heading}>
-              {line.replace(/^#{1,3}\s+/, '').replace(/[:：]$/, '')}
-            </AppText>
+            <View key={i} style={[styles.headingWrap, !first && styles.headingRule]}>
+              <AppText size="sm" weight="bold">
+                {line.replace(/^#{1,3}\s+/, '').replace(/[:：]$/, '')}
+              </AppText>
+            </View>
           );
         }
         if (!marker) {
@@ -101,8 +105,12 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
     const cells = body.map((r) => r[c] ?? '').filter(Boolean);
     return cells.length > 0 && cells.filter((v) => NUMERIC.test(v)).length >= Math.ceil(cells.length / 2);
   });
-  const cellStyle = (c: number) => [styles.cell, c === 0 ? styles.cellFirst : undefined, numeric[c] ? styles.cellNum : undefined];
-  return (
+  // Wide tables (4+ columns, or long text) scroll sideways with fixed column
+  // widths instead of squeezing every cell into two-character wraps.
+  const longest = Math.max(...rows.flatMap((r) => r.map((c) => c.length)));
+  const wide = cols >= 4 || (cols === 3 && longest > 18);
+  const cellStyle = (c: number) => [styles.cell, c === 0 ? styles.cellFirst : undefined, numeric[c] ? styles.cellNum : undefined, wide && (c === 0 ? styles.cellWideFirst : styles.cellWide)];
+  const table = (
     <View style={styles.table}>
       <View style={[styles.tr, styles.trHead]}>
         {Array.from({ length: cols }, (_, c) => (
@@ -121,6 +129,12 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
         </View>
       ))}
     </View>
+  );
+  if (!wide) return table;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false} style={styles.tableScroll}>
+      {table}
+    </ScrollView>
   );
 }
 

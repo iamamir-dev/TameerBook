@@ -6,23 +6,26 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     wrap: { gap: 2 },
     gap: { height: theme.spacing.xs },
-    heading: { marginTop: theme.spacing.xs },
+    headingWrap: { marginTop: theme.spacing.sm, marginBottom: 2 },
+    headingRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border, paddingTop: theme.spacing.sm, marginTop: theme.spacing.md },
+    tableScroll: { marginVertical: theme.spacing.xs, marginHorizontal: -theme.spacing.xs },
     bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.xs },
     dot: { lineHeight: theme.typography.lineHeights.sm, minWidth: 14 },
     bulletText: { flexShrink: 1, minWidth: 0 },
     /** Compact table inside a bubble. */
     table: {
       marginVertical: theme.spacing.xs,
-      borderRadius: theme.radius.sm,
-      borderWidth: 1,
-      borderColor: theme.colors.track,
+      borderRadius: theme.radius.md,
       backgroundColor: theme.colors.card,
       overflow: 'hidden',
     },
-    tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.sm, minHeight: 30 },
+    tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.sm, minHeight: 34 },
     trHead: { backgroundColor: theme.colors.background },
-    trRuled: { borderTopWidth: 1, borderTopColor: theme.colors.track },
+    trRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
     cell: { flex: 1, minWidth: 0, paddingVertical: 4, paddingRight: theme.spacing.xs },
     cellFirst: { flex: 1.6 },
     cellNum: { textAlign: 'right', paddingRight: 0 },
+    /** Fixed widths inside a horizontally scrolling table. */
+    cellWide: { flex: 0, width: 104 },
+    cellWideFirst: { flex: 0, width: 150 },
   });

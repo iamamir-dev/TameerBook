@@ -695,6 +695,7 @@ export const en: TranslationKeys = {
   aiNewPlot: 'New plot',
   aiReadyToAdd: 'Ready to add',
   poLabelShort: 'Order',
+  aiDaysLabel: 'days present',
   aiWillWrite: 'This will be recorded',
   aiWage: 'Daily wage',
   aiOpeningBalance: 'Opening balance',

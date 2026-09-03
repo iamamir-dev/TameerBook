@@ -65,6 +65,16 @@ export type AnswerTarget =
   | { screen: 'Report'; type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };
 
 /** A small chart drawn inside the answer card. */
+/** A month grid: ISO date → status, plus the counts the legend shows. */
+export interface AnswerCalendar {
+  /** YYYY-MM */
+  month: string;
+  days: Record<string, 'FULL' | 'HALF' | 'ABSENT'>;
+  full: number;
+  half: number;
+  absent: number;
+}
+
 export type AnswerChart =
   | { kind: 'bars'; items: { label: string; value: number }[] }
   | { kind: 'columns'; groups: { label: string; values: [number, number] }[]; legend: [string, string] };
@@ -87,6 +97,8 @@ export interface Answer {
   list?: AnswerListItem[];
   /** Optional chart above the rows. */
   chart?: AnswerChart;
+  /** One month of attendance, drawn as a calendar (worker_attendance). */
+  calendar?: AnswerCalendar;
   /** Grouped rows for detail reports (rendered as titled groups). */
   sections?: { title: string; rows: AnswerRow[] }[];
   /** Open `target` immediately (the user asked for the thing itself, e.g. a PDF). */
@@ -324,6 +336,33 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         rows: all.map((x) => ({ id: x.id, title: x.name, date: '', subtitle: `${x.projects} ${t('projects').toLowerCase()}`, amount: x.balance, direction: 'out' as const })),
         speak: `${t('laborTitle')}: ${t('outstanding')} ${money(total)} · ${all.length} ${t('aiWorkersLabel')}`,
         target: { screen: 'Labor' },
+      };
+    }
+
+    case 'worker_attendance': {
+      const worker = pick(intent.worker, w.workers);
+      if (!worker) return none(t('laborTitle'));
+      const k = await getLaborerKhata(worker.id);
+      const now = new Date();
+      const month = intent.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const marks = k.history.filter((h) => h.kind === 'ATTENDANCE' && h.attendanceStatus && h.date.startsWith(month));
+      const days: AnswerCalendar['days'] = {};
+      for (const m of marks) days[m.date] = m.attendanceStatus as 'FULL' | 'HALF' | 'ABSENT';
+      const count = (s: string) => Object.values(days).filter((v) => v === s).length;
+      const full = count('FULL');
+      const half = count('HALF');
+      const absent = count('ABSENT');
+      const earned = marks.reduce((s, m) => s + m.amount, 0);
+      const monthName = formatDisplayDate(`${month}-01`).slice(2).trim();
+      const projects = Array.from(new Set(marks.map((m) => m.projectName).filter(Boolean)));
+      return {
+        title: `${k.laborer.name} · ${monthName}`,
+        headline: `${full + half / 2} ${t('aiDaysLabel')}`,
+        sub: `${full} ${t('attFull').toLowerCase()} · ${half} ${t('attHalf').toLowerCase()} · ${absent} ${t('attAbsent').toLowerCase()}${earned > 0 ? ` · ${t('earnedLabel')} ${money(earned)}` : ''}`,
+        calendar: { month, days, full, half, absent },
+        rows: [],
+        speak: `${k.laborer.name}, ${monthName}: ${full} ${t('attFull')}, ${half} ${t('attHalf')}, ${absent} ${t('attAbsent')}${projects.length ? `. ${projects.join(', ')}` : ''}`,
+        target: { screen: 'LaborerDetail', laborerId: worker.id },
       };
     }
 

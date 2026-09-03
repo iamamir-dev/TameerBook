@@ -3,6 +3,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import React from 'react';
 import { Image, Pressable, View } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 import type { AiErrorCode, OpenScreen } from '@/ai';
 import { AppIcon, AppText } from '@/components/ui';
@@ -24,7 +25,7 @@ export function UserBubble({ text, imageUris, onCopied }: { text: string; imageU
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   return (
-    <View style={styles.userWrap}>
+    <Animated.View entering={FadeInUp.duration(220)} style={styles.userWrap}>
       {imageUris?.length ? (
         <View style={styles.userImages}>
           {imageUris.map((u) => (
@@ -54,21 +55,18 @@ export function UserBubble({ text, imageUris, onCopied }: { text: string; imageU
           <AppIcon name="copy" size={12} color="textSecondary" />
         </Pressable>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
-/** Any assistant turn: a small sparkle avatar beside the content. */
+/** Any assistant turn: content on the left, kept clear of the right edge. No avatar (it added noise). */
 export function AssistantRow({ children }: { children: React.ReactNode }): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
   return (
-    <View style={styles.assistantRow}>
-      <View style={styles.avatar}>
-        <AppIcon name="assistant" size={12} color="accent" />
-      </View>
+    <Animated.View entering={FadeInDown.duration(240)} style={styles.assistantRow}>
       <View style={styles.assistantBody}>{children}</View>
-    </View>
+    </Animated.View>
   );
 }
 

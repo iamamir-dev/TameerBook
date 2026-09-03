@@ -5,15 +5,13 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /**
-     * The inline approval card: a floating white surface (soft shadow, no
-     * outline) with a header (icon · title · amount), a recessed details
+     * The inline approval card: a plain white surface (no shadow, no outline) with a header (icon · title · amount), a recessed details
      * panel of hairline-ruled rows, and a compact Reject / Accept footer.
      */
     card: {
       alignSelf: 'stretch',
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.lg,
-      ...theme.shadows.card,
     },
     cardDone: { opacity: 0.92 },
     head: {

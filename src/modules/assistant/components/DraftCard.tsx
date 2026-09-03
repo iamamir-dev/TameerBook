@@ -209,7 +209,6 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
       <AppText size="sm" weight="semibold" color={value ? 'accent' : optional ? 'textSecondary' : 'accent'} numberOfLines={2} style={styles.value}>
         {value ?? (optional ? t('optional') : t('selectOne'))}
       </AppText>
-      <AppIcon name="forward" size={14} color={value || !optional ? 'accent' : 'textSecondary'} />
     </Pressable>
   );
 

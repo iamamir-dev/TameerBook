@@ -1,6 +1,6 @@
 import type { ResolvedDraft } from '@/ai';
 import type { TranslationKey } from '@/i18n';
-import { formatDisplayDate } from '@/utils/date';
+import { formatDisplayDate, todayISO } from '@/utils/date';
 import { formatQty, formatRupees } from '@/utils/money';
 
 type T = (k: TranslationKey) => string;
@@ -114,7 +114,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     if (ref) f.push({ label, value: ref.name });
     else if (spoken) f.push({ label, value: spoken, unresolved: true });
   };
-  const date = (iso?: string) => f.push({ label: t('date'), value: iso ? formatDisplayDate(iso) : t('today') });
+  const date = (iso?: string) => f.push({ label: t('date'), value: iso && iso !== todayISO() ? formatDisplayDate(iso) : t('today') });
 
   switch (d.kind) {
     case 'expense':
@@ -138,7 +138,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     case 'attendance':
       named(t('projectLabel'), r.project, d.project);
       if (d.allPresent) f.push({ label: t('markAttendance'), value: t('aiAllPresent') });
-      for (const m of r.marks) f.push({ label: m.worker?.name ?? m.mark.worker, value: m.mark.status, unresolved: !m.worker });
+      for (const m of r.marks) f.push({ label: m.worker?.name ?? m.mark.worker, value: statusLabel(t, m.mark.status), unresolved: !m.worker });
       date(d.date);
       break;
     case 'payWorker':
@@ -268,4 +268,10 @@ const PAY_TYPE_KEYS = { TOKEN: 'ptToken', BAYANA: 'ptBayana', INSTALLMENT: 'ptIn
 function payTypeLabel(t: T, pt: string): string {
   const key = PAY_TYPE_KEYS[pt as keyof typeof PAY_TYPE_KEYS];
   return key ? t(key) : pt;
+}
+
+const STATUS_KEYS: Record<string, TranslationKey> = { FULL: 'attFull', HALF: 'attHalf', ABSENT: 'attAbsent' };
+function statusLabel(t: T, status: string): string {
+  const key = STATUS_KEYS[status];
+  return key ? t(key) : status;
 }

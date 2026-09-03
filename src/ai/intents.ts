@@ -56,6 +56,7 @@ export const INTENT_TYPES = [
   'project_status',
   'project_details',
   'worker_balance',
+  'worker_attendance',
   'party_history',
   'udhaar_balance',
   'account_balance',
@@ -82,6 +83,8 @@ export type Intent =
   /** Everything about one project: cost, sale, investors, workers, orders, attention. */
   | { type: 'project_details'; project: string }
   | { type: 'worker_balance'; worker?: string }
+  /** One worker's attendance for a month (YYYY-MM, default this month), shown as a calendar. */
+  | { type: 'worker_attendance'; worker: string; month?: string }
   | { type: 'party_history'; party: string; period: Period }
   | { type: 'udhaar_balance'; person?: string }
   | { type: 'account_balance'; account?: string }
@@ -165,6 +168,12 @@ export function coerceIntent(raw: unknown): Intent | null {
     }
     case 'worker_balance':
       return { type, worker: str(o.worker) };
+    case 'worker_attendance': {
+      const worker = str(o.worker);
+      if (!worker) return null;
+      const month = str(o.month);
+      return { type, worker, month: month && /^\d{4}-\d{2}$/.test(month) ? month : undefined };
+    }
     case 'party_history': {
       const party = str(o.party);
       if (!party) return null;

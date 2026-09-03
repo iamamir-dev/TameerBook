@@ -49,11 +49,14 @@ export function cleanDashes(s: string): string {
   return s.replace(/\s+[—–]\s+/g, ', ').replace(/[—–]/g, '-');
 }
 
+/** Devanagari (Hindi script) never belongs in this app's UI; Roman Urdu or Urdu script only. */
+const DEVANAGARI = /[\u0900-\u097F]/;
+
 const splitPipes = (raw: string, max: number): string[] =>
   raw
     .split('|')
     .map((x) => cleanDashes(x.trim().replace(/^["'“”]+|["'“”.]+$/g, '')))
-    .filter((x) => x.length > 0 && x.length <= 60)
+    .filter((x) => x.length > 0 && x.length <= 60 && !DEVANAGARI.test(x))
     .slice(0, max);
 
 /**
@@ -184,6 +187,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
 async function confirmationLine(transport: AiTransport, messages: AiChatMessage[], drafts: ResolvedDraft[]): Promise<string> {
   const facts = drafts.map((r) => ({
     ...r.draft,
+    ...('marks' in r.draft ? { marks: r.marks.map((m) => `${m.worker?.name ?? m.mark.worker}: ${m.mark.status.toLowerCase()} day`) } : {}),
     ...(r.account ? { account: r.account.name } : {}),
     ...(r.accountTo ? { accountTo: r.accountTo.name } : {}),
     ...(r.project ? { project: r.project.name } : {}),

@@ -39,7 +39,8 @@ function PulseDot(): React.JSX.Element {
 }
 
 /**
- * The composer: one pill holding the mic, the text field and a send button.
+ * The composer: one pill holding attach, the text field and one action button
+ * on the right: a mic while the field is empty, Send once there is text.
  * While the mic is held the field shows a live "Listening…" state; while
  * Whisper works it shows a spinner; then the transcript is sent as a turn.
  */
@@ -79,27 +80,16 @@ export function Composer({
       ) : null}
       <View style={[styles.pill, recording && styles.pillRecording, transcribing && styles.pillBusy]}>
         <View style={styles.leading}>
-        <Pressable
-          onPress={onAttach}
-          disabled={disabled || recording || transcribing}
-          accessibilityRole="button"
-          accessibilityLabel={t('aiAttach')}
-          hitSlop={theme.touch.hitSlop}
-          style={({ pressed }) => [styles.round, styles.lead, styles.mic, pressed && styles.pressed]}
-        >
-          <AppIcon name="image" size={20} color="textSecondary" />
-        </Pressable>
-        <Pressable
-          onPressIn={onMicPressIn}
-          onPressOut={onMicPressOut}
-          disabled={disabled || transcribing}
-          accessibilityRole="button"
-          accessibilityLabel={t('aiHoldToTalk')}
-          hitSlop={theme.touch.hitSlop}
-          style={({ pressed }) => [styles.round, styles.lead, styles.mic, recording && styles.micRecording, pressed && styles.pressed]}
-        >
-          <AppIcon name="mic" size={22} color={recording ? 'onAccent' : 'primary'} />
-        </Pressable>
+          <Pressable
+            onPress={onAttach}
+            disabled={disabled || recording || transcribing}
+            accessibilityRole="button"
+            accessibilityLabel={t('aiAttach')}
+            hitSlop={theme.touch.hitSlop}
+            style={({ pressed }) => [styles.round, styles.lead, styles.mic, pressed && styles.pressed]}
+          >
+            <AppIcon name="image" size={20} color="textSecondary" />
+          </Pressable>
         </View>
 
         {recording ? (
@@ -133,15 +123,29 @@ export function Composer({
           />
         )}
 
-        <Pressable
-          onPress={onSend}
-          disabled={!canSend}
-          accessibilityRole="button"
-          accessibilityLabel={t('askAssistant')}
-          style={({ pressed }) => [styles.round, canSend ? styles.send : styles.sendDisabled, pressed && styles.pressed]}
-        >
-          <AppIcon name="send" size={20} color={canSend ? 'onAccent' : 'textSecondary'} style={styles.sendIcon} />
-        </Pressable>
+        {canSend || transcribing ? (
+          <Pressable
+            onPress={onSend}
+            disabled={!canSend}
+            accessibilityRole="button"
+            accessibilityLabel={t('askAssistant')}
+            style={({ pressed }) => [styles.round, canSend ? styles.send : styles.sendDisabled, pressed && styles.pressed]}
+          >
+            <AppIcon name="send" size={20} color={canSend ? 'onAccent' : 'textSecondary'} style={styles.sendIcon} />
+          </Pressable>
+        ) : (
+          /* Empty field: the hold-to-talk mic sits where Send appears once there is text (WhatsApp style). */
+          <Pressable
+            onPressIn={onMicPressIn}
+            onPressOut={onMicPressOut}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={t('aiHoldToTalk')}
+            style={({ pressed }) => [styles.round, recording ? styles.micRecording : styles.send, pressed && styles.pressed]}
+          >
+            <AppIcon name="mic" size={20} color="onAccent" />
+          </Pressable>
+        )}
       </View>
     </View>
   );

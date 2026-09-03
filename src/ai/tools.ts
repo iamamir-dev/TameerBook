@@ -82,6 +82,12 @@ const READ_TOOLS: { name: string; intent: Intent['type']; description: string; p
     parameters: obj({ worker: str('Worker name') }),
   },
   {
+    name: 'get_worker_attendance',
+    intent: 'worker_attendance',
+    description: 'One worker\'s attendance (hazri) for a month: which days full / half / absent and the wages earned. The app shows it as a calendar. Use for "hazri dikhao", "attendance of X", "kitne din aaya".',
+    parameters: obj({ worker: str('Worker name'), month: str('YYYY-MM; omit for this month') }, ['worker']),
+  },
+  {
     name: 'get_party_history',
     intent: 'party_history',
     description: 'Payments to/from one supplier or contact in a period.',
@@ -149,13 +155,13 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
     name: 'record_expense',
     kind: 'expense',
     description: 'Money paid out (not a material purchase with quantity). Amount may be missing — the app asks.',
-    parameters: obj({ amount: num('Rupees'), category: str('Expense category from the lists'), party: str('Who was paid'), project: str('Project'), account: str('Account paid from'), note: str('Short note'), date: str('YYYY-MM-DD only if the user said a date') }),
+    parameters: obj({ amount: num('Rupees'), category: str('Expense category from the lists'), party: str('Who was paid'), project: str('Project'), account: str('Account paid from'), note: str('What it was for, in the user\'s own words (e.g. "diesel for the generator at Gulberg Greens"), never one word'), date: str('YYYY-MM-DD only if the user said a date') }),
   },
   {
     name: 'record_income',
     kind: 'income',
     description: 'Money received that is NOT an investor payment, buyer payment or loan return.',
-    parameters: obj({ amount: num('Rupees'), category: str('Income category'), party: str('Who paid'), project: str('Project'), account: str('Account received into'), note: str('Short note'), date: str('YYYY-MM-DD') }),
+    parameters: obj({ amount: num('Rupees'), category: str('Income category'), party: str('Who paid'), project: str('Project'), account: str('Account received into'), note: str('What it was for, in the user\'s own words, never one word'), date: str('YYYY-MM-DD') }),
   },
   {
     name: 'record_material',
@@ -374,12 +380,13 @@ export function summarizeAnswerForModel(a: Answer): string {
   }));
   // `cardRows` tells the model the UI already renders these rows as a card, so
   // it should summarise rather than repeat them (see WRITING template C).
-  const showsCard = total > 0 || Boolean(a.chart);
+  const showsCard = total > 0 || Boolean(a.chart) || Boolean(a.calendar);
   return JSON.stringify({
     title: a.title,
     headline: a.headline,
     sub: a.sub,
     count: total,
+    ...(a.calendar ? { calendar: { month: a.calendar.month, full: a.calendar.full, half: a.calendar.half, absent: a.calendar.absent, note: 'The app shows this month as a calendar with coloured days. Summarise in 1 to 2 sentences (days present, earned); do not list dates.' } } : {}),
     ...(showsCard ? { cardRows: total, note: 'The app shows these rows as a card under your reply. Do not repeat them as a table or list; summarise in 1 to 2 sentences.' } : {}),
     rows,
     more: Math.max(0, total - rows.length),

@@ -40,10 +40,9 @@ export function ChoiceList({ options, onPick, disabled, picked }: ChoiceListProp
             style={({ pressed }) => [styles.row, i > 0 && styles.ruled, pressed && styles.pressed]}
           >
             <AppIcon name={selected ? 'checkCircle' : 'dotNext'} size={18} color={selected ? 'accent' : muted ? 'textSecondary' : 'primary'} />
-            <AppText size="sm" weight="semibold" color={muted ? 'textSecondary' : 'textPrimary'} style={styles.label} numberOfLines={2}>
+            <AppText size="md" weight={selected ? 'bold' : 'semibold'} color={muted ? 'textSecondary' : 'textPrimary'} style={styles.label} numberOfLines={2}>
               {o}
             </AppText>
-            {!picked ? <AppIcon name="forward" size={14} color="textSecondary" /> : null}
           </Pressable>
         );
       })}
