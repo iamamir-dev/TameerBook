@@ -129,32 +129,32 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       date(d.date);
       break;
     case 'createWorker':
-      f.push({ label: t('name'), value: d.name });
+      if (d.name) f.push({ label: t('name'), value: d.name });
       if (d.phone) f.push({ label: t('sellerPhone'), value: d.phone });
       if (d.wage) f.push({ label: t('aiWage'), value: formatRupees(d.wage), money: true });
       named(t('projectLabel'), r.project, d.project);
       break;
     case 'createParty':
-      f.push({ label: t('name'), value: d.name });
+      if (d.name) f.push({ label: t('name'), value: d.name });
       f.push({ label: t('party'), value: d.partyType });
       if (d.phone) f.push({ label: t('sellerPhone'), value: d.phone });
       break;
     case 'createInvestor':
-      f.push({ label: t('name'), value: d.name });
+      if (d.name) f.push({ label: t('name'), value: d.name });
       if (d.phone) f.push({ label: t('sellerPhone'), value: d.phone });
       break;
     case 'createAccount':
-      f.push({ label: t('name'), value: d.name });
+      if (d.name) f.push({ label: t('name'), value: d.name });
       f.push({ label: t('accountsTitle'), value: d.accountType });
       break;
     case 'createPlot':
-      f.push({ label: t('name'), value: d.name });
+      if (d.name) f.push({ label: t('name'), value: d.name });
       if (d.society) f.push({ label: t('society'), value: d.society });
       if (d.plotNo) f.push({ label: t('plotNo'), value: d.plotNo });
       if (d.seller) f.push({ label: t('seller'), value: d.seller });
       break;
     case 'createProject':
-      f.push({ label: t('projectName'), value: d.name });
+      if (d.name) f.push({ label: t('projectName'), value: d.name });
       named(t('plotsTitle'), r.plot, d.plot);
       break;
   }

@@ -2,13 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CREATE_KINDS, type ResolvedDraft } from '@/ai';
+import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import { AmountInput, AppButton, AppIcon, AppSheet, AppText, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
 import {
   getLaborerKhata,
   listAccountsWithBalance,
+  listPlots,
   listProjects,
   type AccountWithBalance,
   type LaborerProjectParticipation,
+  type PlotRow,
   type ProjectRow,
 } from '@/db';
 import { useSaveAction } from '@/hooks';
@@ -73,10 +76,14 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [parts, setParts] = useState<LaborerProjectParticipation[]>([]);
   const [amountTyped, setAmountTyped] = useState(0);
+  const [nameTyped, setNameTyped] = useState('');
+  const [wageTyped, setWageTyped] = useState(0);
+  const [plots, setPlots] = useState<PlotRow[]>([]);
+  const [plotId, setPlotId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [plId, setPlId] = useState<string | null>(null);
-  const [picker, setPicker] = useState<'account' | 'project' | 'participation' | null>(null);
+  const [picker, setPicker] = useState<'account' | 'project' | 'participation' | 'plot' | null>(null);
 
   // Load only what this draft still needs; default to last-used / the only option.
   useEffect(() => {
@@ -89,12 +96,19 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
         })
         .catch(swallow('confirm:accounts'));
     }
-    if (needs.project) {
+    if (needs.plot) {
+      // Free plots only: not yet inside a project and not sold.
+      listPlots()
+        .then((rows) => setPlots(rows.filter((p) => !p.project_id && p.status !== 'SOLD')))
+        .catch(swallow('confirm:plots'));
+    }
+    if (needs.project || needs.workerProject) {
       listProjects()
         .then((rows) => {
           const active = rows.filter((p) => p.status === 'ACTIVE');
           setProjects(active);
-          setProjectId((cur) => cur ?? (active.some((p) => p.id === lastProjectId) ? lastProjectId : active.length === 1 ? active[0].id : null));
+          // Required project: default to last-used / the only one. Optional (new worker): leave empty.
+          if (needs.project) setProjectId((cur) => cur ?? (active.some((p) => p.id === lastProjectId) ? lastProjectId : active.length === 1 ? active[0].id : null));
         })
         .catch(swallow('confirm:projects'));
     }
@@ -111,8 +125,10 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
 
   const account = accounts.find((a) => a.id === accountId);
   const project = projects.find((p) => p.id === projectId);
+  const plot = plots.find((p) => p.id === plotId);
   const part = parts.find((p) => p.projectLaborer.id === plId);
   const ready =
+    (!needs.name || nameTyped.trim().length > 0) &&
     (!needs.amount || amountTyped > 0) &&
     (!needs.account || !!accountId) &&
     (!needs.project || !!projectId) &&
@@ -121,7 +137,7 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
 
   const confirm = () => {
     void run(async () => {
-      const choices: DraftChoices = { amount: amountTyped || null, accountId, projectId, projectLaborerId: plId };
+      const choices: DraftChoices = { amount: amountTyped || null, name: nameTyped.trim() || null, wage: wageTyped || null, plotId, accountId, projectId, projectLaborerId: plId };
       const applied = await applyDraft(resolved, choices);
       onSaved(applied);
     }).then((ok) => ok && onClose());
@@ -132,20 +148,22 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
       ? accounts.map((a) => ({ id: a.id, label: a.name, subtitle: formatRupees(a.balance), icon: (a.type === 'BANK' ? 'bank' : 'balance') as IconKey }))
       : picker === 'project'
         ? projects.map((p) => ({ id: p.id, label: p.name, icon: 'project' as IconKey }))
-        : parts.map((p) => ({ id: p.projectLaborer.id, label: p.projectName, subtitle: formatRupees(p.balance.balance), icon: 'project' as IconKey }));
+        : picker === 'plot'
+          ? plots.map((p) => ({ id: p.id, label: p.name, subtitle: formatRupees(p.deal_price), icon: 'plot' as IconKey }))
+          : parts.map((p) => ({ id: p.projectLaborer.id, label: p.projectName, subtitle: formatRupees(p.balance.balance), icon: 'project' as IconKey }));
 
-  const pickRow = (label: string, value: string | undefined, which: 'account' | 'project' | 'participation', ruled: boolean) => (
+  const pickRow = (label: string, value: string | undefined, which: 'account' | 'project' | 'participation' | 'plot', ruled: boolean, optional = false) => (
     <Pressable
       key={which}
       onPress={() => setPicker(which)}
       accessibilityRole="button"
-      style={[styles.row, ruled && styles.ruled, !value && styles.pick]}
+      style={[styles.row, ruled && styles.ruled, !value && !optional && styles.pick]}
     >
       <AppText size="sm" color="textSecondary" style={styles.label}>
         {label}
       </AppText>
-      <AppText size="sm" weight="bold" color={value ? 'textPrimary' : 'accent'} numberOfLines={1} style={styles.value}>
-        {value ?? t('selectOne')}
+      <AppText size="sm" weight="bold" color={value ? 'textPrimary' : optional ? 'textSecondary' : 'accent'} numberOfLines={1} style={styles.value}>
+        {value ?? (optional ? t('optional') : t('selectOne'))}
       </AppText>
       <AppIcon name="forward" size={16} color="textSecondary" />
     </Pressable>
@@ -182,15 +200,19 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
               <AppText size="xxl" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
                 {formatRupees(amount)}
               </AppText>
-            ) : !needs.amount ? (
+            ) : !needs.amount && 'name' in d && d.name ? (
               <AppText size="xl" weight="bold" numberOfLines={2} center>
-                {'name' in d ? d.name : ''}
+                {d.name}
               </AppText>
             ) : null}
           </View>
 
-          {/* The sentence had no amount: ask for it here, keyboard-first. */}
-          {needs.amount ? <AmountInput label={t('amount')} value={amountTyped} onChange={setAmountTyped} autoFocus floating surface={theme.colors.card} /> : null}
+          {/* Whatever the sentence left out is asked here, keyboard-first. */}
+          {needs.name ? <FloatingLabelInput label={t('name')} value={nameTyped} onChangeText={setNameTyped} /> : null}
+          {needs.amount ? <AmountInput label={t('amount')} value={amountTyped} onChange={setAmountTyped} autoFocus={!needs.name} floating surface={theme.colors.card} /> : null}
+          {needs.workerProject && d.kind === 'createWorker' && !d.wage ? (
+            <AmountInput label={t('aiWage')} value={wageTyped} onChange={setWageTyped} floating surface={theme.colors.card} />
+          ) : null}
 
           <View style={styles.card}>
             {fields.map((f, i) => (
@@ -207,6 +229,8 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
             {needs.account ? pickRow(t('accountsTitle'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account', fields.length > 0) : null}
             {needs.project ? pickRow(t('projectLabel'), project?.name, 'project', true) : null}
             {needs.participation ? pickRow(t('aiChooseParticipation'), part ? `${part.projectName} · ${formatRupees(part.balance.balance)}` : undefined, 'participation', true) : null}
+            {needs.plot ? pickRow(t('plotsTitle'), plot?.name, 'plot', fields.length > 0, true) : null}
+            {needs.workerProject ? pickRow(t('projectLabel'), project?.name, 'project', fields.length > 0, true) : null}
           </View>
 
           {d.kind === 'payWorker' && !resolved.worker ? (
@@ -234,13 +258,14 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
       <SelectSheet
         visible={picker !== null}
         onClose={() => setPicker(null)}
-        title={picker === 'account' ? t('aiChooseAccount') : picker === 'project' ? t('aiChooseProject') : t('aiChooseParticipation')}
-        searchable={false}
+        title={picker === 'account' ? t('aiChooseAccount') : picker === 'project' ? t('aiChooseProject') : picker === 'plot' ? t('plotsTitle') : t('aiChooseParticipation')}
+        searchable={picker === 'plot'}
         options={pickerOptions}
-        selectedId={(picker === 'account' ? accountId : picker === 'project' ? projectId : plId) ?? undefined}
+        selectedId={(picker === 'account' ? accountId : picker === 'project' ? projectId : picker === 'plot' ? plotId : plId) ?? undefined}
         onSelect={(o) => {
           if (picker === 'account') setAccountId(o.id);
           else if (picker === 'project') setProjectId(o.id);
+          else if (picker === 'plot') setPlotId(o.id);
           else setPlId(o.id);
           setPicker(null);
         }}

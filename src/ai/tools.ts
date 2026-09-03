@@ -193,21 +193,21 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
   {
     name: 'add_worker',
     kind: 'createWorker',
-    description: 'Add a new worker (mazdoor). Optional daily wage + project attaches him.',
-    parameters: obj({ name: str('Worker name'), phone: str('Phone'), wage: num('Daily wage'), project: str('Project') }, ['name']),
+    description: 'Add a new worker (mazdoor). Call it even with no name — the app asks. Optional daily wage + project attaches him.',
+    parameters: obj({ name: str('Worker name'), phone: str('Phone'), wage: num('Daily wage'), project: str('Project') }),
   },
   {
     name: 'add_contact',
     kind: 'createParty',
     description: 'Add a supplier / buyer / seller / contractor / dealer.',
-    parameters: obj({ name: str('Name'), partyType: { type: 'string', enum: ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] }, phone: str('Phone') }, ['name']),
+    parameters: obj({ name: str('Name'), partyType: { type: 'string', enum: ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] }, phone: str('Phone') }),
   },
-  { name: 'add_investor', kind: 'createInvestor', description: 'Add an investor.', parameters: obj({ name: str('Name'), phone: str('Phone'), amount: num('Pledged amount') }, ['name']) },
+  { name: 'add_investor', kind: 'createInvestor', description: 'Add an investor.', parameters: obj({ name: str('Name'), phone: str('Phone'), amount: num('Pledged amount') }) },
   {
     name: 'add_account',
     kind: 'createAccount',
     description: 'Add a bank / cash / wallet account.',
-    parameters: obj({ name: str('Account name'), accountType: { type: 'string', enum: ['BANK', 'CASH', 'WALLET'] }, openingBalance: num('Opening balance') }, ['name']),
+    parameters: obj({ name: str('Account name'), accountType: { type: 'string', enum: ['BANK', 'CASH', 'WALLET'] }, openingBalance: num('Opening balance') }),
   },
   {
     name: 'add_plot',
@@ -215,13 +215,13 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
     description: 'Record a plot purchase.',
     parameters: obj({ name: str('Plot name'), society: str('Society'), plotNo: str('Plot number'), dealPrice: num('Agreed price'), seller: str('Seller name') }),
   },
-  { name: 'add_project', kind: 'createProject', description: 'Create a project, optionally on a plot.', parameters: obj({ name: str('Project name'), plot: str('Plot name') }, ['name']) },
+  { name: 'add_project', kind: 'createProject', description: 'Create a project, optionally on a plot. Call it even when the user gave no name — the app asks for the details.', parameters: obj({ name: str('Project name'), plot: str('Plot name') }) },
 ];
 
 const OPEN_TOOL: ToolSpec = {
   name: 'open_screen',
   description:
-    'Open an app screen. ONLY when the user explicitly asks to open / show a page, or wants to add something but gave no details at all. Never instead of a record_* / add_* tool.',
+    'Navigate to an app screen. ONLY when the user literally says open / show / go to a page (e.g. "open reports", "cash page dikhao"). NEVER for adding or recording anything — use add_* / record_* even when details are missing.',
   parameters: obj({ screen: { type: 'string', enum: [...OPEN_SCREENS] } }, ['screen']),
 };
 

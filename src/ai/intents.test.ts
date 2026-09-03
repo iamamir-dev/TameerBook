@@ -96,7 +96,9 @@ describe('coerceDraft', () => {
     expect(coerceDraft({ kind: 'createParty', name: 'Rafiq Traders' })).toEqual({ kind: 'createParty', name: 'Rafiq Traders', partyType: 'SUPPLIER', phone: undefined });
     expect(coerceDraft({ kind: 'createAccount', name: 'Meezan', accountType: 'bank', openingBalance: '2,00,000' })).toEqual({ kind: 'createAccount', name: 'Meezan', accountType: 'BANK', openingBalance: 200000 });
     expect(coerceDraft({ kind: 'createPlot', society: 'Bahria', plotNo: '22', dealPrice: 5000000 })).toMatchObject({ kind: 'createPlot', name: 'Bahria 22' });
-    expect(coerceDraft({ kind: 'createWorker' })).toBeNull();
+    // A bare "add a worker" is still a draft — the sheet asks for the name.
+    expect(coerceDraft({ kind: 'createWorker' })).toMatchObject({ kind: 'createWorker', name: undefined });
+    expect(coerceDraft({ kind: 'createProject' })).toEqual({ kind: 'createProject', name: undefined, plot: undefined });
   });
   it('resolves the plot named for a new project', () => {
     const r = resolveDraft(coerceDraft({ kind: 'createProject', name: 'Gulberg House', plot: 'dha plot 14' })!, world);

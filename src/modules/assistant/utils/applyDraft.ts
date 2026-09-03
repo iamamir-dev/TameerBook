@@ -32,6 +32,12 @@ import { formatRupees } from '@/utils/money';
 export interface DraftChoices {
   /** Typed in the sheet when the sentence had no amount. */
   amount?: number | null;
+  /** Typed in the sheet when an add_* draft had no name. */
+  name?: string | null;
+  /** createWorker: daily wage typed in the sheet. */
+  wage?: number | null;
+  /** createProject: plot picked in the sheet. */
+  plotId?: string | null;
   accountId?: string | null;
   projectId?: string | null;
   /** payWorker: which participation (project) the payment settles. */
@@ -44,11 +50,17 @@ export interface DraftNeeds {
   account: boolean;
   project: boolean;
   participation: boolean;
+  /** add_* drafts without a name. */
+  name: boolean;
+  /** createProject: offer a plot when none was named. */
+  plot: boolean;
+  /** createWorker: offer a project + wage when none was named. */
+  workerProject: boolean;
 }
 
 export function draftNeeds(r: ResolvedDraft): DraftNeeds {
   const d = r.draft;
-  const none: DraftNeeds = { amount: false, account: false, project: false, participation: false };
+  const none: DraftNeeds = { amount: false, account: false, project: false, participation: false, name: false, plot: false, workerProject: false };
   switch (d.kind) {
     case 'expense':
     case 'income':
@@ -64,6 +76,15 @@ export function draftNeeds(r: ResolvedDraft): DraftNeeds {
       return { ...none, amount: !d.amount };
     case 'attendance':
       return { ...none, project: !r.project };
+    case 'createProject':
+      return { ...none, name: !d.name, plot: !r.plot };
+    case 'createWorker':
+      return { ...none, name: !d.name, workerProject: !r.project };
+    case 'createParty':
+    case 'createInvestor':
+    case 'createAccount':
+    case 'createPlot':
+      return { ...none, name: !d.name };
     default:
       return none;
   }
@@ -183,31 +204,35 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     }
 
     case 'createWorker': {
-      const w = await addLaborer({ name: d.name, phone: d.phone ?? null });
-      if (r.project && d.wage && d.wage > 0) {
-        await attachLaborerToProject({ projectId: r.project.id, laborerId: w.id, dailyWage: d.wage });
+      const name = need(d.name ?? c.name, 'name');
+      const w = await addLaborer({ name, phone: d.phone ?? null });
+      const projectId = r.project?.id ?? c.projectId;
+      const wage = d.wage ?? c.wage ?? 0;
+      if (projectId && wage > 0) {
+        await attachLaborerToProject({ projectId, laborerId: w.id, dailyWage: wage });
       }
       return { message: `${t('aiAdded')} · ${w.name}`, target: { screen: 'LaborerDetail', laborerId: w.id } };
     }
 
     case 'createParty': {
-      const p = await addParty({ type: d.partyType, name: d.name, phone: d.phone ?? null });
+      const p = await addParty({ type: d.partyType, name: need(d.name ?? c.name, 'name'), phone: d.phone ?? null });
       return { message: `${t('aiAdded')} · ${p.name}` };
     }
 
     case 'createInvestor': {
-      const inv = await addInvestor({ name: d.name, phone: d.phone ?? null, committedAmount: d.amount ?? 0 });
+      const inv = await addInvestor({ name: need(d.name ?? c.name, 'name'), phone: d.phone ?? null, committedAmount: d.amount ?? 0 });
       return { message: `${t('aiAdded')} · ${inv.name}`, target: { screen: 'InvestorProfile', investorId: inv.id } };
     }
 
     case 'createAccount': {
-      await addAccount({ name: d.name, type: d.accountType, openingBalance: d.openingBalance ?? 0 });
-      return { message: `${t('aiAdded')} · ${d.name}`, target: { screen: 'Accounts' } };
+      const name = need(d.name ?? c.name, 'name');
+      await addAccount({ name, type: d.accountType, openingBalance: d.openingBalance ?? 0 });
+      return { message: `${t('aiAdded')} · ${name}`, target: { screen: 'Accounts' } };
     }
 
     case 'createPlot': {
       const plot = await createPlot({
-        name: d.name,
+        name: need(d.name ?? c.name, 'name'),
         society: d.society ?? null,
         plotNo: d.plotNo ?? null,
         dealPrice: d.dealPrice ?? 0,
@@ -217,7 +242,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     }
 
     case 'createProject': {
-      const project = await createProject({ name: d.name, plotId: r.plot?.id ?? null });
+      const project = await createProject({ name: need(d.name ?? c.name, 'name'), plotId: r.plot?.id ?? c.plotId ?? null });
       return { message: `${t('aiAdded')} · ${project.name}`, target: { screen: 'ProjectDetail', projectId: project.id } };
     }
   }

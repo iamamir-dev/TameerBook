@@ -37,12 +37,13 @@ export type Draft =
   | { kind: 'udhaarReturn'; person: string; amount?: number; account?: string; date?: string }
   | { kind: 'transfer'; from: string; to: string; amount?: number; date?: string }
   // "Add …" requests — new records, created after the user confirms.
-  | { kind: 'createWorker'; name: string; phone?: string; wage?: number; project?: string }
-  | { kind: 'createParty'; name: string; partyType: PartyTypeDraft; phone?: string }
-  | { kind: 'createInvestor'; name: string; phone?: string; amount?: number }
-  | { kind: 'createAccount'; name: string; accountType: AccountTypeDraft; openingBalance?: number }
-  | { kind: 'createPlot'; name: string; society?: string; plotNo?: string; dealPrice?: number; seller?: string }
-  | { kind: 'createProject'; name: string; plot?: string };
+  // `name` may be missing — the confirmation sheet asks for it.
+  | { kind: 'createWorker'; name?: string; phone?: string; wage?: number; project?: string }
+  | { kind: 'createParty'; name?: string; partyType: PartyTypeDraft; phone?: string }
+  | { kind: 'createInvestor'; name?: string; phone?: string; amount?: number }
+  | { kind: 'createAccount'; name?: string; accountType: AccountTypeDraft; openingBalance?: number }
+  | { kind: 'createPlot'; name?: string; society?: string; plotNo?: string; dealPrice?: number; seller?: string }
+  | { kind: 'createProject'; name?: string; plot?: string };
 
 export type DraftKind = Draft['kind'];
 export const PARTY_TYPE_DRAFTS = ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] as const;
@@ -117,40 +118,28 @@ export function coerceDraft(raw: unknown): Draft | null {
       if (!from || !to) return null;
       return { kind, from, to, amount: num(o.amount) || undefined, date: day(o.date) };
     }
-    case 'createWorker': {
-      const name = str(o.name);
-      if (!name) return null;
-      return { kind, name, phone: str(o.phone), wage: num(o.wage), project: str(o.project) };
-    }
+    case 'createWorker':
+      return { kind, name: str(o.name), phone: str(o.phone), wage: num(o.wage) || undefined, project: str(o.project) };
     case 'createParty': {
       const name = str(o.name);
-      if (!name) return null;
       const pt = typeof o.partyType === 'string' ? o.partyType.toUpperCase() : '';
       const partyType = (PARTY_TYPE_DRAFTS as readonly string[]).includes(pt) ? (pt as PartyTypeDraft) : 'SUPPLIER';
       return { kind, name, partyType, phone: str(o.phone) };
     }
-    case 'createInvestor': {
-      const name = str(o.name);
-      if (!name) return null;
-      return { kind, name, phone: str(o.phone), amount: num(o.amount) };
-    }
+    case 'createInvestor':
+      return { kind, name: str(o.name), phone: str(o.phone), amount: num(o.amount) || undefined };
     case 'createAccount': {
       const name = str(o.name);
-      if (!name) return null;
       const at = typeof o.accountType === 'string' ? o.accountType.toUpperCase() : '';
       const accountType = (ACCOUNT_TYPE_DRAFTS as readonly string[]).includes(at) ? (at as AccountTypeDraft) : 'BANK';
       return { kind, name, accountType, openingBalance: num(o.openingBalance) };
     }
     case 'createPlot': {
-      const name = str(o.name) ?? [str(o.society), str(o.plotNo)].filter(Boolean).join(' ');
-      if (!name) return null;
-      return { kind, name, society: str(o.society), plotNo: str(o.plotNo), dealPrice: num(o.dealPrice), seller: str(o.seller) };
+      const name = str(o.name) ?? ([str(o.society), str(o.plotNo)].filter(Boolean).join(' ') || undefined);
+      return { kind, name, society: str(o.society), plotNo: str(o.plotNo), dealPrice: num(o.dealPrice) || undefined, seller: str(o.seller) };
     }
-    case 'createProject': {
-      const name = str(o.name);
-      if (!name) return null;
-      return { kind, name, plot: str(o.plot) };
-    }
+    case 'createProject':
+      return { kind, name: str(o.name), plot: str(o.plot) };
     default:
       return null;
   }
