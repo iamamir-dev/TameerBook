@@ -25,6 +25,8 @@ interface AppHeaderProps {
   onBack?: () => void;
   /** Optional single action on the right (icon button). */
   rightAction?: HeaderAction;
+  /** Optional second icon action, shown just left of `rightAction`. */
+  secondaryAction?: HeaderAction;
   /** Optional row attached inside the header bar, under the title (e.g. tabs). */
   bottom?: React.ReactNode;
 }
@@ -40,6 +42,7 @@ export function AppHeader({
   subtitle,
   onBack,
   rightAction,
+  secondaryAction,
   bottom,
 }: AppHeaderProps): React.JSX.Element {
   const theme = useTheme();
@@ -71,6 +74,18 @@ export function AppHeader({
             </AppText>
           ) : null}
         </View>
+
+        {secondaryAction ? (
+          <Pressable
+            onPress={secondaryAction.onPress}
+            hitSlop={theme.touch.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryAction.accessibilityLabel}
+            style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+          >
+            <AppIcon name={secondaryAction.icon} size={22} color="textPrimary" />
+          </Pressable>
+        ) : null}
 
         {rightAction ? (
           <Pressable

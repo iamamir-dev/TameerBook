@@ -160,6 +160,19 @@ export function AssistantScreen(): React.JSX.Element {
         title={t('assistantTitle')}
         onBack={() => navigation.goBack()}
         rightAction={{ icon: 'settings', onPress: () => navigation.navigate('Settings'), accessibilityLabel: t('settings') }}
+        secondaryAction={
+          turns.length > 0
+            ? {
+                icon: 'trash',
+                accessibilityLabel: t('aiClearChat'),
+                onPress: () =>
+                  Alert.alert(t('aiClearChat'), t('aiClearChatConfirm'), [
+                    { text: t('cancel'), style: 'cancel' },
+                    { text: t('aiClearChat'), style: 'destructive', onPress: clear },
+                  ]),
+              }
+            : undefined
+        }
       />
       <KeyboardAvoidingView style={[styles.flex, kb > 0 && { paddingBottom: kb }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
@@ -206,25 +219,6 @@ export function AssistantScreen(): React.JSX.Element {
               </AppText>
               <InsightsCard insights={insightsData.insights} loaded={insightsLoaded} limit={4} />
             </>
-          ) : null}
-
-          {/* The conversation persists across restarts; this is the one way to wipe it. */}
-          {turns.length > 0 ? (
-            <Pressable
-              onPress={() =>
-                Alert.alert(t('aiClearChat'), t('aiClearChatConfirm'), [
-                  { text: t('cancel'), style: 'cancel' },
-                  { text: t('aiClearChat'), style: 'destructive', onPress: clear },
-                ])
-              }
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.clearRow, pressed && styles.chipPressed]}
-            >
-              <AppIcon name="trash" size={14} color="textSecondary" />
-              <AppText size="xs" weight="semibold" color="textSecondary">
-                {t('aiClearChat')}
-              </AppText>
-            </Pressable>
           ) : null}
 
           {turns.map((turn) => {

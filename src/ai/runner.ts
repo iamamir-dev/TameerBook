@@ -371,7 +371,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       return {
         title: one ? one.name : t('accountsTitle'),
         headline: money(total),
-        sub: one ? undefined : `${list.length} · ${t('totalBalance')}`,
+        sub: one ? undefined : `${list.length} ${t('accountsTitle').toLowerCase()} · ${t('totalBalance')}`,
         rows: list.map((a) => ({ id: a.id, title: a.name, date: '', subtitle: '', amount: a.balance, direction: 'in' as const })),
         speak: `${one ? one.name : t('totalBalance')}: ${money(total)}`,
         target: { screen: 'Accounts' },
@@ -643,8 +643,16 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'cashflow_chart': {
       const all = await getCashFlow();
-      const months = all.slice(-intent.months);
-      if (months.length === 0) return none(t('rptCashflow'));
+      if (all.length === 0) return none(t('rptCashflow'));
+      // A calendar window ending this month: quiet months show as zero
+      // columns instead of vanishing (Aug missing between Jul and Sep).
+      const byMonth = new Map(all.map((m) => [m.month, m]));
+      const now = new Date();
+      const months = Array.from({ length: intent.months }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (intent.months - 1 - i), 1);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return byMonth.get(ym) ?? { month: ym, inSum: 0, outSum: 0 };
+      });
       const inSum = months.reduce((s, m) => s + m.inSum, 0);
       const outSum = months.reduce((s, m) => s + m.outSum, 0);
       // "Sep" alone is ambiguous when the window crosses a year boundary → "Sep 25".
@@ -652,8 +660,8 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       const monthLabel = (ym: string) => `${formatDisplayDate(`${ym}-01`).slice(2, 6).trim()}${years.size > 1 ? ` ${ym.slice(2, 4)}` : ''}`;
       return {
         title: `${t('rptCashflow')} · ${months.length} ${t('monthsLabel')}`,
-        headline: money(inSum - outSum),
-        sub: `${t('moneyIn')} ${money(inSum)} · ${t('moneyOut')} ${money(outSum)}`,
+        headline: `${inSum - outSum < 0 ? '− ' : '+ '}${money(Math.abs(inSum - outSum))}`,
+        sub: `${t('netFlow')} · ${t('moneyIn')} ${money(inSum)} · ${t('moneyOut')} ${money(outSum)}`,
         chart: { kind: 'columns', groups: months.map((m) => ({ label: monthLabel(m.month), values: [m.inSum, m.outSum] as [number, number] })), legend: [t('moneyIn'), t('moneyOut')] },
         rows: months
           .slice()
