@@ -643,4 +643,18 @@ export interface TranslationKeys {
   obInvestorsBody: string;
   obReportsTitle: string;
   obReportsBody: string;
+
+  // Assistant / insights
+  assistantTitle: string;
+  suggestionsTitle: string;
+  insightsAllGood: string;
+  insightOwed: string;
+  insightDuplicate: string;
+  insightUsual: string;
+  insightBuyerOwes: string;
+  insightLoanUnpaid: string;
+  insightPoUndelivered: string;
+  insightSpendUp: string;
+  lastRateLabel: string;
+  useLastRate: string;
 }

@@ -605,4 +605,18 @@ export const ur: TranslationKeys = {
   obInvestorsBody: 'ہر سرمایہ کار کا سرمایہ لکھیں، طے شدہ فیصد پر منافع بانٹیں، اور پروجیکٹ صاف طریقے سے مکمل کریں۔',
   obReportsTitle: 'صاف رپورٹس اور رسیدیں',
   obReportsBody: 'کھاتہ طرز کے لیجرز، نفع نقصان، اور ہر تصفیے کی PDF رسید۔',
+
+  // Assistant / insights
+  assistantTitle: 'معاون',
+  suggestionsTitle: 'تجاویز',
+  insightsAllGood: 'سب ٹھیک ہے — آج کچھ توجہ طلب نہیں۔',
+  insightOwed: 'بقایا',
+  insightDuplicate: 'ممکنہ دوہرا اندراج',
+  insightUsual: 'عام ریٹ',
+  insightBuyerOwes: 'خریدار کا بقایا',
+  insightLoanUnpaid: 'واپسی نہیں ہوئی',
+  insightPoUndelivered: 'ڈلیوری نہیں ہوئی',
+  insightSpendUp: 'پچھلے مہینے سے زیادہ خرچ',
+  lastRateLabel: 'پچھلا ریٹ',
+  useLastRate: 'استعمال کریں',
 };

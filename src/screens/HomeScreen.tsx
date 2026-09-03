@@ -42,6 +42,7 @@ import type { Theme } from '@/theme/theme';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { softToneColor, type ColorKey } from '@/utils/tones';
+import { InsightsCard, useInsights } from '@/modules/assistant';
 import { ProjectCardSkeleton, projectStatusMeta } from '@/modules/projects';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -112,6 +113,7 @@ export function HomeScreen(): React.JSX.Element {
   }, [refreshProjects, loadData]);
 
   useFocusReload(load);
+  const { data: insightsData, loaded: insightsLoaded } = useInsights();
 
   const accountTypeLabel = (a: AccountWithBalance) =>
     t(a.type === 'BANK' ? 'accountBank' : a.type === 'CASH' ? 'accountCash' : 'accountWallet');
@@ -273,6 +275,12 @@ export function HomeScreen(): React.JSX.Element {
           <View style={styles.sectionDivider} />
           <SectionTile icon="material" tone="gold" label={t('bookingsTitle')} onPress={() => navigation.navigate('Bookings')} />
         </View>
+
+        {/* Assistant suggestions — offline ledger rules (worker owed, deadline,
+            duplicate, odd rate…). Always on: it is quiet when nothing needs
+            attention, so it never shouts for the sake of it. */}
+        <SectionHeader title={t('suggestionsTitle')} />
+        <InsightsCard insights={insightsData.insights} loaded={insightsLoaded} limit={3} />
 
         {/* Udhaar position (optional, off by default) */}
         {sections.udhaar ? (

@@ -602,4 +602,18 @@ export const en: TranslationKeys = {
   obInvestorsBody: 'Record each investor\u2019s capital, share profits by agreed percentages, and settle projects cleanly.',
   obReportsTitle: 'Clear reports & receipts',
   obReportsBody: 'Notebook-style ledgers, profit & loss, and shareable PDF receipts for every settlement.',
+
+  // Assistant / insights
+  assistantTitle: 'Assistant',
+  suggestionsTitle: 'Suggestions',
+  insightsAllGood: 'All good — nothing needs attention today.',
+  insightOwed: 'owed',
+  insightDuplicate: 'Possible duplicate',
+  insightUsual: 'usual',
+  insightBuyerOwes: 'buyer owes',
+  insightLoanUnpaid: 'no repayment for',
+  insightPoUndelivered: 'not delivered for',
+  insightSpendUp: 'spending up vs last month',
+  lastRateLabel: 'Last rate',
+  useLastRate: 'Use',
 };

@@ -20,4 +20,5 @@ export * from './settlement';
 export * from './bookings';
 export * from './txnTarget';
 export * from './analytics';
+export * from './insights';
 export * from './settings';

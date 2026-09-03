@@ -24,9 +24,11 @@ import {
 import {
   addDocument,
   addTransaction,
+  getLastMaterialRate,
   listAccountsWithBalance,
   listParties,
   type AccountWithBalance,
+  type LastRate,
   type PartyRow,
 } from '@/db';
 import { useAccountOptions, useSaveAction, useToast } from '@/hooks';
@@ -36,7 +38,7 @@ import { useEntryStore } from '@/stores/useEntryStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { todayISO } from '@/utils/date';
+import { formatDisplayDate, todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
@@ -73,6 +75,26 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [totalOverride, setTotalOverride] = useState(0);
   // Bumped after each save to reset the QtyUnitRow field (rapid-log).
   const [formNonce, setFormNonce] = useState(0);
+  // Smart default: the last rate paid for this material (same supplier first).
+  // Fills an EMPTY rate field so the user confirms instead of remembering.
+  const [lastRate, setLastRate] = useState<LastRate | null>(null);
+  useEffect(() => {
+    if (!material.categoryId) {
+      setLastRate(null);
+      return;
+    }
+    let alive = true;
+    getLastMaterialRate(material.categoryId, partyId)
+      .then((r) => {
+        if (!alive) return;
+        setLastRate(r);
+        if (r) setRate((cur) => (cur === '' ? String(r.rate) : cur));
+      })
+      .catch(swallow('material:lastRate'));
+    return () => {
+      alive = false;
+    };
+  }, [material.categoryId, partyId]);
 
   const [projectSheet, setProjectSheet] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
@@ -205,6 +227,11 @@ export function MaterialEntryScreen(): React.JSX.Element {
             value={rate}
             onChangeText={(v) => { setRate(v); setTotalOverride(0); }}
             keyboardType="number-pad"
+            hint={
+              lastRate
+                ? `${t('lastRateLabel')} ${formatRupees(lastRate.rate)} · ${[lastRate.partyName, formatDisplayDate(lastRate.date)].filter(Boolean).join(' · ')}`
+                : undefined
+            }
           />
 
           <AmountInput
