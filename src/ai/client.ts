@@ -218,29 +218,40 @@ class OpenAiCompatTransport implements AiTransport {
   }
 
   async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
+    const model = opts.model ?? this.model;
+    const reasoning = this.isReasoning(model);
     const data = await this.completion({
-      model: opts.model ?? this.model,
+      model,
       messages: toOaMessages(messages),
       temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
+      max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 4000 : MAX_OUTPUT_TOKENS),
       ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
+      ...(reasoning ? { reasoning_effort: 'low' } : {}),
     });
     const content = data.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new AiError('failed', 'empty completion');
     return content;
   }
 
+  /** Reasoning models (gpt-oss on Groq, GPT-5 / o-series on OpenAI) think inside the completion budget. */
+  private isReasoning(model: string): boolean {
+    return model.startsWith('openai/gpt-oss') || (this.kind === 'openai' && /^(gpt-5|o\d)/.test(model));
+  }
+
   async chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
     const model = opts.model ?? this.model;
+    const reasoning = this.isReasoning(model);
     const data = await this.completion({
       model,
       messages: toOaMessages(messages),
       temperature: opts.temperature ?? 0,
-      max_tokens: opts.maxTokens ?? TOOL_MAX_TOKENS,
+      // Reasoning tokens count against this budget: paid reasoning models get
+      // plenty; Groq's free tier stays within its per-minute allowance.
+      max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 6000 : TOOL_MAX_TOKENS),
       tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
       tool_choice: 'auto',
-      // gpt-oss thinks before it answers; keep that short so the reply fits.
-      ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
+      // Keep the thinking short so the reply fits and arrives fast.
+      ...(reasoning ? { reasoning_effort: 'low' } : {}),
     });
     const msg = data.choices?.[0]?.message;
     if (!msg) throw new AiError('failed', 'empty completion');
