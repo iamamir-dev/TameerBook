@@ -14,3 +14,14 @@ describe('isWhisperNoise', () => {
     }
   });
 });
+
+describe('isWhisperNoise prompt echo', () => {
+  const prompt = 'TameerBook, kharcha, aamdani, dihari, udhaar, bori, cement, sariya, bajri, lakh, hazar. Akram Traders, Ustad Bilal';
+  it('rejects a transcript that is the vocabulary hint read back', () => {
+    expect(isWhisperNoise('TameerBook, kharcha, aamdani, dihari, udhaar, bori, cement, sariya', prompt)).toBe(true);
+    expect(isWhisperNoise('Akram Traders Ustad Bilal cement bori', prompt)).toBe(true);
+  });
+  it('keeps real speech that merely uses a few hint words', () => {
+    expect(isWhisperNoise('Akram Traders ko 5000 diye cement ke liye Meezan se aaj', prompt)).toBe(false);
+  });
+});

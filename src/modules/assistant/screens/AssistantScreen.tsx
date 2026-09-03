@@ -237,6 +237,8 @@ export function AssistantScreen(): React.JSX.Element {
             // and the list is fully expanded so any item can be chosen.
             const isLast = turn.id === lastAssistantId;
             const asksChoice = isLast && !turn.picked;
+            // A written report (2+ section headings) already shows the detail; its card shrinks to a header + Open link.
+            const writtenReport = (turn.text.match(/(^|\n)\s*(#{1,3}\s+[^\n]+|[^\n|]{1,40}[:：])\s*(?=\n|$)/g) ?? []).length >= 2;
             return (
               <AssistantRow key={turn.id}>
                 <View style={styles.turnStack}>
@@ -246,6 +248,7 @@ export function AssistantScreen(): React.JSX.Element {
                       key={`${turn.id}-c${i}`}
                       answer={card}
                       expandAll={asksChoice && !!card.list}
+                      compact={writtenReport && !!card.sections?.length}
                       onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined}
                     />
                   ))}

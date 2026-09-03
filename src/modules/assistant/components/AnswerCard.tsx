@@ -26,7 +26,15 @@ const INLINE_ROWS = 5;
  * a one-line sub, then up to five dense rows and a quiet "Open" link. Money
  * rows carry a sign and direction color; list rows are names only.
  */
-export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPick?: (title: string) => void; expandAll?: boolean }): React.JSX.Element {
+interface AnswerCardProps {
+  answer: Answer;
+  onPick?: (title: string) => void;
+  expandAll?: boolean;
+  /** Header + Open only: the reply text already lays the sections out, so the rows would repeat it. */
+  compact?: boolean;
+}
+
+export function AnswerCard({ answer, onPick, expandAll, compact }: AnswerCardProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -35,11 +43,11 @@ export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPi
   const [expandedByUser, setExpanded] = useState(false);
   const expanded = expandedByUser || !!expandAll;
   const cap = expanded ? Number.MAX_SAFE_INTEGER : INLINE_ROWS;
-  const list = answer.list?.slice(0, cap) ?? [];
-  const rows = answer.list ? [] : answer.rows.slice(0, cap);
-  const total = answer.list ? answer.list.length : answer.rows.length;
+  const list = compact ? [] : (answer.list?.slice(0, cap) ?? []);
+  const rows = compact || answer.list ? [] : answer.rows.slice(0, cap);
+  const total = compact ? 0 : answer.list ? answer.list.length : answer.rows.length;
   const hidden = Math.max(0, total - cap);
-  const sections = answer.sections ?? [];
+  const sections = compact ? [] : (answer.sections ?? []);
 
   const renderRow = (r: (typeof answer.rows)[number], i: number) => (
     <View key={`${r.id}-${i}`} style={styles.row}>

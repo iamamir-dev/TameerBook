@@ -135,7 +135,7 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
         // English UI → auto-detect (mixed Roman Urdu/English speech).
         { prompt: transcriptionPrompt(world), language: useSettingsStore.getState().language === 'ur' ? 'ur' : undefined }
       );
-      if (isWhisperNoise(text)) {
+      if (isWhisperNoise(text, transcriptionPrompt(world))) {
         fail('silence');
         return;
       }

@@ -132,7 +132,9 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
   );
   if (!wide) return table;
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false} style={styles.tableScroll}>
+    // flexGrow 0 on both: a nested ScrollView otherwise stretches to the
+    // chat's full height inside the outer list.
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false} style={styles.tableScroll} contentContainerStyle={styles.tableScrollContent}>
       {table}
     </ScrollView>
   );

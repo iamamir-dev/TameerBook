@@ -12,8 +12,6 @@ export const makeStyles = (theme: Theme) =>
       alignSelf: 'stretch',
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.track,
       overflow: 'hidden',
     },
     head: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm, gap: 2 },
