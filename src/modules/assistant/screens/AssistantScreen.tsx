@@ -246,21 +246,21 @@ export function AssistantScreen(): React.JSX.Element {
                     disabled={busy}
                   />
                   {turn.suggestions.length > 0 && turn.id === lastAssistantId ? (
-                    <View style={styles.chips}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
                       {turn.suggestions.map((sug) => (
                         <Pressable
                           key={sug}
                           onPress={() => void ask(sug)}
                           disabled={busy}
                           accessibilityRole="button"
-                          style={({ pressed }) => [styles.chip, styles.chipFollow, pressed && styles.chipPressed]}
+                          style={({ pressed }) => [styles.followChip, pressed && styles.chipPressed]}
                         >
-                          <AppText size="xs" weight="semibold" color="accent">
+                          <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
                             {sug}
                           </AppText>
                         </Pressable>
                       ))}
-                    </View>
+                    </ScrollView>
                   ) : null}
                 </View>
               </AssistantRow>

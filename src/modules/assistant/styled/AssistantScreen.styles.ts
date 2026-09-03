@@ -41,7 +41,18 @@ export const makeStyles = (theme: Theme) =>
     },
     chipPressed: { opacity: 0.7 },
     /** Model-offered follow-ups: outlined in the accent, quieter than answers. */
-    chipFollow: { backgroundColor: theme.colors.accentSoft },
+    /** Model-offered follow-ups: one small scrolling row of quiet pills. */
+    followRow: { flexDirection: 'row', gap: 6, paddingRight: theme.spacing.lg },
+    followChip: {
+      paddingHorizontal: theme.spacing.sm,
+      height: 28,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.accentSoft,
+      backgroundColor: theme.colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     turnStack: { gap: theme.spacing.sm },
     clearRow: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', gap: theme.spacing.xs, minHeight: 32, paddingHorizontal: theme.spacing.md },
     sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
