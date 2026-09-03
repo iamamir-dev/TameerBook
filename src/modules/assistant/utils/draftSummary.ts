@@ -185,7 +185,9 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       if (d.seller) f.push({ label: t('seller'), value: d.seller });
       break;
     case 'createPurchaseOrder':
-      named(t('supplier'), r.party, d.supplier);
+      // A supplier that is not saved yet is fine here: the PO stores the name.
+      if (r.party) f.push({ label: t('supplier'), value: r.party.name });
+      else if (d.supplier) f.push({ label: t('supplier'), value: `${d.supplier} (${t('addNew').toLowerCase()})` });
       named(t('projectLabel'), r.project, d.project);
       for (const it of d.items) f.push({ label: `${it.item} · ${formatQty(it.qty)}${it.unit ? ` ${it.unit}` : ''} @ ${formatQty(it.rate)}`, value: formatRupees(it.qty * it.rate), money: true });
       break;

@@ -22,8 +22,8 @@ export function AnswerChart({ chart }: { chart: Chart }): React.JSX.Element | nu
     const max = Math.max(...chart.items.map((i) => i.value), 1);
     return (
       <View style={styles.wrap}>
-        {chart.items.map((i) => (
-          <View key={i.label} style={styles.barRow}>
+        {chart.items.map((i, idx) => (
+          <View key={`${i.label}-${idx}`} style={styles.barRow}>
             <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.barLabel}>
               {i.label}
             </AppText>
@@ -57,7 +57,7 @@ export function AnswerChart({ chart }: { chart: Chart }): React.JSX.Element | nu
     <View style={styles.wrap}>
       <View style={styles.legend}>
         {chart.legend.map((l, i) => (
-          <View key={l} style={styles.legendItem}>
+          <View key={`${l}-${i}`} style={styles.legendItem}>
             <View style={[styles.dot, { backgroundColor: colors[i] }]} />
             <AppText size="xs" color="textSecondary">
               {l}
@@ -76,7 +76,7 @@ export function AnswerChart({ chart }: { chart: Chart }): React.JSX.Element | nu
         {groups.map((g, gi) => {
           const cx = padL + slot * gi + slot / 2;
           return (
-            <React.Fragment key={g.label}>
+            <React.Fragment key={`${g.label}-${gi}`}>
               {g.values.map((v, vi) => {
                 const x = cx - barW - 1 + vi * (barW + 2);
                 const top = y(v);

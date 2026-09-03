@@ -42,8 +42,9 @@ export const makeStyles = (theme: Theme) =>
       minHeight: 32,
       paddingVertical: 2,
     },
-    label: { flex: 1 },
-    value: { textAlign: 'right', flexShrink: 1 },
+    /** Label keeps at most ~45% and ellipsizes; the value takes the rest. */
+    label: { flexShrink: 0, maxWidth: '45%' },
+    value: { flex: 1, textAlign: 'right' },
     /** A row that still needs a choice: tinted, tappable. */
     pick: { backgroundColor: theme.colors.card, borderRadius: theme.radius.sm, marginHorizontal: theme.spacing.sm, paddingHorizontal: theme.spacing.sm },
     inputs: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },

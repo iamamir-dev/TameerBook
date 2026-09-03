@@ -640,7 +640,9 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       if (months.length === 0) return none(t('rptCashflow'));
       const inSum = months.reduce((s, m) => s + m.inSum, 0);
       const outSum = months.reduce((s, m) => s + m.outSum, 0);
-      const monthLabel = (ym: string) => formatDisplayDate(`${ym}-01`).slice(2, 6).trim();
+      // "Sep" alone is ambiguous when the window crosses a year boundary → "Sep 25".
+      const years = new Set(months.map((m) => m.month.slice(0, 4)));
+      const monthLabel = (ym: string) => `${formatDisplayDate(`${ym}-01`).slice(2, 6).trim()}${years.size > 1 ? ` ${ym.slice(2, 4)}` : ''}`;
       return {
         title: `${t('rptCashflow')} · ${months.length} ${t('monthsLabel')}`,
         headline: money(inSum - outSum),

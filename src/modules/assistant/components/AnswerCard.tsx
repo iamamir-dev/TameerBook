@@ -40,8 +40,8 @@ export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPi
   const hidden = Math.max(0, total - cap);
   const sections = answer.sections ?? [];
 
-  const renderRow = (r: (typeof answer.rows)[number]) => (
-    <View key={r.id} style={styles.row}>
+  const renderRow = (r: (typeof answer.rows)[number], i: number) => (
+    <View key={`${r.id}-${i}`} style={styles.row}>
       <View style={styles.rowText}>
         <AppText size="sm" weight="semibold" numberOfLines={1}>
           {r.title}
@@ -78,9 +78,9 @@ export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPi
 
       {answer.chart ? <AnswerChart chart={answer.chart} /> : null}
 
-      {list.map((item) => (
+      {list.map((item, li) => (
         <Pressable
-          key={item.id}
+          key={`${item.id}-${li}`}
           onPress={onPick ? () => onPick(item.title) : undefined}
           disabled={!onPick}
           accessibilityRole={onPick ? 'button' : undefined}
@@ -102,8 +102,8 @@ export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPi
 
       {rows.map(renderRow)}
 
-      {sections.map((sec) => (
-        <View key={sec.title}>
+      {sections.map((sec, si) => (
+        <View key={`${sec.title}-${si}`}>
           <View style={styles.sectionHead}>
             <AppText size="xs" weight="bold" color="textSecondary" uppercase numberOfLines={1}>
               {sec.title}

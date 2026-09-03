@@ -56,6 +56,16 @@ const ICON: Record<string, IconKey> = {
   createAccount: 'bank',
   createPlot: 'plot',
   createProject: 'project',
+  createPurchaseOrder: 'truck',
+  receiveDelivery: 'truck',
+  payPurchaseOrder: 'material',
+  plotPayment: 'plot',
+  plotExpense: 'plot',
+  setSale: 'tag',
+  saleReceipt: 'aamdani',
+  saleCost: 'kharcha',
+  investorPayment: 'investor',
+  markTransferred: 'transfer',
 };
 
 type Picker = 'account' | 'project' | 'participation' | 'plot';
@@ -184,10 +194,10 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
 
   const pickRow = (label: string, value: string | undefined, which: Picker, optional = false) => (
     <Pressable key={which} onPress={() => setPicker(which)} accessibilityRole="button" style={[styles.row, !value && !optional && styles.pick]}>
-      <AppText size="xs" color="textSecondary" style={styles.label}>
+      <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.label}>
         {label}
       </AppText>
-      <AppText size="sm" weight="bold" color={value ? 'textPrimary' : optional ? 'textSecondary' : 'accent'} numberOfLines={1} style={styles.value}>
+      <AppText size="sm" weight="bold" color={value ? 'textPrimary' : optional ? 'textSecondary' : 'accent'} numberOfLines={2} style={styles.value}>
         {value ?? (optional ? t('optional') : t('selectOne'))}
       </AppText>
       <AppIcon name="forward" size={14} color="textSecondary" />

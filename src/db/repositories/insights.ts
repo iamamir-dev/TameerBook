@@ -38,6 +38,13 @@ export async function listInsights(today = todayLocalISO()): Promise<Insight[]> 
   const settled = await Promise.allSettled(rules.map((r) => r()));
   const all: Insight[] = [];
   for (const s of settled) if (s.status === 'fulfilled') all.push(...s.value);
+  // Ids must be unique for list keys (two duplicate-entry groups can share a label+amount).
+  const seen = new Map<string, number>();
+  for (const i of all) {
+    const n = seen.get(i.id) ?? 0;
+    seen.set(i.id, n + 1);
+    if (n > 0) i.id = `${i.id}#${n}`;
+  }
   return rankInsights(all);
 }
 
