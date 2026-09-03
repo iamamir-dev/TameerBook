@@ -14,8 +14,10 @@ import { useTheme } from '@/theme';
 import { AnswerCard } from '../components/AnswerCard';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
+import { InsightsCard } from '../components/InsightsCard';
 import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
+import { useInsights } from '../hooks/useInsights';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
 import { navigateToTarget } from '../utils/navigateTarget';
@@ -49,6 +51,7 @@ export function AssistantScreen(): React.JSX.Element {
 
   const { turns, busy, ask, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
+  const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
   const scroll = useRef<ScrollView>(null);
 
@@ -155,6 +158,16 @@ export function AssistantScreen(): React.JSX.Element {
                 </View>
               ) : null}
             </View>
+          ) : null}
+
+          {/* What needs attention today — offline ledger rules, shown until the chat starts. */}
+          {turns.length === 0 && (!insightsLoaded || insightsData.insights.length > 0) ? (
+            <>
+              <AppText size="xs" weight="bold" color="textSecondary" uppercase style={styles.sectionLabel}>
+                {t('suggestionsTitle')}
+              </AppText>
+              <InsightsCard insights={insightsData.insights} loaded={insightsLoaded} limit={4} />
+            </>
           ) : null}
 
           {turns.map((turn) => {

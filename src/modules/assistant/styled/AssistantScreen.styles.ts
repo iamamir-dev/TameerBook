@@ -38,6 +38,7 @@ export const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.primarySoft,
     },
     chipPressed: { opacity: 0.7 },
+    sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
     setup: {
       margin: theme.spacing.page,
       backgroundColor: theme.colors.card,
