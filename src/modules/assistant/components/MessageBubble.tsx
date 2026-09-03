@@ -19,10 +19,26 @@ export function UserBubble({ text }: { text: string }): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
   return (
-    <View style={styles.user}>
-      <AppText size="md" color="onPrimary">
-        {text}
-      </AppText>
+    <View style={styles.userWrap}>
+      <View style={styles.user}>
+        <AppText size="md" color="onPrimary">
+          {text}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
+/** Any assistant turn: a small sparkle avatar beside the content. */
+export function AssistantRow({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.assistantRow}>
+      <View style={styles.avatar}>
+        <AppIcon name="assistant" size={15} color="accent" />
+      </View>
+      <View style={styles.assistantBody}>{children}</View>
     </View>
   );
 }

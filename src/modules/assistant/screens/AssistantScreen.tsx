@@ -14,8 +14,7 @@ import { useTheme } from '@/theme';
 import { AnswerCard } from '../components/AnswerCard';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
-import { AssistantBubble, ErrorBubble, UserBubble } from '../components/MessageBubble';
-import { MicButton } from '../components/MicButton';
+import { AssistantBubble, AssistantRow, ErrorBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
@@ -125,25 +124,33 @@ export function AssistantScreen(): React.JSX.Element {
 
           {turns.map((turn) => {
             if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} />;
+            let body: React.ReactNode;
             switch (turn.kind) {
               case 'text':
-                return <AssistantBubble key={turn.id} text={turn.text} />;
+                body = <AssistantBubble text={turn.text} />;
+                break;
               case 'answer':
-                return <AnswerCard key={turn.id} answer={turn.answer} />;
+                body = <AnswerCard answer={turn.answer} />;
+                break;
               case 'draft':
-                return <DraftCard key={turn.id} resolved={turn.resolved} onDone={showToast} />;
+                body = <DraftCard resolved={turn.resolved} onDone={showToast} />;
+                break;
               case 'error':
-                return <ErrorBubble key={turn.id} code={turn.code} />;
+                body = <ErrorBubble code={turn.code} />;
+                break;
             }
+            return <AssistantRow key={turn.id}>{body}</AssistantRow>;
           })}
 
-          {busy || voice.status !== 'idle' ? (
-            <View style={styles.thinking}>
-              <ActivityIndicator color={voice.status === 'recording' ? theme.colors.danger : theme.colors.accent} />
-              <AppText size="sm" color="textSecondary">
-                {voice.status === 'recording' ? t('aiListening') : t('aiThinking')}
-              </AppText>
-            </View>
+          {busy ? (
+            <AssistantRow>
+              <View style={styles.thinking}>
+                <ActivityIndicator color={theme.colors.accent} />
+                <AppText size="sm" color="textSecondary">
+                  {t('aiThinking')}
+                </AppText>
+              </View>
+            </AssistantRow>
           ) : null}
         </ScrollView>
 
@@ -153,8 +160,10 @@ export function AssistantScreen(): React.JSX.Element {
             onChange={setInput}
             onSend={send}
             disabled={busy}
+            voiceStatus={voice.status}
+            onMicPressIn={() => void voice.start()}
+            onMicPressOut={() => void voice.stop()}
             bottomInset={insets.bottom}
-            leading={<MicButton status={voice.status} onPressIn={() => void voice.start()} onPressOut={() => void voice.stop()} disabled={busy} />}
           />
         ) : (
           <View style={[styles.setup, { marginBottom: insets.bottom + theme.spacing.sm }]}>

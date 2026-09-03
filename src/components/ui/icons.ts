@@ -56,6 +56,7 @@ import {
   Repeat,
   ScrollText,
   Search,
+  SendHorizontal,
   Settings,
   Share2,
   Sparkles,
@@ -164,6 +165,7 @@ export const ICONS = {
   lock: Lock,
   reorder: ArrowDownUp,
   mic: Mic,
+  send: SendHorizontal,
   assistant: Sparkles,
 } satisfies Record<string, LucideIcon>;
 
