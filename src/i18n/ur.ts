@@ -716,4 +716,10 @@ export const ur: TranslationKeys = {
   aiTestOk: 'منسلک',
   aiGroqVoiceHint: 'آواز کے لیے Groq یا Gemini چاہیے۔ Groq کلید دوسرے پرووائیڈرز کو بھی آواز دیتی ہے۔',
   aiTrainsNote: 'مفت درجہ آپ کا متن ماڈل بہتر بنانے کے لیے استعمال کر سکتا ہے۔',
+  aiAccept: 'منظور',
+  aiReject: 'مسترد',
+  aiRejected: 'مسترد کر دیا',
+  aiPlotTaken: 'یہ پلاٹ پہلے ہی کسی پروجیکٹ میں ہے۔ خالی پلاٹ چنیں۔',
+  aiClearChat: 'چیٹ صاف کریں',
+  aiClearChatConfirm: 'یہ گفتگو حذف کریں؟ محفوظ اندراجات رہیں گے۔',
 };

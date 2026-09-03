@@ -156,6 +156,13 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     case 'createProject':
       if (d.name) f.push({ label: t('projectName'), value: d.name });
       named(t('plotsTitle'), r.plot, d.plot);
+      for (const inv of r.investors) {
+        f.push({
+          label: `${t('investor')} · ${inv.ref?.name ?? inv.draft.name}${inv.ref ? '' : ` (${t('addNew').toLowerCase()})`}`,
+          value: inv.draft.amount ? formatRupees(inv.draft.amount) : '—',
+          money: !!inv.draft.amount,
+        });
+      }
       break;
   }
   return f;

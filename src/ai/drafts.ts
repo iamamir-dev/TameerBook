@@ -43,7 +43,13 @@ export type Draft =
   | { kind: 'createInvestor'; name?: string; phone?: string; amount?: number }
   | { kind: 'createAccount'; name?: string; accountType: AccountTypeDraft; openingBalance?: number }
   | { kind: 'createPlot'; name?: string; society?: string; plotNo?: string; dealPrice?: number; seller?: string }
-  | { kind: 'createProject'; name?: string; plot?: string };
+  | { kind: 'createProject'; name?: string; plot?: string; investors?: InvestorDraft[] };
+
+/** An investor named while creating a project ('Umar 5 lakh'). */
+export interface InvestorDraft {
+  name: string;
+  amount?: number;
+}
 
 export type DraftKind = Draft['kind'];
 export const PARTY_TYPE_DRAFTS = ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] as const;
@@ -138,8 +144,16 @@ export function coerceDraft(raw: unknown): Draft | null {
       const name = str(o.name) ?? ([str(o.society), str(o.plotNo)].filter(Boolean).join(' ') || undefined);
       return { kind, name, society: str(o.society), plotNo: str(o.plotNo), dealPrice: num(o.dealPrice) || undefined, seller: str(o.seller) };
     }
-    case 'createProject':
-      return { kind, name: str(o.name), plot: str(o.plot) };
+    case 'createProject': {
+      const investors: InvestorDraft[] = [];
+      for (const raw of Array.isArray(o.investors) ? o.investors : []) {
+        if (!raw || typeof raw !== 'object') continue;
+        const ir = raw as Record<string, unknown>;
+        const iname = str(ir.name);
+        if (iname) investors.push({ name: iname, amount: num(ir.amount) || undefined });
+      }
+      return { kind, name: str(o.name), plot: str(o.plot), investors: investors.length ? investors : undefined };
+    }
     default:
       return null;
   }
@@ -155,10 +169,15 @@ export interface CategoryNamed extends Named {
   parentId: string | null;
 }
 
+/** A plot the model may refer to; `taken` = already inside a project or sold. */
+export interface PlotNamed extends Named {
+  taken?: boolean;
+}
+
 /** Everything the assistant may refer to by name (ids stay on the phone). */
 export interface WorldNames {
   projects: Named[];
-  plots: Named[];
+  plots: PlotNamed[];
   accounts: Named[];
   categories: CategoryNamed[];
   parties: Named[];
@@ -182,9 +201,15 @@ export interface ResolvedDraft {
   worker?: Ref;
   /** Attendance: each spoken mark with its matched worker (null = unknown name). */
   marks: { mark: AttendanceMark; worker: Ref | null }[];
+  /** createProject: investors named, matched when they already exist (null = will be created). */
+  investors: { draft: InvestorDraft; ref: Ref | null }[];
   /** Names the model used that matched nothing — shown to the user to fix. */
   unresolved: string[];
+  /** Things that make the draft unsaveable as-is (e.g. the plot is already in a project). */
+  issues: DraftIssue[];
 }
+
+export type DraftIssue = { code: 'plotTaken'; name: string };
 
 const ref = <T extends Named>(q: string | undefined, list: readonly T[], unresolved: string[]): Ref | undefined => {
   if (!q) return undefined;
@@ -199,7 +224,7 @@ const ref = <T extends Named>(q: string | undefined, list: readonly T[], unresol
 /** Match every name in the draft to a real row; unknown names are reported, not guessed. */
 export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
   const unresolved: string[] = [];
-  const r: ResolvedDraft = { draft, marks: [], unresolved };
+  const r: ResolvedDraft = { draft, marks: [], investors: [], unresolved, issues: [] };
   switch (draft.kind) {
     case 'expense':
     case 'income': {
@@ -243,9 +268,19 @@ export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
     case 'createWorker':
       r.project = ref(draft.project, world.projects, unresolved);
       break;
-    case 'createProject':
-      r.plot = ref(draft.plot, world.plots, unresolved);
+    case 'createProject': {
+      const m = draft.plot ? matchName(draft.plot, world.plots) : null;
+      if (draft.plot && !m) unresolved.push(draft.plot);
+      if (m) {
+        r.plot = { id: m.item.id, name: m.item.name };
+        if (m.item.taken) r.issues.push({ code: 'plotTaken', name: m.item.name });
+      }
+      r.investors = (draft.investors ?? []).map((inv) => {
+        const im = matchName(inv.name, world.investors);
+        return { draft: inv, ref: im ? { id: im.item.id, name: im.item.name } : null };
+      });
       break;
+    }
     case 'createParty':
     case 'createInvestor':
     case 'createAccount':

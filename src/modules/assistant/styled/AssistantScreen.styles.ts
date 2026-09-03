@@ -43,6 +43,7 @@ export const makeStyles = (theme: Theme) =>
     /** Model-offered follow-ups: outlined in the accent, quieter than answers. */
     chipFollow: { backgroundColor: theme.colors.accentSoft },
     turnStack: { gap: theme.spacing.sm },
+    clearRow: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', gap: theme.spacing.xs, minHeight: 32, paddingHorizontal: theme.spacing.md },
     sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
     setup: {
       margin: theme.spacing.page,

@@ -98,11 +98,16 @@ describe('coerceDraft', () => {
     expect(coerceDraft({ kind: 'createPlot', society: 'Bahria', plotNo: '22', dealPrice: 5000000 })).toMatchObject({ kind: 'createPlot', name: 'Bahria 22' });
     // A bare "add a worker" is still a draft — the sheet asks for the name.
     expect(coerceDraft({ kind: 'createWorker' })).toMatchObject({ kind: 'createWorker', name: undefined });
-    expect(coerceDraft({ kind: 'createProject' })).toEqual({ kind: 'createProject', name: undefined, plot: undefined });
+    expect(coerceDraft({ kind: 'createProject' })).toEqual({ kind: 'createProject', name: undefined, plot: undefined, investors: undefined });
   });
-  it('resolves the plot named for a new project', () => {
-    const r = resolveDraft(coerceDraft({ kind: 'createProject', name: 'Gulberg House', plot: 'dha plot 14' })!, world);
+  it('resolves the plot and investors named for a new project, flagging a taken plot', () => {
+    const r = resolveDraft(coerceDraft({ kind: 'createProject', name: 'Gulberg House', plot: 'dha plot 14', investors: [{ name: 'umar', amount: 500000 }, { name: 'Zeeshan' }] })!, world);
     expect(r.plot?.id).toBe('pl1');
+    expect(r.issues).toEqual([]);
+    expect(r.investors[0].ref?.id).toBe('i1');
+    expect(r.investors[1].ref).toBeNull();
+    const taken = resolveDraft(coerceDraft({ kind: 'createProject', name: 'X', plot: 'Taken Plot' })!, { ...world, plots: [{ id: 'pl2', name: 'Taken Plot', taken: true }] });
+    expect(taken.issues).toEqual([{ code: 'plotTaken', name: 'Taken Plot' }]);
   });
   it('rejects drafts missing essentials', () => {
     expect(coerceDraft({ kind: 'expense' })).toBeNull();

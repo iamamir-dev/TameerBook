@@ -117,7 +117,7 @@ const READ_TOOLS: { name: string; intent: Intent['type']; description: string; p
     parameters: obj(
       {
         entity: { type: 'string', enum: [...ENTITY_KINDS] },
-        filter: { type: 'string', enum: [...ENTITY_FILTERS], description: 'projects: active|completed · plots: owned|sold · workers: owed · else all' },
+        filter: { type: 'string', enum: [...ENTITY_FILTERS], description: 'projects: active|completed · plots: owned (= free, not in any project) | sold · workers: owed · else all' },
       },
       ['entity']
     ),
@@ -215,7 +215,16 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
     description: 'Record a plot purchase.',
     parameters: obj({ name: str('Plot name'), society: str('Society'), plotNo: str('Plot number'), dealPrice: num('Agreed price'), seller: str('Seller name') }),
   },
-  { name: 'add_project', kind: 'createProject', description: 'Create a project, optionally on a plot. Call it even when the user gave no name — the app asks for the details.', parameters: obj({ name: str('Project name'), plot: str('Plot name') }) },
+  {
+    name: 'add_project',
+    kind: 'createProject',
+    description: 'Create a project on a FREE plot, optionally with investors. Ask for name / plot / investors first if missing; then call with everything.',
+    parameters: obj({
+      name: str('Project name'),
+      plot: str('A plot from "Plots (free)"'),
+      investors: { type: 'array', description: 'Investors to attach with their stake', items: obj({ name: str('Investor name'), amount: num('Amount invested (rupees)') }, ['name']) },
+    }),
+  },
 ];
 
 const OPEN_TOOL: ToolSpec = {

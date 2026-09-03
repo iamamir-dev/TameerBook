@@ -754,4 +754,10 @@ export interface TranslationKeys {
   aiTestOk: string;
   aiGroqVoiceHint: string;
   aiTrainsNote: string;
+  aiAccept: string;
+  aiReject: string;
+  aiRejected: string;
+  aiPlotTaken: string;
+  aiClearChat: string;
+  aiClearChatConfirm: string;
 }

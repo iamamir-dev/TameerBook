@@ -44,7 +44,7 @@ export async function buildWorld(): Promise<World> {
     language: useSettingsStore.getState().language,
     company: company ? { name: company.name, owner: company.owner_name } : undefined,
     projects: projects.filter((p) => p.status === 'ACTIVE' || p.status === 'ON_HOLD').map((p) => ({ id: p.id, name: p.name })),
-    plots: plots.map((p) => ({ id: p.id, name: p.name })),
+    plots: plots.map((p) => ({ id: p.id, name: p.name, taken: !!p.project_id || p.status === 'SOLD' })),
     accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
     categories: cats,
     parties: parties.map((p) => ({ id: p.id, name: p.name })),

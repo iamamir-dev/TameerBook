@@ -713,4 +713,10 @@ export const en: TranslationKeys = {
   aiTestOk: 'Connected',
   aiGroqVoiceHint: 'Voice needs Groq or Gemini. A Groq key also gives voice to other providers.',
   aiTrainsNote: 'Free tier may use your text to improve the model.',
+  aiAccept: 'Accept',
+  aiReject: 'Reject',
+  aiRejected: 'Rejected',
+  aiPlotTaken: 'This plot is already in a project. Pick a free plot.',
+  aiClearChat: 'Clear chat',
+  aiClearChatConfirm: 'Delete this conversation? The saved entries stay.',
 };

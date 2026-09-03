@@ -1,7 +1,7 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText, Toast } from '@/components/ui';
@@ -56,7 +56,7 @@ export function AssistantScreen(): React.JSX.Element {
   });
   const ready = aiEnabled && configured;
 
-  const { turns, busy, ask, onSpeak, onOpen, onOpenTarget } = useAssistant();
+  const { turns, busy, ask, clear, settle, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
@@ -180,6 +180,25 @@ export function AssistantScreen(): React.JSX.Element {
             </>
           ) : null}
 
+          {/* The conversation persists across restarts; this is the one way to wipe it. */}
+          {turns.length > 0 ? (
+            <Pressable
+              onPress={() =>
+                Alert.alert(t('aiClearChat'), t('aiClearChatConfirm'), [
+                  { text: t('cancel'), style: 'cancel' },
+                  { text: t('aiClearChat'), style: 'destructive', onPress: clear },
+                ])
+              }
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.clearRow, pressed && styles.chipPressed]}
+            >
+              <AppIcon name="trash" size={14} color="textSecondary" />
+              <AppText size="xs" weight="semibold" color="textSecondary">
+                {t('aiClearChat')}
+              </AppText>
+            </Pressable>
+          ) : null}
+
           {turns.map((turn) => {
             if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} />;
             if ('error' in turn) {
@@ -196,7 +215,9 @@ export function AssistantScreen(): React.JSX.Element {
                   {turn.cards.map((card, i) => (
                     <AnswerCard key={`${turn.id}-c${i}`} answer={card} />
                   ))}
-                  {turn.draft ? <DraftCard resolved={turn.draft} onDone={showToast} /> : null}
+                  {turn.draft ? (
+                    <DraftCard resolved={turn.draft} settled={turn.settled} onSettled={(status, message) => settle(turn.id, status, message)} onDone={showToast} />
+                  ) : null}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
                   {turn.suggestions.length > 0 && turn.id === lastAssistantId ? (
                     <View style={styles.chips}>

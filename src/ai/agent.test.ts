@@ -74,7 +74,7 @@ describe('interpretToolCall', () => {
     expect(interpretToolCall({ id: '1', name: 'record_material', args: { item: 'cement', qty: 50, rate: 1200 } }).kind).toBe('write');
   });
   it('accepts add_project with no details (the sheet asks)', () => {
-    expect(interpretToolCall({ id: '1', name: 'add_project', args: {} })).toEqual({ kind: 'write', draft: { kind: 'createProject', name: undefined, plot: undefined } });
+    expect(interpretToolCall({ id: '1', name: 'add_project', args: {} })).toEqual({ kind: 'write', draft: { kind: 'createProject', name: undefined, plot: undefined, investors: undefined } });
   });
   it('maps open_screen and rejects junk', () => {
     expect(interpretToolCall({ id: '1', name: 'open_screen', args: { screen: 'NewProject' } })).toEqual({ kind: 'open', screen: 'NewProject' });

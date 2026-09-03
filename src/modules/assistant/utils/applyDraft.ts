@@ -242,7 +242,16 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     }
 
     case 'createProject': {
-      const project = await createProject({ name: need(d.name ?? c.name, 'name'), plotId: r.plot?.id ?? c.plotId ?? null });
+      if (r.issues.some((i) => i.code === 'plotTaken')) throw new Error(t('aiPlotTaken'));
+      // Investors named in the sentence: existing ones attach by id, new ones are
+      // created first (pledge = their stake) so the capacity guard passes.
+      const investors: { investorId: string; amount: number }[] = [];
+      for (const inv of r.investors) {
+        const amount = inv.draft.amount ?? 0;
+        const id = inv.ref?.id ?? (await addInvestor({ name: inv.draft.name, committedAmount: amount })).id;
+        investors.push({ investorId: id, amount });
+      }
+      const project = await createProject({ name: need(d.name ?? c.name, 'name'), plotId: r.plot?.id ?? c.plotId ?? null, investors });
       return { message: `${t('aiAdded')} · ${project.name}`, target: { screen: 'ProjectDetail', projectId: project.id } };
     }
   }

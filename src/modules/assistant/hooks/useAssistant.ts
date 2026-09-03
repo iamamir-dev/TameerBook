@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import {
   buildWorld,
@@ -13,7 +13,8 @@ import {
   type OpenScreen,
   type ResolvedDraft,
 } from '@/ai';
-import { reportError } from '@/utils/log';
+import { loadSettings, saveSetting } from '@/db';
+import { reportError, swallow } from '@/utils/log';
 
 /** One message in the conversation. */
 export type Turn =
@@ -31,15 +32,24 @@ export type Turn =
       open?: OpenScreen;
       /** Tappable follow-ups. */
       suggestions: string[];
+      /** Set once the user accepted or rejected the draft (survives restarts). */
+      settled?: { status: 'accepted' | 'rejected'; message?: string };
     }
   | { id: string; role: 'assistant'; error: AiErrorCode };
 
 interface State {
   turns: Turn[];
   busy: boolean;
+  /** True once the saved conversation has been read back. */
+  hydrated: boolean;
 }
 
-type Action = { type: 'push'; turn: Turn } | { type: 'busy'; busy: boolean } | { type: 'clear' };
+type Action =
+  | { type: 'push'; turn: Turn }
+  | { type: 'busy'; busy: boolean }
+  | { type: 'clear' }
+  | { type: 'hydrate'; turns: Turn[] }
+  | { type: 'settle'; turnId: string; status: 'accepted' | 'rejected'; message?: string };
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
@@ -48,9 +58,25 @@ function reducer(s: State, a: Action): State {
     case 'busy':
       return { ...s, busy: a.busy };
     case 'clear':
-      return { turns: [], busy: false };
+      return { ...s, turns: [], busy: false };
+    case 'hydrate':
+      return { ...s, turns: a.turns, hydrated: true };
+    case 'settle':
+      return {
+        ...s,
+        turns: s.turns.map((t) => (t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { status: a.status, message: a.message } } : t)),
+      };
   }
 }
+
+/** Persisted conversation: the visible turns + the model's compact memory. */
+interface SavedChat {
+  turns: Turn[];
+  history: AiChatMessage[];
+}
+const CHAT_KEY = 'aiChat';
+/** Keep the saved conversation bounded (old turns fall off). */
+const MAX_SAVED_TURNS = 40;
 
 /** How many prior messages the model sees (3 exchanges). */
 const HISTORY_TURNS = 6;
@@ -68,6 +94,8 @@ export interface AssistantApi extends State {
   onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
+  /** Record that a draft card was accepted or rejected. */
+  settle: (turnId: string, status: 'accepted' | 'rejected', message?: string) => void;
 }
 
 /**
@@ -76,7 +104,7 @@ export interface AssistantApi extends State {
  * a screen to open. The model never touches the database.
  */
 export function useAssistant(): AssistantApi {
-  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false });
+  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, hydrated: false });
   const onSpeak = useRef<((text: string) => void) | null>(null);
   const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
   const onOpenTarget = useRef<((target: AnswerTarget) => void) | null>(null);
@@ -88,6 +116,30 @@ export function useAssistant(): AssistantApi {
     const msg: AiChatMessage = role === 'user' ? { role, content: content.slice(0, 500) } : { role, content: content.slice(0, 500) };
     history.current = [...history.current, msg].slice(-HISTORY_TURNS);
   };
+
+  // Restore the saved conversation once; then mirror every change back.
+  useEffect(() => {
+    loadSettings()
+      .then((s) => {
+        if (!s[CHAT_KEY]) {
+          dispatch({ type: 'hydrate', turns: [] });
+          return;
+        }
+        try {
+          const saved = JSON.parse(s[CHAT_KEY]) as SavedChat;
+          history.current = Array.isArray(saved.history) ? saved.history : [];
+          dispatch({ type: 'hydrate', turns: Array.isArray(saved.turns) ? saved.turns : [] });
+        } catch {
+          dispatch({ type: 'hydrate', turns: [] });
+        }
+      })
+      .catch(() => dispatch({ type: 'hydrate', turns: [] }));
+  }, []);
+  useEffect(() => {
+    if (!state.hydrated) return;
+    const payload: SavedChat = { turns: state.turns.slice(-MAX_SAVED_TURNS), history: history.current };
+    void saveSetting(CHAT_KEY, JSON.stringify(payload)).catch(swallow('assistant:persist'));
+  }, [state.turns, state.hydrated]);
 
   const ask = useCallback(async (raw: string) => {
     const text = raw.trim();
@@ -119,7 +171,12 @@ export function useAssistant(): AssistantApi {
   const clear = useCallback(() => {
     history.current = [];
     dispatch({ type: 'clear' });
+    void saveSetting(CHAT_KEY, '').catch(swallow('assistant:clear'));
   }, []);
 
-  return { ...state, ask, clear, onSpeak, onOpen, onOpenTarget };
+  const settle = useCallback((turnId: string, status: 'accepted' | 'rejected', message?: string) => {
+    dispatch({ type: 'settle', turnId, status, message });
+  }, []);
+
+  return { ...state, ask, clear, settle, onSpeak, onOpen, onOpenTarget };
 }
