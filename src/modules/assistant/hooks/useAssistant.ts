@@ -44,8 +44,8 @@ export type Turn =
 interface State {
   turns: Turn[];
   busy: boolean;
-  /** What the agent is doing right now (tool names), for the thinking bubble. */
-  working: string[];
+  /** What the agent is doing right now, for the thinking bubble. */
+  working: { phase: 'thinking' | 'tools' | 'writing'; tools: string[] };
   /** True once the saved conversation has been read back. */
   hydrated: boolean;
 }
@@ -56,7 +56,7 @@ type Action =
   | { type: 'clear' }
   | { type: 'hydrate'; turns: Turn[] }
   | { type: 'remove'; turnId: string }
-  | { type: 'working'; tools: string[] }
+  | { type: 'working'; phase: 'thinking' | 'tools' | 'writing'; tools: string[] }
   | { type: 'pick'; turnId: string; option: string }
   | { type: 'settle'; turnId: string; status: 'accepted' | 'rejected'; message?: string };
 
@@ -65,7 +65,7 @@ function reducer(s: State, a: Action): State {
     case 'push':
       return { ...s, turns: [...s.turns, a.turn] };
     case 'busy':
-      return { ...s, busy: a.busy, working: a.busy ? s.working : [] };
+      return { ...s, busy: a.busy, working: { phase: 'thinking', tools: [] } };
     case 'clear':
       return { ...s, turns: [], busy: false };
     case 'hydrate':
@@ -73,7 +73,7 @@ function reducer(s: State, a: Action): State {
     case 'remove':
       return { ...s, turns: s.turns.filter((t) => t.id !== a.turnId) };
     case 'working':
-      return { ...s, working: a.tools };
+      return { ...s, working: { phase: a.phase, tools: a.tools } };
     case 'pick':
       return { ...s, turns: s.turns.map((t) => (t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, picked: a.option } : t)) };
     case 'settle':
@@ -151,7 +151,7 @@ export interface AssistantApi extends State {
  * a screen to open. The model never touches the database.
  */
 export function useAssistant(): AssistantApi {
-  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, working: [], hydrated: false });
+  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, working: { phase: 'thinking', tools: [] }, hydrated: false });
   // Always-fresh view of the turns for callbacks (avoids stale closures).
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = state.turns;
@@ -205,7 +205,7 @@ export function useAssistant(): AssistantApi {
         world,
         runIntent,
         history: history.current,
-        onProgress: (tools) => dispatch({ type: 'working', tools }),
+        onProgress: (phase, tools) => dispatch({ type: 'working', phase, tools }),
       });
       remember('user', text);
       remember('assistant', r.memory);

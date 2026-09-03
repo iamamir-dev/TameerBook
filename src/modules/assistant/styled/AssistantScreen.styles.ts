@@ -54,15 +54,4 @@ export const makeStyles = (theme: Theme) =>
       padding: theme.spacing.lg,
       gap: theme.spacing.md,
     },
-    thinking: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      alignSelf: 'flex-start',
-      backgroundColor: theme.colors.primarySoft,
-      borderRadius: theme.radius.lg,
-      borderBottomLeftRadius: theme.radius.sm,
-      paddingHorizontal: theme.spacing.md,
-      minHeight: 36,
-    },
   });

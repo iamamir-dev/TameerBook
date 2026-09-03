@@ -767,4 +767,5 @@ export interface TranslationKeys {
   aiSpeakThis: string;
   aiChecking: string;
   aiTapToChoose: string;
+  aiWriting: string;
 }

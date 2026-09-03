@@ -38,8 +38,8 @@ export interface AgentDeps {
   /** Prior turns (oldest first), already compact. */
   history?: AiChatMessage[];
   maxCalls?: number;
-  /** Progress hook: which tools are running right now (for the thinking bubble). */
-  onProgress?: (toolNames: string[]) => void;
+  /** Progress hook for the thinking bubble: 'tools' while tools run (with their names), 'writing' while the model composes from results. */
+  onProgress?: (phase: 'tools' | 'writing', toolNames: string[]) => void;
 }
 
 const splitPipes = (raw: string, max: number): string[] =>
@@ -124,7 +124,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     }
 
     // Read tools: run them all, feed results back, let the model answer.
-    deps.onProgress?.(res.toolCalls.map((c) => c.name));
+    deps.onProgress?.('tools', res.toolCalls.map((c) => c.name));
     messages.push({ role: 'assistant', content: res.content, toolCalls: res.toolCalls });
     for (const tc of res.toolCalls) {
       const action = interpretToolCall(tc);
@@ -145,6 +145,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       }
       messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content });
     }
+    deps.onProgress?.('writing', []);
   }
 
   // Out of calls: fall back to the cards' own sentences.

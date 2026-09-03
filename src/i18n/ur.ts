@@ -729,4 +729,5 @@ export const ur: TranslationKeys = {
   aiSpeakThis: 'سنائیں',
   aiChecking: 'دیکھ رہا ہے',
   aiTapToChoose: 'چننے کے لیے دبائیں',
+  aiWriting: 'جواب لکھ رہا ہے…',
 };

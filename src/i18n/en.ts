@@ -726,4 +726,5 @@ export const en: TranslationKeys = {
   aiSpeakThis: 'Read aloud',
   aiChecking: 'Checking',
   aiTapToChoose: 'Tap to choose',
+  aiWriting: 'Writing answer…',
 };

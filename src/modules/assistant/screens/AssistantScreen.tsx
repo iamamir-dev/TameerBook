@@ -1,7 +1,7 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText, Toast } from '@/components/ui';
@@ -18,6 +18,7 @@ import { DraftCard } from '../components/DraftCard';
 import { InsightsCard } from '../components/InsightsCard';
 import { ChoiceList } from '../components/ChoiceList';
 import { MessageActions } from '../components/MessageActions';
+import { ThinkingBubble } from '../components/ThinkingBubble';
 import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
 import { useInsights } from '../hooks/useInsights';
@@ -262,12 +263,15 @@ export function AssistantScreen(): React.JSX.Element {
 
           {busy ? (
             <AssistantRow>
-              <View style={styles.thinking}>
-                <ActivityIndicator color={theme.colors.accent} />
-                <AppText size="sm" color="textSecondary" numberOfLines={1}>
-                  {working.length > 0 ? `${t('aiChecking')} · ${working.map((w) => w.replace(/^(get_|list_|open_|explain_)/, '').replace(/_/g, ' ')).join(', ')}…` : t('aiThinking')}
-                </AppText>
-              </View>
+              <ThinkingBubble
+                status={
+                  working.phase === 'tools'
+                    ? `${t('aiChecking')} · ${working.tools.map((w) => w.replace(/^(get_|list_|open_|explain_)/, '').replace(/_/g, ' ')).join(', ')}`
+                    : working.phase === 'writing'
+                      ? t('aiWriting')
+                      : t('aiThinking')
+                }
+              />
             </AssistantRow>
           ) : null}
         </ScrollView>

@@ -133,7 +133,7 @@ describe('runAgent', () => {
       { content: '2 orders are still pending: PO-0015 Akram Traders (Rs 5,40,293) and PO-0011 Bilal Depot.\nSUGGEST: Akram ko kitna dena hai | Delivered orders', toolCalls: [] },
     ]);
     const calls: string[] = [];
-    const progress: string[][] = [];
+    const progress: [string, string[]][] = [];
     const r = await runAgent('which orders are not delivered yet', {
       transport: t,
       world,
@@ -141,10 +141,10 @@ describe('runAgent', () => {
         calls.push(intent.type);
         return poAnswer;
       },
-      onProgress: (names) => progress.push(names),
+      onProgress: (phase, names) => progress.push([phase, names]),
     });
     expect(calls).toEqual(['purchase_orders']);
-    expect(progress).toEqual([['get_purchase_orders']]);
+    expect(progress).toEqual([['tools', ['get_purchase_orders']], ['writing', []]]);
     expect(r.cards).toHaveLength(1);
     expect(r.text).toContain('PO-0015');
     expect(r.text).not.toContain('SUGGEST');
