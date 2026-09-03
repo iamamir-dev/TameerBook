@@ -700,4 +700,8 @@ export const ur: TranslationKeys = {
   aiReportOpening: 'رپورٹ کھول رہا ہے',
   aiChartOther: 'دیگر',
   monthsLabel: 'مہینے',
+  poDelivered: 'ڈلیور ہو گیا',
+  poPartial: 'جزوی ڈلیوری',
+  poPending: 'ڈلیوری باقی',
+  poPaid: 'ادا شدہ',
 };

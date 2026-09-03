@@ -75,8 +75,10 @@ describe('coerceIntent', () => {
   it('accepts the company overview', () => {
     expect(coerceIntent({ type: 'company_overview' })).toEqual({ type: 'company_overview' });
   });
-  it('defaults purchase_orders to open only', () => {
-    expect(coerceIntent({ type: 'purchase_orders' })).toEqual({ type: 'purchase_orders', openOnly: true });
+  it('reads the purchase-order status filter with a sensible default', () => {
+    expect(coerceIntent({ type: 'purchase_orders' })).toEqual({ type: 'purchase_orders', status: 'open' });
+    expect(coerceIntent({ type: 'purchase_orders', status: 'Pending' })).toEqual({ type: 'purchase_orders', status: 'pending' });
+    expect(coerceIntent({ type: 'purchase_orders', openOnly: false })).toEqual({ type: 'purchase_orders', status: 'all' });
   });
 });
 

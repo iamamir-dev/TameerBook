@@ -738,4 +738,8 @@ export interface TranslationKeys {
   aiReportOpening: string;
   aiChartOther: string;
   monthsLabel: string;
+  poDelivered: string;
+  poPartial: string;
+  poPending: string;
+  poPaid: string;
 }

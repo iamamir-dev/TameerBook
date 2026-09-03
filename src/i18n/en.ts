@@ -697,4 +697,8 @@ export const en: TranslationKeys = {
   aiReportOpening: 'Opening report',
   aiChartOther: 'Other',
   monthsLabel: 'months',
+  poDelivered: 'Delivered',
+  poPartial: 'Partly delivered',
+  poPending: 'Pending delivery',
+  poPaid: 'Paid',
 };

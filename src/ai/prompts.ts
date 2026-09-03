@@ -69,7 +69,7 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   worker_balance: worker?       party_history: party (required), period
   udhaar_balance: person?       account_balance: account?
   plot_status: plot?            investor_status: investor?
-  purchase_orders: openOnly (boolean, default true)
+  purchase_orders: status — "pending" (material not yet delivered), "delivered" (all material received), "unpaid" (money still owed), "open" (anything unfinished, default), "all". Asking which are delivered vs pending → "open" (the answer labels each order).
   recent_entries: period        insights | company_overview | top_suppliers | pnl: no params
   list_entities: entity (one of ${ENTITY_KINDS.map((s) => `"${s}"`).join('|')}) — NAMES ONLY, no money. Use when the user asks which/what/names/list ("which projects do I have", "workers ke naam").
   company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — only when the user asks about the company / business / overall position.
@@ -144,7 +144,10 @@ Examples (user → JSON):
 "plot 14 ka kya scene hai" → {"kind":"question","intent":{"type":"plot_status","plot":"Plot 14"}}
 "Umar ka profit" → {"kind":"question","intent":{"type":"investor_status","investor":"Umar"}}
 "buyer ne kitna dena hai Gulberg" → {"kind":"question","intent":{"type":"sale_status","project":"Gulberg"}}
-"kya order pending hain" → {"kind":"question","intent":{"type":"purchase_orders","openOnly":true}}
+"kya order pending hain" → {"kind":"question","intent":{"type":"purchase_orders","status":"pending"}}
+"purchase orders ke baray mein batao kaun si deliver ho gayi aur kaun si pending" → {"kind":"question","intent":{"type":"purchase_orders","status":"open"}}
+"kis supplier ko paise dene hain" → {"kind":"question","intent":{"type":"purchase_orders","status":"unpaid"}}
+"sab purchase orders dikhao" → {"kind":"question","intent":{"type":"purchase_orders","status":"all"}}
 "aaj kya dhyan dena hai" → {"kind":"question","intent":{"type":"insights"}}
 "can you tell me about company" → {"kind":"question","intent":{"type":"company_overview"}}
 "mera business kaisa chal raha hai" → {"kind":"question","intent":{"type":"company_overview"}}

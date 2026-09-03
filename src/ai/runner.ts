@@ -378,22 +378,45 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
     }
 
     case 'purchase_orders': {
-      const pos = (await listPurchaseOrders()).filter((p) => !intent.openOnly || p.status === 'OPEN');
-      if (pos.length === 0) return none(t('bookingsTitle'));
-      const owed = pos.reduce((s, p) => s + p.payRemaining, 0);
+      const all = await listPurchaseOrders();
+      const live = all.filter((p) => p.status !== 'CANCELLED');
+      const deliveryOf = (p: (typeof live)[number]): 'delivered' | 'partial' | 'pending' =>
+        p.fullyReceived ? 'delivered' : p.items.some((i) => i.qtyReceived > 0) ? 'partial' : 'pending';
+      const filtered = live.filter((p) => {
+        switch (intent.status) {
+          case 'pending':
+            return deliveryOf(p) !== 'delivered';
+          case 'delivered':
+            return deliveryOf(p) === 'delivered';
+          case 'unpaid':
+            return p.payRemaining >= 1;
+          case 'open':
+            return p.status === 'OPEN';
+          case 'all':
+            return true;
+        }
+      });
+      if (filtered.length === 0) return none(t('bookingsTitle'));
+      const delivered = filtered.filter((p) => deliveryOf(p) === 'delivered').length;
+      const pending = filtered.length - delivered;
+      const owed = filtered.reduce((s, p) => s + p.payRemaining, 0);
+      // Pending first (what needs chasing), then partial, then delivered.
+      const order = { pending: 0, partial: 1, delivered: 2 } as const;
+      const sorted = [...filtered].sort((a, b) => order[deliveryOf(a)] - order[deliveryOf(b)] || b.payRemaining - a.payRemaining);
+      const statusLabel = { delivered: t('poDelivered'), partial: t('poPartial'), pending: t('poPending') } as const;
       return {
-        title: t('bookingsTitle'),
-        headline: money(owed),
-        sub: `${pos.length} · ${t('owedToSuppliers')}`,
-        rows: pos.slice(0, MAX_ROWS).map((p) => ({
+        title: `${t('bookingsTitle')} · ${filtered.length}`,
+        headline: owed > 0 ? money(owed) : undefined,
+        sub: `${delivered} ${t('poDelivered').toLowerCase()} · ${pending} ${t('poPending').toLowerCase()}${owed > 0 ? ` · ${t('owedToSuppliers').toLowerCase()}` : ''}`,
+        rows: sorted.slice(0, MAX_ROWS).map((p) => ({
           id: p.poId,
           title: [p.poNumber, p.supplierName].filter(Boolean).join(' · '),
-          date: p.createdAt.slice(0, 10),
-          amount: p.payRemaining,
+          date: '',
+          subtitle: `${statusLabel[deliveryOf(p)]}${p.projectName ? ` · ${p.projectName}` : ''}${p.payRemaining >= 1 ? ` · ${t('remaining')} ${money(p.payRemaining)}` : ` · ${t('poPaid')}`}`,
+          amount: p.payRemaining >= 1 ? p.payRemaining : p.total,
           direction: 'out' as const,
-          typeLabel: p.fullyReceived ? undefined : t('openBookings'),
         })),
-        speak: `${pos.length} ${t('bookingsTitle')}: ${t('owedToSuppliers')} ${money(owed)}`,
+        speak: `${filtered.length} ${t('bookingsTitle')}: ${delivered} ${t('poDelivered')}, ${pending} ${t('poPending')}${owed > 0 ? `. ${t('owedToSuppliers')} ${money(owed)}` : ''}`,
         target: { screen: 'Bookings' },
       };
     }

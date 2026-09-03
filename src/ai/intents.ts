@@ -86,7 +86,7 @@ export type Intent =
   | { type: 'plot_status'; plot?: string }
   | { type: 'investor_status'; investor?: string }
   | { type: 'sale_status'; project?: string }
-  | { type: 'purchase_orders'; openOnly: boolean }
+  | { type: 'purchase_orders'; status: PoStatusFilter }
   | { type: 'insights' }
   | { type: 'company_overview' }
   | { type: 'list_entities'; entity: EntityKind }
@@ -105,6 +105,10 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 /** Things the user can ask to be LISTED by name (no money attached). */
 export const ENTITY_KINDS = ['projects', 'plots', 'workers', 'suppliers', 'investors', 'accounts', 'materials'] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/** How the user wants purchase orders filtered. */
+export const PO_STATUS_FILTERS = ['pending', 'delivered', 'unpaid', 'open', 'all'] as const;
+export type PoStatusFilter = (typeof PO_STATUS_FILTERS)[number];
 
 /** The app's PDF reports (Settings → Reports) plus a project's own report. */
 export const REPORT_KINDS = ['summary', 'pnl', 'cashflow', 'expense', 'investment', 'roi', 'accounts', 'project'] as const;
@@ -165,8 +169,11 @@ export function coerceIntent(raw: unknown): Intent | null {
       return { type, investor: str(o.investor) };
     case 'sale_status':
       return { type, project: str(o.project) };
-    case 'purchase_orders':
-      return { type, openOnly: o.openOnly !== false };
+    case 'purchase_orders': {
+      const raw = str(o.status)?.toLowerCase();
+      const status: PoStatusFilter = raw && (PO_STATUS_FILTERS as readonly string[]).includes(raw) ? (raw as PoStatusFilter) : o.openOnly === false ? 'all' : 'open';
+      return { type, status };
+    }
     case 'recent_entries':
       return { type, period: coercePeriod(o.period, 'week') };
     case 'list_entities': {
