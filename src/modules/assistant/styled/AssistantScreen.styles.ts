@@ -9,7 +9,9 @@ export const makeStyles = (theme: Theme) =>
     content: {
       paddingHorizontal: theme.spacing.page,
       paddingTop: theme.spacing.sm,
-      gap: theme.spacing.sm,
+      // Breathing room between turns; a user question gets extra space above
+      // (see MessageBubble.userWrap) so each exchange reads as one group.
+      gap: theme.spacing.md,
     },
     intro: {
       backgroundColor: theme.colors.card,

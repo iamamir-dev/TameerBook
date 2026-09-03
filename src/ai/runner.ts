@@ -439,24 +439,27 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       let target: AnswerTarget | undefined;
       switch (e) {
         case 'projects': {
-          const all = await listProjectSummaries();
-          title = t('projects');
+          const all = (await listProjectSummaries()).filter((s) =>
+            intent.filter === 'active' ? s.project.status === 'ACTIVE' : intent.filter === 'completed' ? s.project.status === 'COMPLETED' : true
+          );
+          title = intent.filter === 'active' ? `${t('statusActive')} · ${t('projects')}` : intent.filter === 'completed' ? `${t('statusCompleted')} · ${t('projects')}` : t('projects');
           list = all.map((s) => ({ id: s.project.id, title: s.project.name, subtitle: s.project.status === 'ACTIVE' ? t('statusActive') : t('statusCompleted') }));
-          target = { screen: 'ProjectDetail', projectId: all[0]?.project.id ?? '' };
-          if (all.length !== 1) target = undefined;
+          target = all.length === 1 ? { screen: 'ProjectDetail', projectId: all[0].project.id } : undefined;
           break;
         }
         case 'plots': {
-          const all = await listPlotSummaries();
-          title = t('plotsTitle');
+          const all = (await listPlotSummaries()).filter((s) =>
+            intent.filter === 'sold' ? s.plot.status === 'SOLD' : intent.filter === 'owned' ? s.plot.status !== 'SOLD' : true
+          );
+          title = intent.filter === 'sold' ? `${t('aiSoldLabel')} · ${t('plotsTitle')}` : t('plotsTitle');
           list = all.map((s) => ({ id: s.plot.id, title: s.plot.name, subtitle: s.projectName ?? (s.plot.status === 'SOLD' ? t('aiSoldLabel') : undefined) }));
           target = { screen: 'Plots' };
           break;
         }
         case 'workers': {
-          const all = await listLaborersWithTotals();
-          title = t('laborTitle');
-          list = all.map((x) => ({ id: x.id, title: x.name, subtitle: `${x.projects} ${t('projects').toLowerCase()}` }));
+          const all = (await listLaborersWithTotals()).filter((x) => (intent.filter === 'owed' ? x.balance > 0 : true));
+          title = intent.filter === 'owed' ? `${t('laborTitle')} · ${t('outstanding')}` : t('laborTitle');
+          list = all.map((x) => ({ id: x.id, title: x.name, subtitle: intent.filter === 'owed' ? `${t('insightOwed')} ${money(x.balance)}` : `${x.projects} ${t('projects').toLowerCase()}` }));
           target = { screen: 'Labor' };
           break;
         }

@@ -75,9 +75,9 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   worker_balance: worker?       party_history: party (required), period
   udhaar_balance: person?       account_balance: account?
   plot_status: plot?            investor_status: investor?
-  purchase_orders: status — "pending" (material not yet delivered), "delivered" (all material received), "unpaid" (money still owed), "open" (anything unfinished, default), "all". Asking which are delivered vs pending → "open" (the answer labels each order).
+  purchase_orders: status — "pending" (material NOT yet delivered), "delivered" (all material received), "unpaid" (money still owed), "open" (anything unfinished), "all". Pick the narrowest status that matches the words: "not delivered / abhi nahi aaya / pending / baqi" → pending; "aa gaya / delivered / mil gaya" → delivered; "paise dene hain / unpaid" → unpaid; only a general "purchase orders ke baray mein batao" → open.
   recent_entries: period        insights | company_overview | top_suppliers | pnl: no params
-  list_entities: entity (one of ${ENTITY_KINDS.map((s) => `"${s}"`).join('|')}) — NAMES ONLY, no money. Use when the user asks which/what/names/list ("which projects do I have", "workers ke naam").
+  list_entities: entity (one of ${ENTITY_KINDS.map((s) => `"${s}"`).join('|')}), filter ("all" default; projects: "active"|"completed"; plots: "owned"|"sold"; workers: "owed") — NAMES ONLY, no money. Use when the user asks which/what/names/list ("which projects do I have", "workers ke naam", "kaun se projects complete hain").
   company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — only when the user asks about the company / business / overall position.
   report: report (one of ${REPORT_KINDS.map((s) => `"${s}"`).join('|')}), project? — the user wants a REPORT / PDF / statement / printout. summary = business summary, pnl = profit & loss, cashflow = monthly in/out, expense = expenses by category, investment = investors, roi = returns, accounts = account balances, project = one project's full report (needs project).
   expense_breakdown: project?, period — "where did the money go", "kharcha kis cheez pe hua", "expense chart/graph". Shows a bar chart by category.
@@ -118,6 +118,7 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 
 Rules for precision:
 - Answer EXACTLY what was asked, nothing extra. Names asked → list_entities (no amounts). Amount asked → the matching money intent. Never volunteer costs the user did not ask for.
+- SUBSET, not the whole list: when the user qualifies ("not delivered yet", "completed projects", "sold plots", "jinko paise dene hain"), set the narrowest filter/status so ONLY those rows come back. Returning everything with labels when a subset was asked is wrong.
 - Do not repeat the question back or ask "what would you like?" — pick the closest intent and answer. Ask a question back only when the request is genuinely ambiguous between two intents.
 - Numbers: "50 bori" → qty 50; "1200 wala" / "1200 ka" / "@1200" → rate 1200; "12 hazar" → 12000; "2 lakh 50 hazar" → 250000; "dhai lakh" → 250000; "sawa lakh" → 125000; "aadha" → HALF.
 - The word after "se" is usually the supplier/person ("Akram se" → party "Akram"); "ko" marks who receives ("Bilal ko 2000 diye" → payWorker Bilal 2000 when Bilal is a worker, else expense with party Bilal).
@@ -152,6 +153,12 @@ Examples (user → JSON):
 "buyer ne kitna dena hai Gulberg" → {"kind":"question","intent":{"type":"sale_status","project":"Gulberg"}}
 "kya order pending hain" → {"kind":"question","intent":{"type":"purchase_orders","status":"pending"}}
 "purchase orders ke baray mein batao kaun si deliver ho gayi aur kaun si pending" → {"kind":"question","intent":{"type":"purchase_orders","status":"open"}}
+"kaun se orders abhi tak deliver nahi hue" → {"kind":"question","intent":{"type":"purchase_orders","status":"pending"}}
+"which purchase orders are not delivered yet" → {"kind":"question","intent":{"type":"purchase_orders","status":"pending"}}
+"kis order ka material aa gaya hai" → {"kind":"question","intent":{"type":"purchase_orders","status":"delivered"}}
+"kaun se projects complete ho gaye" → {"kind":"question","intent":{"type":"list_entities","entity":"projects","filter":"completed"}}
+"which plots are sold" → {"kind":"question","intent":{"type":"list_entities","entity":"plots","filter":"sold"}}
+"kin mazdooron ke paise baqi hain" → {"kind":"question","intent":{"type":"list_entities","entity":"workers","filter":"owed"}}
 "kis supplier ko paise dene hain" → {"kind":"question","intent":{"type":"purchase_orders","status":"unpaid"}}
 "sab purchase orders dikhao" → {"kind":"question","intent":{"type":"purchase_orders","status":"all"}}
 "aaj kya dhyan dena hai" → {"kind":"question","intent":{"type":"insights"}}

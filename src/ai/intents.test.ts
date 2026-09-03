@@ -62,7 +62,8 @@ describe('coerceIntent', () => {
     expect(coerceIntent({ type: 'drop_tables' })).toBeNull();
   });
   it('lists entities by kind and rejects unknown kinds', () => {
-    expect(coerceIntent({ type: 'list_entities', entity: 'workers' })).toEqual({ type: 'list_entities', entity: 'workers' });
+    expect(coerceIntent({ type: 'list_entities', entity: 'workers' })).toEqual({ type: 'list_entities', entity: 'workers', filter: 'all' });
+    expect(coerceIntent({ type: 'list_entities', entity: 'projects', filter: 'Completed' })).toEqual({ type: 'list_entities', entity: 'projects', filter: 'completed' });
     expect(coerceIntent({ type: 'list_entities', entity: 'aliens' })).toBeNull();
   });
   it('parses report and chart intents', () => {

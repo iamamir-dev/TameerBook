@@ -5,7 +5,7 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /** User turn: right-aligned brand bubble with a small tail. */
-    userWrap: { alignItems: 'flex-end', paddingLeft: theme.spacing.xxxl },
+    userWrap: { alignItems: 'flex-end', paddingLeft: theme.spacing.xxxl, marginTop: theme.spacing.sm },
     user: {
       maxWidth: '100%',
       backgroundColor: theme.colors.primary,

@@ -89,7 +89,7 @@ export type Intent =
   | { type: 'purchase_orders'; status: PoStatusFilter }
   | { type: 'insights' }
   | { type: 'company_overview' }
-  | { type: 'list_entities'; entity: EntityKind }
+  | { type: 'list_entities'; entity: EntityKind; filter: EntityFilter }
   /** Open one of the app's PDF reports (or a project's own report). */
   | { type: 'report'; report: ReportKind; project?: string }
   /** Spend by category as a bar chart. */
@@ -105,6 +105,10 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 /** Things the user can ask to be LISTED by name (no money attached). */
 export const ENTITY_KINDS = ['projects', 'plots', 'workers', 'suppliers', 'investors', 'accounts', 'materials'] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/** Optional subset for a names list ("completed projects", "sold plots", "workers who are owed"). */
+export const ENTITY_FILTERS = ['all', 'active', 'completed', 'owned', 'sold', 'owed'] as const;
+export type EntityFilter = (typeof ENTITY_FILTERS)[number];
 
 /** How the user wants purchase orders filtered. */
 export const PO_STATUS_FILTERS = ['pending', 'delivered', 'unpaid', 'open', 'all'] as const;
@@ -179,7 +183,9 @@ export function coerceIntent(raw: unknown): Intent | null {
     case 'list_entities': {
       const entity = str(o.entity);
       if (!entity || !(ENTITY_KINDS as readonly string[]).includes(entity)) return null;
-      return { type, entity: entity as EntityKind };
+      const f = str(o.filter)?.toLowerCase();
+      const filter: EntityFilter = f && (ENTITY_FILTERS as readonly string[]).includes(f) ? (f as EntityFilter) : 'all';
+      return { type, entity: entity as EntityKind, filter };
     }
     case 'report': {
       const report = str(o.report);
