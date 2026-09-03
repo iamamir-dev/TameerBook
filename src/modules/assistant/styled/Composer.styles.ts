@@ -10,12 +10,13 @@ export const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.background,
     },
     /** One pill: mic · field · send. */
+    /** Rounded rectangle (not a full pill) so a multi-line message still reads well. */
     pill: {
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: theme.spacing.xs,
       backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.pill,
+      borderRadius: theme.radius.hero,
       borderWidth: 1.5,
       borderColor: theme.colors.border,
       paddingHorizontal: theme.spacing.xs,
@@ -30,9 +31,13 @@ export const makeStyles = (theme: Theme) =>
       fontFamily: theme.typography.families.regular,
       fontSize: theme.typography.sizes.md,
       lineHeight: theme.typography.lineHeights.md,
-      paddingVertical: theme.spacing.md,
+      // Symmetric padding keeps the last line clear of the rounded bottom edge;
+      // Android needs top alignment or long text floats to the middle.
+      paddingTop: theme.spacing.md,
+      paddingBottom: theme.spacing.md,
       paddingHorizontal: theme.spacing.sm,
-      maxHeight: 120,
+      textAlignVertical: 'top',
+      maxHeight: 160,
     },
     /** Replaces the input while recording / transcribing. */
     status: {

@@ -93,6 +93,7 @@ export function Composer({
             placeholderTextColor={theme.colors.textSecondary}
             style={styles.input}
             multiline
+            scrollEnabled
             returnKeyType="send"
             blurOnSubmit
             onSubmitEditing={() => canSend && onSend()}
