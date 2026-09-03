@@ -43,7 +43,29 @@ export type Draft =
   | { kind: 'createInvestor'; name?: string; phone?: string; amount?: number }
   | { kind: 'createAccount'; name?: string; accountType: AccountTypeDraft; openingBalance?: number }
   | { kind: 'createPlot'; name?: string; society?: string; plotNo?: string; dealPrice?: number; seller?: string }
-  | { kind: 'createProject'; name?: string; plot?: string; investors?: InvestorDraft[] };
+  | { kind: 'createProject'; name?: string; plot?: string; investors?: InvestorDraft[] }
+  // Module-specific money moves.
+  | { kind: 'createPurchaseOrder'; supplier?: string; project?: string; items: PoItemDraft[] }
+  | { kind: 'receiveDelivery'; po?: string; item?: string; qty?: number; all: boolean; date?: string }
+  | { kind: 'payPurchaseOrder'; po?: string; amount?: number; account?: string; date?: string }
+  | { kind: 'plotPayment'; plot?: string; payType?: PayTypeDraft; amount?: number; account?: string; date?: string }
+  | { kind: 'plotExpense'; plot?: string; category?: string; amount?: number; account?: string; note?: string; date?: string }
+  | { kind: 'setSale'; project?: string; buyer?: string; price?: number }
+  | { kind: 'saleReceipt'; project?: string; payType?: PayTypeDraft; amount?: number; account?: string; date?: string }
+  | { kind: 'saleCost'; project?: string; note?: string; amount?: number; account?: string; date?: string }
+  | { kind: 'investorPayment'; investor?: string; project?: string; amount?: number; account?: string; date?: string }
+  | { kind: 'markTransferred'; plot?: string; date?: string };
+
+export const PAY_TYPE_DRAFTS_SELLER = ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'] as const;
+export type PayTypeDraft = (typeof PAY_TYPE_DRAFTS_SELLER)[number];
+
+/** One line of a purchase order the model read or heard. */
+export interface PoItemDraft {
+  item: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+}
 
 /** An investor named while creating a project ('Umar 5 lakh'). */
 export interface InvestorDraft {
@@ -57,7 +79,7 @@ export type PartyTypeDraft = (typeof PARTY_TYPE_DRAFTS)[number];
 export const ACCOUNT_TYPE_DRAFTS = ['BANK', 'CASH', 'WALLET'] as const;
 export type AccountTypeDraft = (typeof ACCOUNT_TYPE_DRAFTS)[number];
 /** Drafts that ADD a record (vs. money drafts that post a transaction). */
-export const CREATE_KINDS: ReadonlySet<DraftKind> = new Set<DraftKind>(['createWorker', 'createParty', 'createInvestor', 'createAccount', 'createPlot', 'createProject']);
+export const CREATE_KINDS: ReadonlySet<DraftKind> = new Set<DraftKind>(['createWorker', 'createParty', 'createInvestor', 'createAccount', 'createPlot', 'createProject', 'createPurchaseOrder', 'setSale']);
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -154,6 +176,40 @@ export function coerceDraft(raw: unknown): Draft | null {
       }
       return { kind, name: str(o.name), plot: str(o.plot), investors: investors.length ? investors : undefined };
     }
+    case 'createPurchaseOrder': {
+      const items: PoItemDraft[] = [];
+      for (const raw of Array.isArray(o.items) ? o.items : []) {
+        if (!raw || typeof raw !== 'object') continue;
+        const ir = raw as Record<string, unknown>;
+        const item = str(ir.item) ?? str(ir.name);
+        const qty = num(ir.qty);
+        const rate = num(ir.rate) ?? (num(ir.amount) && qty ? Math.round((num(ir.amount) as number) / qty) : undefined);
+        if (item && qty && rate !== undefined) items.push({ item, qty, unit: str(ir.unit), rate });
+      }
+      return { kind, supplier: str(o.supplier) ?? str(o.party), project: str(o.project), items };
+    }
+    case 'receiveDelivery':
+      return { kind, po: str(o.po), item: str(o.item), qty: num(o.qty) || undefined, all: o.all === true || (!num(o.qty) && !str(o.item)), date: day(o.date) };
+    case 'payPurchaseOrder':
+      return { kind, po: str(o.po), amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
+    case 'plotPayment': {
+      const pt = typeof o.payType === 'string' ? o.payType.toUpperCase().replace('ADVANCE', 'BAYANA').replace('INSTALMENT', 'INSTALLMENT') : '';
+      return { kind, plot: str(o.plot), payType: (PAY_TYPE_DRAFTS_SELLER as readonly string[]).includes(pt) ? (pt as PayTypeDraft) : undefined, amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
+    }
+    case 'plotExpense':
+      return { kind, plot: str(o.plot), category: str(o.category), amount: num(o.amount) || undefined, account: str(o.account), note: str(o.note), date: day(o.date) };
+    case 'setSale':
+      return { kind, project: str(o.project), buyer: str(o.buyer), price: num(o.price) || undefined };
+    case 'saleReceipt': {
+      const pt = typeof o.payType === 'string' ? o.payType.toUpperCase().replace('ADVANCE', 'BAYANA').replace('INSTALMENT', 'INSTALLMENT') : '';
+      return { kind, project: str(o.project), payType: (PAY_TYPE_DRAFTS_SELLER as readonly string[]).includes(pt) ? (pt as PayTypeDraft) : undefined, amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
+    }
+    case 'saleCost':
+      return { kind, project: str(o.project), note: str(o.note) ?? str(o.category), amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
+    case 'investorPayment':
+      return { kind, investor: str(o.investor), project: str(o.project), amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
+    case 'markTransferred':
+      return { kind, plot: str(o.plot), date: day(o.date) };
     default:
       return null;
   }
@@ -199,6 +255,7 @@ export interface ResolvedDraft {
   category?: Ref;
   party?: Ref;
   worker?: Ref;
+  investor?: Ref;
   /** Attendance: each spoken mark with its matched worker (null = unknown name). */
   marks: { mark: AttendanceMark; worker: Ref | null }[];
   /** createProject: investors named, matched when they already exist (null = will be created). */
@@ -285,6 +342,41 @@ export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
     case 'createInvestor':
     case 'createAccount':
     case 'createPlot':
+      break;
+    case 'createPurchaseOrder':
+      r.party = ref(draft.supplier, world.parties, []);
+      r.project = ref(draft.project, world.projects, unresolved);
+      break;
+    case 'receiveDelivery':
+      break;
+    case 'payPurchaseOrder':
+      r.account = ref(draft.account, world.accounts, unresolved);
+      break;
+    case 'plotPayment':
+    case 'markTransferred':
+      r.plot = ref(draft.plot, world.plots, unresolved);
+      if (draft.kind === 'plotPayment') r.account = ref(draft.account, world.accounts, unresolved);
+      break;
+    case 'plotExpense': {
+      r.plot = ref(draft.plot, world.plots, unresolved);
+      r.account = ref(draft.account, world.accounts, unresolved);
+      const cats = world.categories.filter((c) => c.type === 'EXPENSE');
+      r.category = ref(draft.category, cats, []);
+      break;
+    }
+    case 'setSale':
+      r.project = ref(draft.project, world.projects, unresolved);
+      r.party = ref(draft.buyer, world.parties, []);
+      break;
+    case 'saleReceipt':
+    case 'saleCost':
+      r.project = ref(draft.project, world.projects, unresolved);
+      r.account = ref(draft.account, world.accounts, unresolved);
+      break;
+    case 'investorPayment':
+      r.investor = ref(draft.investor, world.investors, unresolved);
+      r.project = ref(draft.project, world.projects, unresolved);
+      r.account = ref(draft.account, world.accounts, unresolved);
       break;
   }
   return r;

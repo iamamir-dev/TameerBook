@@ -61,6 +61,7 @@ export type AnswerTarget =
   | { screen: 'PlotDetail'; plotId: string }
   | { screen: 'InvestorProfile'; investorId: string }
   | { screen: 'UdhaarDetail'; udhaarId: string }
+  | { screen: 'PurchaseOrderDetail'; poId: string }
   | { screen: 'Report'; type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };
 
 /** A small chart drawn inside the answer card. */

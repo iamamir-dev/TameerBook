@@ -731,4 +731,7 @@ export const en: TranslationKeys = {
   aiFromCamera: 'Take photo',
   aiFromGallery: 'Choose from gallery',
   aiPhotoPlaceholder: 'What should I do with this photo?',
+  aiNoPoFound: 'No open purchase order matched. Say the PO number or supplier.',
+  aiNoSaleYet: 'No sale is set for this project yet. Set the buyer and price first.',
+  aiFillMissing: 'Fill in the missing details, then accept',
 };

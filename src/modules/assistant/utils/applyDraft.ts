@@ -1,26 +1,43 @@
 import { matchName, type AnswerTarget, type ResolvedDraft } from '@/ai';
 import {
   addAccount,
+  addDelivery,
+  addInvestment,
   addInvestor,
+  addInvestorPayment,
   addLaborer,
   addParty,
+  addPlotExpense,
+  addPlotPayment,
+  addSaleCost,
+  addSaleReceipt,
   addTransaction,
   attachLaborerToProject,
   createPlot,
   createProject,
+  createPurchaseOrder,
   createUdhaar,
+  getProjectSale,
   giveUdhaar,
+  listCategories,
   listProjectLaborers,
+  listPurchaseOrders,
   listUdhaar,
   markAllPresentForProject,
   markAttendance,
+  markPlotTransferred,
+  payBooking,
   payLaborer,
   returnUdhaar,
   transferBetween,
+  upsertSale,
+  type PurchaseOrderSummary,
 } from '@/db';
 import { t } from '@/i18n';
 import { todayISO } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
+
+const money = formatRupees;
 
 /**
  * Write a CONFIRMED draft to the ledger using the same repository functions
@@ -85,9 +102,34 @@ export function draftNeeds(r: ResolvedDraft): DraftNeeds {
     case 'createAccount':
     case 'createPlot':
       return { ...none, name: !d.name };
+    case 'createPurchaseOrder':
+      return { ...none, project: !r.project };
+    case 'payPurchaseOrder':
+      return { ...none, amount: !d.amount, account: !r.account };
+    case 'plotPayment':
+    case 'plotExpense':
+      return { ...none, amount: !d.amount, account: !r.account };
+    case 'saleReceipt':
+    case 'saleCost':
+      return { ...none, amount: !d.amount, account: !r.account, project: !r.project };
+    case 'investorPayment':
+      return { ...none, amount: !d.amount, account: !r.account };
+    case 'setSale':
+      return { ...none, amount: !d.price, project: !r.project };
     default:
       return none;
   }
+}
+
+/** Find the purchase order the user meant by number ("PO-0015") or supplier name. */
+async function findPo(q: string | undefined): Promise<PurchaseOrderSummary | null> {
+  const pos = (await listPurchaseOrders()).filter((p) => p.status === 'OPEN');
+  if (pos.length === 0) return null;
+  if (!q) return pos.length === 1 ? pos[0] : null;
+  const byNumber = pos.find((p) => p.poNumber.toLowerCase().replace(/\s+/g, '') === q.toLowerCase().replace(/\s+/g, ''));
+  if (byNumber) return byNumber;
+  const m = matchName(q, pos.map((p) => ({ id: p.poId, name: p.supplierName ?? p.poNumber, alt: [p.poNumber] })));
+  return m ? pos.find((p) => p.poId === m.item.id) ?? null : null;
 }
 
 export interface Applied {
@@ -239,6 +281,123 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
         sellerName: d.seller ?? null,
       });
       return { message: `${t('aiAdded')} · ${plot.name}`, target: { screen: 'PlotDetail', plotId: plot.id } };
+    }
+
+    case 'createPurchaseOrder': {
+      const projectId = need(r.project?.id ?? c.projectId, 'project');
+      if (d.items.length === 0) throw new Error('missing items');
+      await createPurchaseOrder({
+        projectId,
+        partyId: r.party?.id ?? null,
+        supplierName: r.party ? null : d.supplier ?? null,
+        items: d.items.map((i) => ({ itemName: i.item, qty: i.qty, rate: i.rate, unit: i.unit ?? null })),
+      });
+      const total = d.items.reduce((s2, i) => s2 + i.qty * i.rate, 0);
+      return { message: `${t('aiAdded')} · ${money(total)}`, target: { screen: 'Bookings' } };
+    }
+
+    case 'receiveDelivery': {
+      const po = await findPo(d.po);
+      if (!po) throw new Error(t('aiNoPoFound'));
+      const date = d.date ?? today;
+      let n = 0;
+      if (d.all || !d.item) {
+        for (const it of po.items) {
+          if (it.qtyRemaining > 0.001) {
+            await addDelivery({ bookingId: it.booking.id, qty: d.qty && po.items.length === 1 ? Math.min(d.qty, it.qtyRemaining) : it.qtyRemaining, date });
+            n++;
+          }
+        }
+      } else {
+        const m = matchName(d.item, po.items.map((it) => ({ id: it.booking.id, name: it.booking.item_name })));
+        const it = m ? po.items.find((x) => x.booking.id === m.item.id) : undefined;
+        if (!it) throw new Error(t('aiNoPoFound'));
+        await addDelivery({ bookingId: it.booking.id, qty: Math.min(d.qty ?? it.qtyRemaining, it.qtyRemaining), date });
+        n = 1;
+      }
+      return { message: `${t('aiSaved')} · ${po.poNumber} · ${n} ${t('items').toLowerCase()}`, target: { screen: 'PurchaseOrderDetail', poId: po.poId } };
+    }
+
+    case 'payPurchaseOrder': {
+      const po = await findPo(d.po);
+      if (!po) throw new Error(t('aiNoPoFound'));
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      let left = needAmount(d.amount ?? c.amount);
+      const date = d.date ?? today;
+      // Allocate across the order's lines, oldest first, never over what is owed.
+      for (const it of po.items) {
+        if (left <= 0) break;
+        const part = Math.min(left, it.payRemaining);
+        if (part < 1) continue;
+        await payBooking({ bookingId: it.booking.id, amount: part, date, accountId });
+        left -= part;
+      }
+      return { message: `${t('aiSaved')} · ${money((d.amount ?? c.amount ?? 0) - left)}`, target: { screen: 'PurchaseOrderDetail', poId: po.poId } };
+    }
+
+    case 'plotPayment': {
+      const plotId = need(r.plot?.id, 'plot');
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      const amount = needAmount(d.amount ?? c.amount);
+      await addPlotPayment({ plotId, payType: d.payType ?? 'INSTALLMENT', amount, date: d.date ?? today, accountId });
+      return { message: `${t('aiSaved')} · ${money(amount)}`, target: { screen: 'PlotDetail', plotId } };
+    }
+
+    case 'plotExpense': {
+      const plotId = need(r.plot?.id, 'plot');
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      const amount = needAmount(d.amount ?? c.amount);
+      // Category: the matched one, else the first plot-expense category (never invent one).
+      let categoryId = r.category?.id;
+      if (!categoryId) {
+        const cats = await listCategories('EXPENSE');
+        const plotSection = cats.find((x) => x.name_en === 'Plot' && !x.parent_id);
+        const fallback = cats.find((x) => x.parent_id === plotSection?.id && x.is_system === 0) ?? cats.find((x) => x.parent_id === plotSection?.id);
+        categoryId = need(fallback?.id, 'category');
+      }
+      await addPlotExpense({ plotId, categoryId, amount, date: d.date ?? today, accountId, note: d.note ?? null });
+      return { message: `${t('aiSaved')} · ${money(amount)}`, target: { screen: 'PlotDetail', plotId } };
+    }
+
+    case 'setSale': {
+      const projectId = need(r.project?.id ?? c.projectId, 'project');
+      const price = needAmount(d.price ?? c.amount);
+      await upsertSale(projectId, { buyerPartyId: r.party?.id ?? null, buyerName: r.party ? null : d.buyer ?? null, agreedPrice: price });
+      return { message: `${t('aiSaved')} · ${money(price)}`, target: { screen: 'SaleDetail', projectId } };
+    }
+
+    case 'saleReceipt': {
+      const projectId = need(r.project?.id ?? c.projectId, 'project');
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      const amount = needAmount(d.amount ?? c.amount);
+      const sale = await getProjectSale(projectId);
+      if (!sale) throw new Error(t('aiNoSaleYet'));
+      await addSaleReceipt({ saleId: sale.id, amount, date: d.date ?? today, accountId, payType: d.payType ?? null });
+      return { message: `${t('aiSaved')} · ${money(amount)}`, target: { screen: 'SaleDetail', projectId } };
+    }
+
+    case 'saleCost': {
+      const projectId = need(r.project?.id ?? c.projectId, 'project');
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      const amount = needAmount(d.amount ?? c.amount);
+      await addSaleCost({ projectId, name: d.note ?? null, amount, date: d.date ?? today, accountId });
+      return { message: `${t('aiSaved')} · ${money(amount)}`, target: { screen: 'SaleDetail', projectId } };
+    }
+
+    case 'investorPayment': {
+      const investorId = need(r.investor?.id, 'investor');
+      const accountId = need(r.account?.id ?? c.accountId, 'account');
+      const amount = needAmount(d.amount ?? c.amount);
+      const date = d.date ?? today;
+      if (r.project) await addInvestment({ investorId, projectId: r.project.id, amount, date, accountId });
+      else await addInvestorPayment({ investorId, amount, date, accountId });
+      return { message: `${t('aiSaved')} · ${money(amount)}`, target: { screen: 'InvestorProfile', investorId } };
+    }
+
+    case 'markTransferred': {
+      const plotId = need(r.plot?.id, 'plot');
+      await markPlotTransferred(plotId, d.date ?? today);
+      return { message: t('aiSaved'), target: { screen: 'PlotDetail', plotId } };
     }
 
     case 'createProject': {

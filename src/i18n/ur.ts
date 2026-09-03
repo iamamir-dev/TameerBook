@@ -734,4 +734,7 @@ export const ur: TranslationKeys = {
   aiFromCamera: 'تصویر لیں',
   aiFromGallery: 'گیلری سے چنیں',
   aiPhotoPlaceholder: 'اس تصویر سے کیا کرنا ہے؟',
+  aiNoPoFound: 'کوئی کھلا پرچیز آرڈر نہیں ملا۔ PO نمبر یا سپلائر بتائیں۔',
+  aiNoSaleYet: 'اس پروجیکٹ کی فروخت ابھی طے نہیں۔ پہلے خریدار اور قیمت درج کریں۔',
+  aiFillMissing: 'باقی تفصیل بھریں، پھر منظور کریں',
 };

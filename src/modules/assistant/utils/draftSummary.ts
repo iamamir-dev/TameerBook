@@ -45,6 +45,26 @@ export function draftTitle(r: ResolvedDraft, t: T): string {
       return t('aiNewPlot');
     case 'createProject':
       return t('newProject');
+    case 'createPurchaseOrder':
+      return t('bookingsTitle');
+    case 'receiveDelivery':
+      return t('poDelivered');
+    case 'payPurchaseOrder':
+      return `${t('bookingsTitle')} · ${t('payWorker').split(' ')[0]}`;
+    case 'plotPayment':
+      return t('seller');
+    case 'plotExpense':
+      return `${t('plotsTitle')} · ${t('kharcha')}`;
+    case 'setSale':
+      return t('aiSoldLabel');
+    case 'saleReceipt':
+      return t('fromProjectSale');
+    case 'saleCost':
+      return `${t('aiSoldLabel')} · ${t('kharcha')}`;
+    case 'investorPayment':
+      return t('fromInvestor');
+    case 'markTransferred':
+      return t('markTransferred');
   }
 }
 
@@ -67,6 +87,17 @@ export function draftAmount(r: ResolvedDraft): number | null {
       return d.openingBalance ?? null;
     case 'createPlot':
       return d.dealPrice ?? null;
+    case 'createPurchaseOrder':
+      return d.items.length ? d.items.reduce((s, i) => s + i.qty * i.rate, 0) : null;
+    case 'payPurchaseOrder':
+    case 'plotPayment':
+    case 'plotExpense':
+    case 'saleReceipt':
+    case 'saleCost':
+    case 'investorPayment':
+      return d.amount ?? null;
+    case 'setSale':
+      return d.price ?? null;
     default:
       return null;
   }
@@ -152,6 +183,61 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       if (d.society) f.push({ label: t('society'), value: d.society });
       if (d.plotNo) f.push({ label: t('plotNo'), value: d.plotNo });
       if (d.seller) f.push({ label: t('seller'), value: d.seller });
+      break;
+    case 'createPurchaseOrder':
+      named(t('supplier'), r.party, d.supplier);
+      named(t('projectLabel'), r.project, d.project);
+      for (const it of d.items) f.push({ label: `${it.item} · ${formatQty(it.qty)}${it.unit ? ` ${it.unit}` : ''} @ ${formatQty(it.rate)}`, value: formatRupees(it.qty * it.rate), money: true });
+      break;
+    case 'receiveDelivery':
+      if (d.po) f.push({ label: t('bookingsTitle'), value: d.po });
+      if (d.item) f.push({ label: t('material'), value: `${d.item}${d.qty ? ` · ${formatQty(d.qty)}` : ''}` });
+      else f.push({ label: t('material'), value: t('aiAllPresent') });
+      date(d.date);
+      break;
+    case 'payPurchaseOrder':
+      if (d.po) f.push({ label: t('bookingsTitle'), value: d.po });
+      named(t('accountsTitle'), r.account, d.account);
+      date(d.date);
+      break;
+    case 'plotPayment':
+      named(t('plotsTitle'), r.plot, d.plot);
+      if (d.payType) f.push({ label: t('party'), value: d.payType });
+      named(t('accountsTitle'), r.account, d.account);
+      date(d.date);
+      break;
+    case 'plotExpense':
+      named(t('plotsTitle'), r.plot, d.plot);
+      named(t('category'), r.category, d.category);
+      named(t('accountsTitle'), r.account, d.account);
+      if (d.note) f.push({ label: t('note'), value: d.note });
+      date(d.date);
+      break;
+    case 'setSale':
+      named(t('projectLabel'), r.project, d.project);
+      f.push({ label: t('party'), value: r.party?.name ?? d.buyer ?? '—', unresolved: !r.party && !!d.buyer });
+      break;
+    case 'saleReceipt':
+      named(t('projectLabel'), r.project, d.project);
+      if (d.payType) f.push({ label: t('party'), value: d.payType });
+      named(t('accountsTitle'), r.account, d.account);
+      date(d.date);
+      break;
+    case 'saleCost':
+      named(t('projectLabel'), r.project, d.project);
+      if (d.note) f.push({ label: t('note'), value: d.note });
+      named(t('accountsTitle'), r.account, d.account);
+      date(d.date);
+      break;
+    case 'investorPayment':
+      named(t('investor'), r.investor, d.investor);
+      named(t('projectLabel'), r.project, d.project);
+      named(t('accountsTitle'), r.account, d.account);
+      date(d.date);
+      break;
+    case 'markTransferred':
+      named(t('plotsTitle'), r.plot, d.plot);
+      date(d.date);
       break;
     case 'createProject':
       if (d.name) f.push({ label: t('projectName'), value: d.name });

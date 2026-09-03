@@ -235,6 +235,74 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
   },
 ];
 
+const payType = { type: 'string', enum: ['TOKEN', 'BAYANA', 'INSTALLMENT', 'FINAL'], description: 'token / bayana (advance) / instalment / final' };
+WRITE_TOOLS.push(
+  {
+    name: 'create_purchase_order',
+    kind: 'createPurchaseOrder',
+    description: 'Book material from a supplier for a project (a PO with one or more lines). Use for "order 500 bricks from Rafiq", "PO banao", a bill photo with several lines that is an ORDER (not yet paid).',
+    parameters: obj({
+      supplier: str('Supplier name'),
+      project: str('Project name'),
+      items: { type: 'array', items: obj({ item: str('Material name'), qty: num('Quantity'), unit: str('Unit'), rate: num('Rate per unit') }, ['item', 'qty', 'rate']) },
+    }, ['items']),
+  },
+  {
+    name: 'receive_delivery',
+    kind: 'receiveDelivery',
+    description: 'Material of a purchase order arrived. "PO-0015 ka saman aa gaya" (all=true) or "500 bricks aa gaye Rafiq ke order mein" (item + qty).',
+    parameters: obj({ po: str('PO number (PO-0015) or supplier name'), item: str('Material name'), qty: num('Delivered quantity'), all: { type: 'boolean', description: 'true = everything remaining arrived' }, date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'pay_purchase_order',
+    kind: 'payPurchaseOrder',
+    description: 'Pay a supplier against a purchase order. "Rafiq ko PO ke 50 hazar diye".',
+    parameters: obj({ po: str('PO number or supplier name'), amount: num('Rupees'), account: str('Account paid from'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'pay_plot_seller',
+    kind: 'plotPayment',
+    description: 'Pay the SELLER of a plot toward the deal: token, bayana/advance, instalment or final. "Plot 14 ka token 5 lakh diya".',
+    parameters: obj({ plot: str('Plot name'), payType, amount: num('Rupees'), account: str('Account paid from'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'record_plot_expense',
+    kind: 'plotExpense',
+    description: 'A plot-side expense: transfer fee, tax, naqsha/approval, dealer commission on a plot.',
+    parameters: obj({ plot: str('Plot name'), category: str('Plot expense category'), amount: num('Rupees'), account: str('Account'), note: str('Note'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'set_sale_deal',
+    kind: 'setSale',
+    description: 'Record that a project is sold / agreed with a buyer: buyer name + agreed price. "Gulberg 2 crore mein Ahmed ko bech diya".',
+    parameters: obj({ project: str('Project name'), buyer: str('Buyer name'), price: num('Agreed price') }),
+  },
+  {
+    name: 'record_buyer_payment',
+    kind: 'saleReceipt',
+    description: 'Money RECEIVED from the buyer of a project (token, bayana, instalment, final). "buyer ne 20 lakh diye Gulberg ke".',
+    parameters: obj({ project: str('Project name'), payType, amount: num('Rupees'), account: str('Account received into'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'record_sale_cost',
+    kind: 'saleCost',
+    description: 'A cost on the sale side of a project: dealer commission, buyer-side tax, paperwork.',
+    parameters: obj({ project: str('Project name'), note: str('What for (e.g. dealer commission)'), amount: num('Rupees'), account: str('Account'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'record_investor_payment',
+    kind: 'investorPayment',
+    description: 'Money RECEIVED from an investor. With a project = staked into that project; without = general payment against the pledge. "Umar ne 5 lakh diye Gulberg ke liye".',
+    parameters: obj({ investor: str('Investor name'), project: str('Project name (optional)'), amount: num('Rupees'), account: str('Account received into'), date: str('YYYY-MM-DD') }),
+  },
+  {
+    name: 'mark_plot_transferred',
+    kind: 'markTransferred',
+    description: 'The plot transfer (registry) is complete. "Plot 14 transfer ho gaya".',
+    parameters: obj({ plot: str('Plot name'), date: str('YYYY-MM-DD') }),
+  }
+);
+
 const EXPLAIN_TOOL: ToolSpec = {
   name: 'explain_app',
   description:

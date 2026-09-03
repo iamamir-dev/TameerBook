@@ -199,18 +199,23 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
   return (
     <View style={[styles.card, done && styles.cardDone]}>
       <View style={styles.head}>
-        <AppIcon name={ICON[d.kind] ?? 'assistant'} size={16} color={applied ? 'success' : rejected ? 'textSecondary' : 'accent'} />
-        <AppText size="xs" weight="bold" color={applied ? 'success' : rejected ? 'textSecondary' : 'accent'} style={styles.headText} numberOfLines={1}>
-          {applied ? applied.message : rejected ? t('aiRejected') : draftTitle(resolved, t)}
-        </AppText>
-      </View>
-      {amount != null ? (
-        <View style={styles.amount}>
-          <AppText size="xl" weight="bold" tabular numberOfLines={1}>
-            {formatRupees(amount)}
+        <View style={[styles.iconChip, applied && styles.iconChipDone, rejected && styles.iconChipMuted]}>
+          <AppIcon name={applied ? 'checkCircle' : rejected ? 'close' : ICON[d.kind] ?? 'assistant'} size={16} color={applied ? 'success' : rejected ? 'textSecondary' : 'accent'} />
+        </View>
+        <View style={styles.headText}>
+          <AppText size="sm" weight="bold" numberOfLines={1}>
+            {draftTitle(resolved, t)}
+          </AppText>
+          <AppText size="xs" color={applied ? 'success' : 'textSecondary'} numberOfLines={1}>
+            {applied ? applied.message : rejected ? t('aiRejected') : blocked ? t('aiPlotTaken') : ready ? t('aiWillWrite') : t('aiFillMissing')}
           </AppText>
         </View>
-      ) : null}
+        {amount != null ? (
+          <AppText size="lg" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit style={styles.headAmount}>
+            {formatRupees(amount)}
+          </AppText>
+        ) : null}
+      </View>
 
       {fields.map((f, i) => (
         <View key={`${f.label}-${i}`} style={styles.row}>

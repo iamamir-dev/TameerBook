@@ -772,4 +772,7 @@ export interface TranslationKeys {
   aiFromCamera: string;
   aiFromGallery: string;
   aiPhotoPlaceholder: string;
+  aiNoPoFound: string;
+  aiNoSaleYet: string;
+  aiFillMissing: string;
 }
