@@ -204,7 +204,7 @@ export function AssistantScreen(): React.JSX.Element {
             if ('error' in turn) {
               return (
                 <AssistantRow key={turn.id}>
-                  <ErrorBubble code={turn.error} />
+                  <ErrorBubble code={turn.error} detail={turn.detail} />
                 </AssistantRow>
               );
             }

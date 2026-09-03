@@ -79,7 +79,7 @@ export function OpenBubble({ screen }: { screen: OpenScreen }): React.JSX.Elemen
 }
 
 /** A failure, in one sentence, with a Settings link when that is the fix. */
-export function ErrorBubble({ code }: { code: AiErrorCode }): React.JSX.Element {
+export function ErrorBubble({ code, detail }: { code: AiErrorCode; detail?: string }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -89,6 +89,7 @@ export function ErrorBubble({ code }: { code: AiErrorCode }): React.JSX.Element 
       <AppIcon name="alert" size={16} color="danger" />
       <AppText size="sm" style={styles.noticeText}>
         {t(AI_ERROR_KEY[code])}
+        {__DEV__ && detail ? `\n${detail}` : ''}
       </AppText>
       {SETTINGS_FIXABLE.has(code) ? (
         <Pressable onPress={() => navigation.navigate('Settings')} accessibilityRole="button" style={styles.link}>

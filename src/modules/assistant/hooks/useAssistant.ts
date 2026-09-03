@@ -35,7 +35,7 @@ export type Turn =
       /** Set once the user accepted or rejected the draft (survives restarts). */
       settled?: { status: 'accepted' | 'rejected'; message?: string };
     }
-  | { id: string; role: 'assistant'; error: AiErrorCode };
+  | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string };
 
 interface State {
   turns: Turn[];
@@ -161,7 +161,7 @@ export function useAssistant(): AssistantApi {
     } catch (e) {
       const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
       if (code === 'failed') reportError('assistant:ask', e);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', error: code } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined } });
     } finally {
       inFlight.current = false;
       dispatch({ type: 'busy', busy: false });

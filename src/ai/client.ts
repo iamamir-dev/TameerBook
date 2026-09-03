@@ -89,7 +89,7 @@ export function getAiTransport(): AiTransport {
     case 'groq':
     default:
       if (!key) throw new AiError('noProvider');
-      return new OpenAiCompatTransport('groq', info.baseUrl!, key, model, {}, { voiceModel: GROQ_WHISPER });
+      return new OpenAiCompatTransport('groq', info.baseUrl!, key, model, {}, { voiceModel: GROQ_WHISPER, fallbackModel: model === 'qwen/qwen3.6-27b' ? 'openai/gpt-oss-120b' : 'qwen/qwen3.6-27b' });
   }
 }
 
@@ -173,6 +173,8 @@ interface CompatOptions {
   tokensParam?: 'max_tokens' | 'max_completion_tokens';
   /** Reasoning models only accept the default temperature. */
   fixedTemperature?: boolean;
+  /** Retry once on this model when the primary fails (per-model caps, tool-call glitches). */
+  fallbackModel?: string;
 }
 
 class OpenAiCompatTransport implements AiTransport {
@@ -200,8 +202,19 @@ class OpenAiCompatTransport implements AiTransport {
       delete b.max_tokens;
     }
     if (this.o.fixedTemperature) delete b.temperature;
-    const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(b) });
-    return (await res.json()) as OaResponse;
+    try {
+      const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(b) });
+      return (await res.json()) as OaResponse;
+    } catch (e) {
+      // Groq free tier: per-model daily caps (429) and occasional malformed
+      // tool calls (400 tool_use_failed). One retry on the secondary model.
+      const fb = this.o.fallbackModel;
+      if (fb && b.model !== fb && e instanceof AiError && (e.code === 'quota' || e.code === 'failed')) {
+        const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ ...b, model: fb }) });
+        return (await res.json()) as OaResponse;
+      }
+      throw e;
+    }
   }
 
   async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
