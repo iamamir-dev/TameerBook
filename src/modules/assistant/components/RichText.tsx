@@ -69,7 +69,7 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
         }
         if (!marker) {
           return (
-            <AppText key={i} size="sm">
+            <AppText key={i} size="sm" selectable>
               {renderInline(line)}
             </AppText>
           );
@@ -80,7 +80,7 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
             <AppText size="sm" weight={numbered ? 'bold' : 'regular'} color="accent" style={styles.dot}>
               {numbered ? marker[1].replace(')', '.') : '•'}
             </AppText>
-            <AppText size="sm" style={styles.bulletText}>
+            <AppText size="sm" selectable style={styles.bulletText}>
               {renderInline(line.slice(marker[0].length))}
             </AppText>
           </View>
@@ -114,7 +114,7 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
       {body.map((r, ri) => (
         <View key={ri} style={[styles.tr, ri > 0 && styles.trRuled]}>
           {Array.from({ length: cols }, (_, c) => (
-            <AppText key={c} size="sm" weight={numeric[c] ? 'bold' : 'regular'} tabular={numeric[c]} numberOfLines={2} style={cellStyle(c)}>
+            <AppText key={c} size="sm" weight={numeric[c] ? 'bold' : 'regular'} tabular={numeric[c]} numberOfLines={2} selectable style={cellStyle(c)}>
               {renderInline(r[c] ?? '')}
             </AppText>
           ))}

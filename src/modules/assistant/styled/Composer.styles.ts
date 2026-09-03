@@ -6,7 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     bar: {
       paddingHorizontal: theme.spacing.page,
-      paddingTop: theme.spacing.sm,
+      paddingTop: theme.spacing.md,
       backgroundColor: theme.colors.background,
     },
     /** One pill: mic · field · send. */
@@ -37,7 +37,7 @@ export const makeStyles = (theme: Theme) =>
       paddingBottom: theme.spacing.md,
       paddingHorizontal: theme.spacing.sm,
       textAlignVertical: 'top',
-      maxHeight: 160,
+      maxHeight: 132,
     },
     /** Replaces the input while recording / transcribing. */
     status: {

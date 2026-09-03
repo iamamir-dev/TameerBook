@@ -204,7 +204,7 @@ export function AssistantScreen(): React.JSX.Element {
           ) : null}
 
           {turns.map((turn) => {
-            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} />;
+            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} onCopied={() => showToast(t('aiCopied'))} />;
             if ('error' in turn) {
               return (
                 <AssistantRow key={turn.id}>

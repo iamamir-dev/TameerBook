@@ -1,5 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as Clipboard from 'expo-clipboard';
 import React from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -8,6 +9,7 @@ import { AppIcon, AppText } from '@/components/ui';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
+import { swallow } from '@/utils/log';
 
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
@@ -16,17 +18,31 @@ import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-/** What the user said — right-aligned, on the brand color. */
-export function UserBubble({ text }: { text: string }): React.JSX.Element {
+/** What the user said — right-aligned, on the brand color, with its own copy action. */
+export function UserBubble({ text, onCopied }: { text: string; onCopied?: () => void }): React.JSX.Element {
   const theme = useTheme();
+  const { t } = useTranslation();
   const styles = makeStyles(theme);
   return (
     <View style={styles.userWrap}>
       <View style={styles.user}>
-        <AppText size="sm" color="onPrimary">
+        <AppText size="sm" color="onPrimary" selectable>
           {text}
         </AppText>
       </View>
+      <Pressable
+        onPress={() => {
+          Clipboard.setStringAsync(text)
+            .then(() => onCopied?.())
+            .catch(swallow('assistant:copy'));
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={t('aiCopy')}
+        hitSlop={theme.touch.hitSlop}
+        style={({ pressed }) => [styles.userCopy, pressed && styles.pressed]}
+      >
+        <AppIcon name="copy" size={12} color="textSecondary" />
+      </Pressable>
     </View>
   );
 }
