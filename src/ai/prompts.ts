@@ -81,11 +81,49 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 
 3) Anything else (greeting, thanks, off-topic, or a question the app cannot answer):
 {"kind":"chat","reply":<one or two short sentences>}
-  If the question is about money, workers, plots, projects or suppliers but no intent fits, say so briefly and suggest what you can answer.`;
+  If the question is about money, workers, plots, projects or suppliers but no intent fits, say so briefly and suggest what you can answer.
+
+Rules for precision:
+- Numbers: "50 bori" → qty 50; "1200 wala" / "1200 ka" / "@1200" → rate 1200; "12 hazar" → 12000; "2 lakh 50 hazar" → 250000; "dhai lakh" → 250000; "sawa lakh" → 125000; "aadha" → HALF.
+- The word after "se" is usually the supplier/person ("Akram se" → party "Akram"); "ko" marks who receives ("Bilal ko 2000 diye" → payWorker Bilal 2000 when Bilal is a worker, else expense with party Bilal).
+- "cash se" / "bank se" / an account name → account. "HBL se" → account HBL.
+- Never invent a project, account or category that the user did not mention.
+- Prefer a draft over a question when the sentence describes something that happened (past tense: liya, diya, aaya, kharida, mila).
+- Prefer a question when the sentence asks (kitna, kis ko, kab, kya, how much, who, show, batao, dikhao).
+
+Examples (user → JSON):
+"aaj 50 bori cement liya 1200 wala Akram se cash" → {"kind":"draft","draft":{"kind":"material","item":"Cement","qty":50,"unit":"bori","rate":1200,"party":"Akram","account":"Cash"}}
+"آج اکرم سے پچاس بوری سیمنٹ لی بارہ سو والی" → {"kind":"draft","draft":{"kind":"material","item":"Cement","qty":50,"unit":"bori","rate":1200,"party":"Akram"}}
+"5 hazar mistri ko diye Gulberg" → {"kind":"draft","draft":{"kind":"expense","amount":5000,"note":"mistri","project":"Gulberg"}}
+"Bilal ko 2000 diye" (Bilal is a worker) → {"kind":"draft","draft":{"kind":"payWorker","worker":"Bilal","amount":2000}}
+"ghar ka kharcha 3 hazar" → {"kind":"draft","draft":{"kind":"expense","amount":3000,"category":"Home Expense"}}
+"sab aaye aaj, Rashid half" → {"kind":"draft","draft":{"kind":"attendance","allPresent":true,"marks":[{"worker":"Rashid","status":"HALF"}]}}
+"Bilal aur Rashid absent" → {"kind":"draft","draft":{"kind":"attendance","allPresent":false,"marks":[{"worker":"Bilal","status":"ABSENT"},{"worker":"Rashid","status":"ABSENT"}]}}
+"Umar ne 5 lakh diye investment" → {"kind":"chat","reply":"Investor payments are recorded from Quick Entry → Payment In → Investor."}
+"Saleem ko 20 hazar udhaar diye" → {"kind":"draft","draft":{"kind":"udhaarGive","person":"Saleem","amount":20000}}
+"Saleem ne 5 hazar wapas kiye" → {"kind":"draft","draft":{"kind":"udhaarReturn","person":"Saleem","amount":5000}}
+"HBL se cash mein 50 hazar nikale" → {"kind":"draft","draft":{"kind":"transfer","from":"HBL","to":"Cash","amount":50000}}
+"buyer se 5 lakh aaye" → {"kind":"chat","reply":"Buyer payments are recorded on the project's Sale page or Quick Entry → Payment In."}
+"is mahine kitna cement liya?" → {"kind":"question","intent":{"type":"spend_by_category","category":"Cement","period":{"kind":"month"}}}
+"pichle mahine Gulberg pe kitna kharcha hua" → {"kind":"question","intent":{"type":"spend_summary","project":"Gulberg","period":{"kind":"lastMonth"}}}
+"Bilal ka hisab" → {"kind":"question","intent":{"type":"worker_balance","worker":"Bilal"}}
+"kis ko paise dene hain" → {"kind":"question","intent":{"type":"worker_balance"}}
+"Akram ko kitna diya is saal" → {"kind":"question","intent":{"type":"party_history","party":"Akram","period":{"kind":"year"}}}
+"cash kitna hai" → {"kind":"question","intent":{"type":"account_balance"}}
+"HBL mein kitna hai" → {"kind":"question","intent":{"type":"account_balance","account":"HBL"}}
+"Saleem ne kitna wapas karna hai" → {"kind":"question","intent":{"type":"udhaar_balance","person":"Saleem"}}
+"plot 14 ka kya scene hai" → {"kind":"question","intent":{"type":"plot_status","plot":"Plot 14"}}
+"Umar ka profit" → {"kind":"question","intent":{"type":"investor_status","investor":"Umar"}}
+"buyer ne kitna dena hai Gulberg" → {"kind":"question","intent":{"type":"sale_status","project":"Gulberg"}}
+"kya order pending hain" → {"kind":"question","intent":{"type":"purchase_orders","openOnly":true}}
+"aaj kya dhyan dena hai" → {"kind":"question","intent":{"type":"insights"}}
+"total profit" → {"kind":"question","intent":{"type":"pnl"}}
+"salam" → {"kind":"chat","reply":"Wa alaikum assalam! Kya poochna hai?"}`;
 }
 
 /** Whisper vocabulary bias: the names most likely to be spoken. */
 export function transcriptionPrompt(w: World): string {
+  // Whisper honours the prompt's style: Roman-Urdu spellings + the user's names.
   const names = [
     ...w.categories.filter((c) => c.parentId).map((c) => c.name),
     ...w.parties.map((p) => p.name),
@@ -112,5 +150,7 @@ Known material names (use these spellings when the item clearly matches): ${mate
 Known suppliers: ${w.parties.map((p) => p.name).join(', ') || '(none)'}.
 Respond with ONE JSON object:
 {"supplier"?:string,"date"?:"YYYY-MM-DD","items":[{"item":string,"qty"?:number,"unit"?:string,"rate"?:number,"amount"?:number}],"total"?:number,"paid"?:number,"confidence":"high"|"medium"|"low","notes"?:string}
-Amounts are rupees as plain numbers. If a value is unreadable, omit it. Never guess a total that is not written.`;
+Amounts are rupees as plain numbers. If a value is unreadable, omit it. Never guess a total that is not written.
+Rules: "بوری"/"bori"/"bag" is a unit, not an item. Quantity × rate must equal the line amount when all three are printed; if they disagree, trust the printed amount and omit rate. Urdu digits (۰۱۲۳۴۵۶۷۸۹) are ordinary digits. A handwritten "50 × 1200 = 60000" is one item with qty 50, rate 1200, amount 60000.
+Example: {"supplier":"Akram Traders","date":"2026-09-01","items":[{"item":"Cement","qty":50,"unit":"bori","rate":1200,"amount":60000},{"item":"Bajri","qty":100,"unit":"ft","rate":80,"amount":8000}],"total":68000,"paid":50000,"confidence":"high"}`;
 }

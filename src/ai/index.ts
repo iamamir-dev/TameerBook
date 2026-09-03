@@ -26,3 +26,4 @@ export { billSystemPrompt, narrationSystemPrompt, routerSystemPrompt, transcript
 export { buildWorld } from './context';
 export { periodLabel, runIntent, type Answer, type AnswerRow, type AnswerTarget } from './runner';
 export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';
+export { routeUtterance, type Routed } from './route';

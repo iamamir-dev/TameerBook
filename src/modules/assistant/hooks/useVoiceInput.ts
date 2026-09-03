@@ -7,6 +7,7 @@ import {
 import { useCallback, useRef, useState } from 'react';
 
 import { buildWorld, getAiTransport, isAiError, transcriptionPrompt, type AiErrorCode } from '@/ai';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { reportError } from '@/utils/log';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing';
@@ -65,7 +66,9 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
       const world = await buildWorld();
       const text = await transport.transcribe(
         { uri, name: 'speech.m4a', type: 'audio/m4a' },
-        { prompt: transcriptionPrompt(world) }
+        // Urdu UI → tell Whisper it's Urdu (stops Hindi/Arabic mis-detection);
+        // English UI → auto-detect (mixed Roman Urdu/English speech).
+        { prompt: transcriptionPrompt(world), language: useSettingsStore.getState().language === 'ur' ? 'ur' : undefined }
       );
       if (text) onText(text);
     } catch (e) {

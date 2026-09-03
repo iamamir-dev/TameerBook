@@ -2,12 +2,10 @@ import { useCallback, useReducer, useRef } from 'react';
 
 import {
   buildWorld,
-  chatJson,
   getAiTransport,
   isAiError,
-  parseRouterOutput,
   resolveDraft,
-  routerSystemPrompt,
+  routeUtterance,
   runIntent,
   type AiErrorCode,
   type Answer,
@@ -71,17 +69,15 @@ export function useAssistant(): AssistantApi {
     try {
       const transport = getAiTransport();
       const world = await buildWorld();
-      const routed = parseRouterOutput(await chatJson(transport, routerSystemPrompt(world), text));
-      if (!routed) {
-        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'error', code: 'unparseable' } });
-        return;
-      }
+      // Validate-and-repair routing: a bad shape or an unknown name gets ONE
+      // corrective follow-up before we show anything.
+      const { result: routed, resolved: pre } = await routeUtterance(transport, world, text);
       if (routed.kind === 'question') {
         const answer = await runIntent(routed.intent, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'answer', answer } });
         onSpeak.current?.(answer.speak);
       } else if (routed.kind === 'draft') {
-        const resolved = resolveDraft(routed.draft, world);
+        const resolved = pre ?? resolveDraft(routed.draft, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'draft', resolved } });
       } else {
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'text', text: routed.reply } });

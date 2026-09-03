@@ -10,6 +10,8 @@
 import { getDatabase } from './database';
 import {
   addAccount,
+  getLastMaterialRate,
+  listInsights,
   addCategory,
   deleteCategory,
   updateCategory,
@@ -1318,6 +1320,59 @@ async function testSaleEditDelete(): Promise<TestResult> {
   }
 }
 
+
+/* -------------------------------------------------------------------------- */
+/*  T-INS  offline insights + last-rate default                               */
+/* -------------------------------------------------------------------------- */
+
+async function testInsights(): Promise<TestResult> {
+  const c = new Cleanup();
+  try {
+    const acc = await addAccount({ name: 'DBTEST INS-Acc', type: 'CASH', openingBalance: 500_000 });
+    c.accounts.push(acc.id);
+    const project = await createProject({ name: 'DBTEST Insights' });
+    c.projects.push(project.id);
+    const worker = await addLaborer({ name: 'DBTEST Owed Worker' });
+    c.laborers.push(worker.id);
+    const pl = await attachLaborerToProject({ projectId: project.id, laborerId: worker.id, dailyWage: 1000 });
+    const db = await getDatabase();
+    const cat = async (n: string) =>
+      (await db.getFirstAsync<{ id: string }>('SELECT id FROM categories WHERE name_en = ?', n))!.id;
+    const cement = await cat('Cement');
+    const today = new Date().toISOString().slice(0, 10);
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+    // Worker owed for 45 days → insight; duplicate entries today → insight;
+    // rate outlier: three purchases at ~1200 then one at 3000.
+    await markAttendance({ projectLaborerId: pl.id, date: daysAgo(45), status: 'FULL' });
+    await addTransaction({ direction: 'OUT', amount: 777, date: today, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: cement, qty: 1 });
+    await addTransaction({ direction: 'OUT', amount: 777, date: today, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: cement, qty: 1 });
+    for (const [d, rate] of [[daysAgo(30), 1200], [daysAgo(20), 1250], [daysAgo(10), 1180]] as const) {
+      await addTransaction({ direction: 'OUT', amount: rate * 10, date: d, accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: cement, qty: 10 });
+    }
+    await addTransaction({ direction: 'OUT', amount: 30_000, date: daysAgo(1), accountId: acc.id, projectId: project.id, phase: 'CONSTRUCTION', categoryId: cement, qty: 10 });
+
+    const insights = await listInsights(today);
+    const kinds = new Set(insights.map((i) => i.kind));
+    const checks: Check[] = [
+      ['worker owed 45 days flagged', insights.some((i) => i.kind === 'workerOwed' && i.subject === 'DBTEST Owed Worker' && (i.days ?? 0) >= 45)],
+      ['duplicate entry today flagged', kinds.has('duplicateEntry')],
+      ['critical sorts before warning/info', insights.every((i, idx) => idx === 0 || rank(insights[idx - 1].severity) <= rank(i.severity))],
+    ];
+    // Latest cement purchase (today, 777/1) is the "latest rate"; it is far
+    // from the ~1200 median, so the outlier rule fires on Cement.
+    checks.push(['cement rate outlier flagged', insights.some((i) => i.kind === 'rateOutlier' && i.subject === 'Cement')]);
+
+    const last = await getLastMaterialRate(cement);
+    checks.push(['last rate is the newest purchase', !!last && last.date === today && near(last.rate, 777)]);
+
+    return report('T-INS insights + last rate', checks);
+  } finally {
+    await c.run();
+  }
+}
+const rank = (s: 'critical' | 'warning' | 'info'): number => ({ critical: 0, warning: 1, info: 2 })[s];
+
 export async function runDbTests(): Promise<TestResult[]> {
   // Everything is company-scoped now  run the whole suite inside a throwaway
   // test company, then restore the user's active company and delete it.
@@ -1343,6 +1398,7 @@ export async function runDbTests(): Promise<TestResult[]> {
     testInvestorCommitmentVsCash,
     testValidationGuards,
     testCategoryManagement,
+    testInsights,
     testCrossProjectDelivery,
     testCompanyIsolation,
     testReconciliation,

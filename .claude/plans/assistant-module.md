@@ -51,12 +51,24 @@ server/ai-proxy/                  Cloudflare Worker (wrangler), excluded from ro
       pipeline. Spoken answers via `expo-speech` (device Urdu voice when present).
 - [x] **5 Read the bill.** Receipt photo → Groq Qwen vision → BillDraft →
       MaterialEntry prefill (single line) / NewPurchaseOrder prefill (multi line).
-- [ ] **6 Proxy.** `server/ai-proxy`: `/v1/chat`, `/v1/transcribe`, `/v1/vision`;
+- [x] **6 Proxy.** `server/ai-proxy`: `/v1/chat`, `/v1/transcribe`, `/v1/vision`;
       app-token header, per-device rate limit binding, Groq → Workers AI fallback.
       README with deploy steps.
-- [ ] **7 Audit.** DB tests for insights in `src/db/tests.ts`; token sweep; dead code.
+- [x] **7 Audit.** DB tests for insights in `src/db/tests.ts`; token sweep; dead code.
 
 ## Route / param additions
 - `Assistant: { seed?: string } | undefined`
 - `MaterialEntry: { prefill?: MaterialPrefill } | undefined`
 - `NewPurchaseOrder: { poId?: string; prefill?: PurchaseOrderPrefill } | undefined`
+- [x] **8 Precision.** Few-shot router examples (Roman Urdu / Urdu / English),
+      precision rules (hazar/lakh, "se"/"ko"), temperature 0, validate-and-repair
+      second call (`src/ai/route.ts`, tested with a fake transport), Whisper
+      language hint + vocabulary prompt. No fine-tuning is possible on the free
+      hosted models; precision comes from prompts + validation + tests.
+
+## Follow-ups (not started)
+- Learn user corrections: remember "spoken name → chosen party/category" when the
+  user edits a prefilled field before saving (an alias map in `app_settings`).
+- Real-device pass: record 10 Roman-Urdu utterances + 30 real bills; measure how
+  many land fully correct; tune the few-shots from the misses.
+- Spoken daily summary card on Home (narration prompt exists in `prompts.ts`).

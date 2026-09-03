@@ -64,35 +64,7 @@ async function doFetch(url: string, init: RequestInit): Promise<Response> {
   throw new AiError('failed', `${res.status} ${body.slice(0, 200)}`);
 }
 
-/** Pull the first JSON object out of a model reply (tolerates ```json fences). */
-export function extractJson(text: string): unknown {
-  const stripped = text.replace(/```(?:json)?/gi, '').trim();
-  const start = stripped.indexOf('{');
-  const end = stripped.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new AiError('unparseable', stripped.slice(0, 120));
-  try {
-    return JSON.parse(stripped.slice(start, end + 1)) as unknown;
-  } catch {
-    throw new AiError('unparseable', stripped.slice(0, 120));
-  }
-}
-
-/** Ask for a JSON object and parse it. */
-export async function chatJson(
-  transport: AiTransport,
-  system: string,
-  user: string,
-  opts?: ChatOptions
-): Promise<unknown> {
-  const raw = await transport.chat(
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-    { json: true, temperature: 0.1, maxTokens: MAX_OUTPUT_TOKENS, ...opts }
-  );
-  return extractJson(raw);
-}
+export { chatJson, extractJson } from './json';
 
 /* -------------------------------------------------------------------------- */
 /*  Groq — direct (OpenAI-compatible)                                         */
