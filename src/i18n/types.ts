@@ -714,4 +714,25 @@ export interface TranslationKeys {
   aiMore: string;
   statusActive: string;
   statusCompleted: string;
+  aiConfirmTitle: string;
+  aiAddLabel: string;
+  aiSaveLabel: string;
+  aiSaved: string;
+  aiAdded: string;
+  aiView: string;
+  aiEditInstead: string;
+  aiChooseAccount: string;
+  aiChooseProject: string;
+  aiChooseParticipation: string;
+  aiNewWorker: string;
+  aiNewParty: string;
+  aiNewInvestor: string;
+  aiNewAccount: string;
+  aiNewPlot: string;
+  aiWillWrite: string;
+  aiWage: string;
+  aiOpeningBalance: string;
+  aiNoLoanFound: string;
+  aiNoWorkerFound: string;
+  aiNothingOwed: string;
 }

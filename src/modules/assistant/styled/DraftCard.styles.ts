@@ -23,5 +23,6 @@ export const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
     },
-    warnText: { flex: 1 },
+    warnText: { flex: 1, minWidth: 0 },
+    viewLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: theme.spacing.xs, minHeight: 36 },
   });

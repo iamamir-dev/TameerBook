@@ -83,6 +83,14 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 {"kind":"draft","draft":{"kind":"udhaarGive"|"udhaarReturn","person":string,"amount":number,"account"?:string}}
 {"kind":"draft","draft":{"kind":"transfer","from":string,"to":string,"amount":number}}
   Buying a material with a quantity ("50 bori cement 1200 wala") is a "material" draft (qty=50, rate=1200). Any other spend is "expense". Money received that is not a loan repayment or investor money is "income". "sab aaye" / "all present" → attendance with allPresent=true. Omit fields the user did not say. Dates only if the user gave one.
+  ADDING a record (the app shows a confirmation popup; you never save):
+{"kind":"draft","draft":{"kind":"createWorker","name":string,"phone"?:string,"wage"?:number,"project"?:string}}
+{"kind":"draft","draft":{"kind":"createParty","name":string,"partyType":"SUPPLIER"|"BUYER"|"SELLER"|"CONTRACTOR"|"DEALER","phone"?:string}}
+{"kind":"draft","draft":{"kind":"createInvestor","name":string,"phone"?:string,"amount"?:number}}
+{"kind":"draft","draft":{"kind":"createAccount","name":string,"accountType":"BANK"|"CASH"|"WALLET","openingBalance"?:number}}
+{"kind":"draft","draft":{"kind":"createPlot","name"?:string,"society"?:string,"plotNo"?:string,"dealPrice"?:number,"seller"?:string}}
+{"kind":"draft","draft":{"kind":"createProject","name":string,"plot"?:string}}
+  Use these when the user NAMES the thing to add ("add worker Bilal", "naya project Gulberg House"). If they only say "add a project" with no details, use kind "open" instead.
 
 3) The user wants to CREATE / ADD / OPEN something in the app ("add a new project", "naya plot", "open reports", "make a purchase order"):
 {"kind":"open","screen":<one of ${OPEN_SCREENS.map((s) => `"${s}"`).join('|')}>}
@@ -139,6 +147,12 @@ Examples (user → JSON):
 "mera business kaisa chal raha hai" → {"kind":"question","intent":{"type":"company_overview"}}
 "how do I add a worker" → {"kind":"open","screen":"Labor"}
 "I want to add a new project" → {"kind":"open","screen":"NewProject"}
+"add a new project called Gulberg House on DHA Plot 14" → {"kind":"draft","draft":{"kind":"createProject","name":"Gulberg House","plot":"DHA Plot 14"}}
+"naya mazdoor Kamran 1500 dihari Gulberg" → {"kind":"draft","draft":{"kind":"createWorker","name":"Kamran","wage":1500,"project":"Gulberg"}}
+"add supplier Rafiq Traders 0300-1234567" → {"kind":"draft","draft":{"kind":"createParty","name":"Rafiq Traders","partyType":"SUPPLIER","phone":"0300-1234567"}}
+"Meezan bank account add karo 2 lakh se" → {"kind":"draft","draft":{"kind":"createAccount","name":"Meezan","accountType":"BANK","openingBalance":200000}}
+"investor Umar add karo" → {"kind":"draft","draft":{"kind":"createInvestor","name":"Umar"}}
+"plot 22 Bahria 50 lakh ka liya Saleem se" → {"kind":"draft","draft":{"kind":"createPlot","society":"Bahria","plotNo":"22","dealPrice":5000000,"seller":"Saleem"}}
 "naya plot lena hai" → {"kind":"open","screen":"NewPlot"}
 "tell me the names of my projects" → {"kind":"question","intent":{"type":"list_entities","entity":"projects"}}
 "mere mazdoor kaun kaun hain" → {"kind":"question","intent":{"type":"list_entities","entity":"workers"}}

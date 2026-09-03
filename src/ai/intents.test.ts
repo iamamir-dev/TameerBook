@@ -102,6 +102,16 @@ describe('coerceDraft', () => {
     const d = coerceDraft({ kind: 'attendance', marks: [{ worker: 'Bilal', status: 'half' }, { worker: '', status: 'FULL' }, { worker: 'X', status: 'late' }] });
     expect(d).toEqual({ kind: 'attendance', project: undefined, date: undefined, allPresent: false, marks: [{ worker: 'Bilal', status: 'HALF' }] });
   });
+  it('parses "add" drafts with sensible defaults', () => {
+    expect(coerceDraft({ kind: 'createParty', name: 'Rafiq Traders' })).toEqual({ kind: 'createParty', name: 'Rafiq Traders', partyType: 'SUPPLIER', phone: undefined });
+    expect(coerceDraft({ kind: 'createAccount', name: 'Meezan', accountType: 'bank', openingBalance: '2,00,000' })).toEqual({ kind: 'createAccount', name: 'Meezan', accountType: 'BANK', openingBalance: 200000 });
+    expect(coerceDraft({ kind: 'createPlot', society: 'Bahria', plotNo: '22', dealPrice: 5000000 })).toMatchObject({ kind: 'createPlot', name: 'Bahria 22' });
+    expect(coerceDraft({ kind: 'createWorker' })).toBeNull();
+  });
+  it('resolves the plot named for a new project', () => {
+    const r = resolveDraft(coerceDraft({ kind: 'createProject', name: 'Gulberg House', plot: 'dha plot 14' })!, world);
+    expect(r.plot?.id).toBe('pl1');
+  });
   it('rejects drafts missing essentials', () => {
     expect(coerceDraft({ kind: 'expense' })).toBeNull();
     expect(coerceDraft({ kind: 'transfer', from: 'HBL', amount: 10 })).toBeNull();

@@ -14,11 +14,13 @@ export {
   type RouterResult,
 } from './intents';
 export {
+  CREATE_KINDS,
   coerceDraft,
   draftToEntryPrefill,
   draftToMaterialPrefill,
   resolveDraft,
   type Draft,
+  type DraftKind,
   type MaterialPrefill,
   type PurchaseOrderPrefill,
   type ResolvedDraft,

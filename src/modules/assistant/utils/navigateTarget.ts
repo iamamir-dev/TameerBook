@@ -11,6 +11,9 @@ export function navigateToTarget(nav: Nav, target: AnswerTarget): void {
     case 'ProjectDetail':
       nav.navigate('ProjectDetail', { projectId: target.projectId });
       return;
+    case 'ConstructionDetail':
+      nav.navigate('ConstructionDetail', { projectId: target.projectId });
+      return;
     case 'SaleDetail':
       nav.navigate('SaleDetail', { projectId: target.projectId });
       return;

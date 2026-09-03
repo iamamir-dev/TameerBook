@@ -50,6 +50,7 @@ export interface AnswerRow {
 export type AnswerTarget =
   | { screen: 'Cash' | 'Labor' | 'Udhaar' | 'Bookings' | 'Accounts' | 'Reports' | 'Investors' | 'Plots' }
   | { screen: 'ProjectDetail'; projectId: string }
+  | { screen: 'ConstructionDetail'; projectId: string }
   | { screen: 'SaleDetail'; projectId: string }
   | { screen: 'LaborerDetail'; laborerId: string }
   | { screen: 'PlotDetail'; plotId: string }
