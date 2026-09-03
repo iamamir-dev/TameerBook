@@ -1,4 +1,5 @@
 import {
+  getCashFlow,
   getCompanyAssets,
   getInvestorSummary,
   getLaborerKhata,
@@ -55,7 +56,13 @@ export type AnswerTarget =
   | { screen: 'LaborerDetail'; laborerId: string }
   | { screen: 'PlotDetail'; plotId: string }
   | { screen: 'InvestorProfile'; investorId: string }
-  | { screen: 'UdhaarDetail'; udhaarId: string };
+  | { screen: 'UdhaarDetail'; udhaarId: string }
+  | { screen: 'Report'; type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };
+
+/** A small chart drawn inside the answer card. */
+export type AnswerChart =
+  | { kind: 'bars'; items: { label: string; value: number }[] }
+  | { kind: 'columns'; groups: { label: string; values: [number, number] }[]; legend: [string, string] };
 
 /** A names-only line (no money): "Wapda Town B-103 · Active". */
 export interface AnswerListItem {
@@ -73,6 +80,10 @@ export interface Answer {
   rows: AnswerRow[];
   /** Compact names-only list (used instead of `rows` for list questions). */
   list?: AnswerListItem[];
+  /** Optional chart above the rows. */
+  chart?: AnswerChart;
+  /** Open `target` immediately (the user asked for the thing itself, e.g. a PDF). */
+  autoOpen?: boolean;
   /** One plain sentence — the bubble text and what gets read aloud. */
   speak: string;
   /** Where "Open" goes. */
@@ -452,6 +463,89 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         list,
         speak: `${list.length} ${title}: ${list.slice(0, 5).map((i) => i.title).join(', ')}${list.length > 5 ? '…' : ''}`,
         target,
+      };
+    }
+
+    case 'report': {
+      if (intent.report === 'project') {
+        const project = pick(intent.project, w.projects) ?? (w.projects.length === 1 ? w.projects[0] : undefined);
+        if (!project) return none(t('projects'));
+        return {
+          title: `${project.name} · ${t('reports')}`,
+          rows: [],
+          speak: `${t('aiReportOpening')} · ${project.name}`,
+          target: { screen: 'ProjectDetail', projectId: project.id },
+          autoOpen: true,
+        };
+      }
+      const label: Record<Exclude<typeof intent.report, 'project'>, TranslationKey> = {
+        summary: 'rptSummary',
+        pnl: 'rptPnl',
+        cashflow: 'rptCashflow',
+        expense: 'rptExpense',
+        investment: 'rptInvestment',
+        roi: 'rptRoi',
+        accounts: 'accountsTitle',
+      };
+      return {
+        title: `${t('reports')} · ${t(label[intent.report])}`,
+        rows: [],
+        speak: `${t('aiReportOpening')} · ${t(label[intent.report])}`,
+        target: { screen: 'Report', type: intent.report },
+        autoOpen: true,
+      };
+    }
+
+    case 'expense_breakdown': {
+      const project = pick(intent.project, w.projects);
+      const range = periodToRange(intent.period, w.today);
+      const txns = (await liveTxns(range)).filter((x) => x.direction === 'OUT' && (!project || x.project_id === project.id));
+      if (txns.length === 0) return none(t('kharcha'));
+      // Group by the category the user knows (a material rolls up to itself,
+      // uncategorised rows land in "Other").
+      const byCat = new Map<string, { label: string; value: number }>();
+      for (const x of txns) {
+        const cat = w.categories.find((c) => c.id === x.category_id);
+        const key = cat?.id ?? '__other__';
+        const cur = byCat.get(key) ?? { label: cat ? catLabel(cat, w) : t('aiChartOther'), value: 0 };
+        cur.value += x.amount;
+        byCat.set(key, cur);
+      }
+      const sorted = [...byCat.values()].sort((a, b) => b.value - a.value);
+      const top = sorted.slice(0, 6);
+      const rest = sorted.slice(6).reduce((s, x) => s + x.value, 0);
+      if (rest > 0) top.push({ label: t('aiChartOther'), value: rest });
+      const total = sorted.reduce((s, x) => s + x.value, 0);
+      const title = `${t('kharcha')} · ${periodLabel(intent.period)}${project ? ` · ${project.name}` : ''}`;
+      return {
+        title,
+        headline: money(total),
+        sub: `${sorted.length} ${t('categories')} · ${txns.length} ${t('transactions').toLowerCase()}`,
+        chart: { kind: 'bars', items: top },
+        rows: top.map((x, i) => ({ id: `${i}`, title: x.label, date: '', subtitle: `${Math.round((x.value / total) * 100)}%`, amount: x.value, direction: 'out' as const })),
+        speak: `${title}: ${money(total)}. ${sorted[0].label} ${money(sorted[0].value)}${sorted[1] ? `, ${sorted[1].label} ${money(sorted[1].value)}` : ''}.`,
+        target: { screen: 'Report', type: 'expense' },
+      };
+    }
+
+    case 'cashflow_chart': {
+      const all = await getCashFlow();
+      const months = all.slice(-intent.months);
+      if (months.length === 0) return none(t('rptCashflow'));
+      const inSum = months.reduce((s, m) => s + m.inSum, 0);
+      const outSum = months.reduce((s, m) => s + m.outSum, 0);
+      const monthLabel = (ym: string) => formatDisplayDate(`${ym}-01`).slice(2, 6).trim();
+      return {
+        title: `${t('rptCashflow')} · ${months.length} ${t('monthsLabel')}`,
+        headline: money(inSum - outSum),
+        sub: `${t('moneyIn')} ${money(inSum)} · ${t('moneyOut')} ${money(outSum)}`,
+        chart: { kind: 'columns', groups: months.map((m) => ({ label: monthLabel(m.month), values: [m.inSum, m.outSum] as [number, number] })), legend: [t('moneyIn'), t('moneyOut')] },
+        rows: months
+          .slice()
+          .reverse()
+          .map((m) => ({ id: m.month, title: monthLabel(m.month), date: '', subtitle: `${t('moneyIn')} ${money(m.inSum)} · ${t('moneyOut')} ${money(m.outSum)}`, amount: m.inSum - m.outSum, direction: m.inSum - m.outSum >= 0 ? ('in' as const) : ('out' as const) })),
+        speak: `${t('rptCashflow')}: ${t('moneyIn')} ${money(inSum)}, ${t('moneyOut')} ${money(outSum)}, ${t('netFlow')} ${money(inSum - outSum)}`,
+        target: { screen: 'Report', type: 'cashflow' },
       };
     }
 

@@ -10,6 +10,7 @@ import {
   type AiChatMessage,
   type AiErrorCode,
   type Answer,
+  type AnswerTarget,
   type OpenScreen,
   type ResolvedDraft,
 } from '@/ai';
@@ -53,6 +54,8 @@ export interface AssistantApi extends State {
   ask: (text: string) => Promise<void>;
   /** Fires when the user asked to open a screen ("add a new project"). */
   onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
+  /** Fires when an answer asks to be opened right away (a report / PDF). */
+  onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
   clear: () => void;
   /** Fires with the sentence to read aloud after an assistant turn lands. */
   onSpeak: React.MutableRefObject<((text: string) => void) | null>;
@@ -67,6 +70,7 @@ export function useAssistant(): AssistantApi {
   const [state, dispatch] = useReducer(reducer, { turns: [], busy: false });
   const onSpeak = useRef<((text: string) => void) | null>(null);
   const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
+  const onOpenTarget = useRef<((target: AnswerTarget) => void) | null>(null);
   const inFlight = useRef(false);
   // Short conversational memory for the router (last few turns, compact text).
   const history = useRef<AiChatMessage[]>([]);
@@ -91,7 +95,8 @@ export function useAssistant(): AssistantApi {
         const answer = await runIntent(routed.intent, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'answer', answer } });
         remember('assistant', `[answered ${routed.intent.type}] ${answer.speak}`);
-        onSpeak.current?.(answer.speak);
+        if (answer.autoOpen && answer.target) onOpenTarget.current?.(answer.target);
+        else onSpeak.current?.(answer.speak);
       } else if (routed.kind === 'draft') {
         const resolved = pre ?? resolveDraft(routed.draft, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'draft', resolved } });
@@ -120,5 +125,5 @@ export function useAssistant(): AssistantApi {
     dispatch({ type: 'clear' });
   }, []);
 
-  return { ...state, ask, clear, onSpeak, onOpen };
+  return { ...state, ask, clear, onSpeak, onOpen, onOpenTarget };
 }

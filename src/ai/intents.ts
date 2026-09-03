@@ -66,6 +66,9 @@ export const INTENT_TYPES = [
   'insights',
   'company_overview',
   'list_entities',
+  'report',
+  'expense_breakdown',
+  'cashflow_chart',
   'recent_entries',
   'top_suppliers',
   'pnl',
@@ -87,6 +90,12 @@ export type Intent =
   | { type: 'insights' }
   | { type: 'company_overview' }
   | { type: 'list_entities'; entity: EntityKind }
+  /** Open one of the app's PDF reports (or a project's own report). */
+  | { type: 'report'; report: ReportKind; project?: string }
+  /** Spend by category as a bar chart. */
+  | { type: 'expense_breakdown'; project?: string; period: Period }
+  /** Money in vs out per month as columns. */
+  | { type: 'cashflow_chart'; months: number }
   | { type: 'recent_entries'; period: Period }
   | { type: 'top_suppliers' }
   | { type: 'pnl' };
@@ -96,6 +105,10 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 /** Things the user can ask to be LISTED by name (no money attached). */
 export const ENTITY_KINDS = ['projects', 'plots', 'workers', 'suppliers', 'investors', 'accounts', 'materials'] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/** The app's PDF reports (Settings → Reports) plus a project's own report. */
+export const REPORT_KINDS = ['summary', 'pnl', 'cashflow', 'expense', 'investment', 'roi', 'accounts', 'project'] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** Screens the assistant may OPEN on request ("add a new project"). */
 export const OPEN_SCREENS = [
@@ -160,6 +173,17 @@ export function coerceIntent(raw: unknown): Intent | null {
       const entity = str(o.entity);
       if (!entity || !(ENTITY_KINDS as readonly string[]).includes(entity)) return null;
       return { type, entity: entity as EntityKind };
+    }
+    case 'report': {
+      const report = str(o.report);
+      if (!report || !(REPORT_KINDS as readonly string[]).includes(report)) return null;
+      return { type, report: report as ReportKind, project: str(o.project) };
+    }
+    case 'expense_breakdown':
+      return { type, project: str(o.project), period: coercePeriod(o.period) };
+    case 'cashflow_chart': {
+      const m = typeof o.months === 'number' ? o.months : Number(o.months);
+      return { type, months: Number.isFinite(m) && m >= 2 && m <= 12 ? Math.round(m) : 6 };
     }
     case 'insights':
     case 'company_overview':

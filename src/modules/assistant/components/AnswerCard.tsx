@@ -12,6 +12,7 @@ import { formatDisplayDate } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 
 import { makeStyles } from '../styled/AnswerCard.styles';
+import { AnswerChart } from './AnswerChart';
 import { navigateToTarget } from '../utils/navigateTarget';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -52,6 +53,8 @@ export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
           </AppText>
         ) : null}
       </View>
+
+      {answer.chart ? <AnswerChart chart={answer.chart} /> : null}
 
       {list.map((item) => (
         <View key={item.id} style={styles.row}>

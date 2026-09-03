@@ -11,6 +11,7 @@ export {
   type Intent,
   type OpenScreen,
   type Period,
+  type ReportKind,
   type RouterResult,
 } from './intents';
 export {
@@ -28,7 +29,7 @@ export {
 } from './drafts';
 export { billSystemPrompt, narrationSystemPrompt, routerSystemPrompt, transcriptionPrompt, type World } from './prompts';
 export { buildWorld } from './context';
-export { periodLabel, runIntent, type Answer, type AnswerListItem, type AnswerRow, type AnswerTarget } from './runner';
+export { periodLabel, runIntent, type Answer, type AnswerChart, type AnswerListItem, type AnswerRow, type AnswerTarget } from './runner';
 export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';
 export { routeUtterance, type Routed } from './route';
 export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';

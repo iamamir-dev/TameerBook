@@ -735,4 +735,7 @@ export interface TranslationKeys {
   aiNoLoanFound: string;
   aiNoWorkerFound: string;
   aiNothingOwed: string;
+  aiReportOpening: string;
+  aiChartOther: string;
+  monthsLabel: string;
 }

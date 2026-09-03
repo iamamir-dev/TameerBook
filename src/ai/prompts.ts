@@ -1,7 +1,7 @@
 import type { Language } from '@/i18n/types';
 
 import type { WorldNames } from './drafts';
-import { ENTITY_KINDS, INTENT_TYPES, OPEN_SCREENS, PERIOD_KINDS } from './intents';
+import { ENTITY_KINDS, INTENT_TYPES, OPEN_SCREENS, PERIOD_KINDS, REPORT_KINDS } from './intents';
 
 /**
  * Prompt builders — pure string assembly. The model sees NAMES only (never
@@ -73,6 +73,9 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   recent_entries: period        insights | company_overview | top_suppliers | pnl: no params
   list_entities: entity (one of ${ENTITY_KINDS.map((s) => `"${s}"`).join('|')}) — NAMES ONLY, no money. Use when the user asks which/what/names/list ("which projects do I have", "workers ke naam").
   company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — only when the user asks about the company / business / overall position.
+  report: report (one of ${REPORT_KINDS.map((s) => `"${s}"`).join('|')}), project? — the user wants a REPORT / PDF / statement / printout. summary = business summary, pnl = profit & loss, cashflow = monthly in/out, expense = expenses by category, investment = investors, roi = returns, accounts = account balances, project = one project's full report (needs project).
+  expense_breakdown: project?, period — "where did the money go", "kharcha kis cheez pe hua", "expense chart/graph". Shows a bar chart by category.
+  cashflow_chart: months (2–12, default 6) — "cash flow dikhao", "monthly income vs expense graph", "trend".
   period = {"kind":<one of ${PERIOD_KINDS.map((s) => `"${s}"`).join('|')}>} or {"kind":"custom","start":"YYYY-MM-DD","end":"YYYY-MM-DD"}. "is mahine" = month, "pichle mahine" = lastMonth, "aaj" = today, "kal" (past) = yesterday, "is hafte" = week.
 
 2) An entry the user wants to record (never save it yourself; the app shows a form to confirm):
@@ -160,6 +163,13 @@ Examples (user → JSON):
 "can you tell me details about" → {"kind":"chat","reply":"About what — a project, a worker, a plot, or the company?"}
 "cement ka rate kya chal raha hai" → {"kind":"chat","reply":"Market rates change weekly; in 2026 a 50 kg bag has mostly been in the Rs 1,300–1,500 range in Punjab. Your own last rate is shown on the Material entry form."}
 "total profit" → {"kind":"question","intent":{"type":"pnl"}}
+"report do is mahine ki" → {"kind":"question","intent":{"type":"report","report":"summary"}}
+"profit loss ki PDF banao" → {"kind":"question","intent":{"type":"report","report":"pnl"}}
+"Gulberg project ki report" → {"kind":"question","intent":{"type":"report","report":"project","project":"Gulberg"}}
+"kharcha kis cheez pe zyada hua is mahine" → {"kind":"question","intent":{"type":"expense_breakdown","period":{"kind":"month"}}}
+"show me a graph of expenses for Gulberg this year" → {"kind":"question","intent":{"type":"expense_breakdown","project":"Gulberg","period":{"kind":"year"}}}
+"cash flow ka graph dikhao" → {"kind":"question","intent":{"type":"cashflow_chart","months":6}}
+"last 3 months income vs expense" → {"kind":"question","intent":{"type":"cashflow_chart","months":3}}
 "salam" → {"kind":"chat","reply":"Wa alaikum assalam! Kya poochna hai?"}`;
 }
 

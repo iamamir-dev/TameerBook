@@ -29,6 +29,9 @@ export function navigateToTarget(nav: Nav, target: AnswerTarget): void {
     case 'UdhaarDetail':
       nav.navigate('UdhaarDetail', { udhaarId: target.udhaarId });
       return;
+    case 'Report':
+      nav.navigate('Report', { type: target.type });
+      return;
     case 'Plots':
       nav.navigate('Tabs', { screen: 'Plots' });
       return;

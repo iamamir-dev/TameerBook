@@ -18,6 +18,7 @@ import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } fr
 import { useAssistant } from '../hooks/useAssistant';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
+import { navigateToTarget } from '../utils/navigateTarget';
 import { openScreen } from '../utils/openScreen';
 import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
@@ -46,7 +47,7 @@ export function AssistantScreen(): React.JSX.Element {
   const hasProvider = useSettingsStore((s) => !!s.aiProxyUrl || !!s.aiGroqKey);
   const ready = aiEnabled && hasProvider;
 
-  const { turns, busy, ask, onSpeak, onOpen } = useAssistant();
+  const { turns, busy, ask, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const [input, setInput] = useState(params?.seed ?? '');
   const scroll = useRef<ScrollView>(null);
@@ -63,10 +64,12 @@ export function AssistantScreen(): React.JSX.Element {
   // "Add a new project" → open that screen right away (navigation only).
   useEffect(() => {
     onOpen.current = (screen) => openScreen(navigation, screen);
+    onOpenTarget.current = (target) => navigateToTarget(navigation, target);
     return () => {
       onOpen.current = null;
+      onOpenTarget.current = null;
     };
-  }, [navigation, onOpen]);
+  }, [navigation, onOpen, onOpenTarget]);
 
   // Android (edge-to-edge) does not resize the window for the keyboard and
   // KeyboardAvoidingView leaves a stale gap after it closes — so pad by the

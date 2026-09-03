@@ -65,6 +65,13 @@ describe('coerceIntent', () => {
     expect(coerceIntent({ type: 'list_entities', entity: 'workers' })).toEqual({ type: 'list_entities', entity: 'workers' });
     expect(coerceIntent({ type: 'list_entities', entity: 'aliens' })).toBeNull();
   });
+  it('parses report and chart intents', () => {
+    expect(coerceIntent({ type: 'report', report: 'pnl' })).toEqual({ type: 'report', report: 'pnl', project: undefined });
+    expect(coerceIntent({ type: 'report', report: 'balance_sheet' })).toBeNull();
+    expect(coerceIntent({ type: 'cashflow_chart', months: '3' })).toEqual({ type: 'cashflow_chart', months: 3 });
+    expect(coerceIntent({ type: 'cashflow_chart' })).toEqual({ type: 'cashflow_chart', months: 6 });
+    expect(coerceIntent({ type: 'expense_breakdown', period: 'year' })).toEqual({ type: 'expense_breakdown', project: undefined, period: { kind: 'year' } });
+  });
   it('accepts the company overview', () => {
     expect(coerceIntent({ type: 'company_overview' })).toEqual({ type: 'company_overview' });
   });

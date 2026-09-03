@@ -694,4 +694,7 @@ export const en: TranslationKeys = {
   aiNoLoanFound: 'No open loan found for this person.',
   aiNoWorkerFound: 'This worker is not saved yet.',
   aiNothingOwed: 'Nothing is owed to this worker.',
+  aiReportOpening: 'Opening report',
+  aiChartOther: 'Other',
+  monthsLabel: 'months',
 };
