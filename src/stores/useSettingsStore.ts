@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { loadSettings, saveSetting } from '@/db/repositories/settings';
 import { uuid } from '@/db/uuid';
+import { AI_PROVIDERS, type AiProviderId } from '@/ai/providers';
 import type { Language } from '@/i18n/types';
 import { FONT_OPTIONS, FONT_SCALES, type FontKey, type FontScaleKey } from '@/theme/theme';
 import { swallow } from '@/utils/log';
@@ -90,12 +91,18 @@ interface SettingsState {
   aiEnabled: boolean;
   /** Read assistant answers aloud (device text-to-speech). */
   aiSpeak: boolean;
+  /** Which AI provider answers (see src/ai/providers.ts). */
+  aiProvider: AiProviderId;
+  /** API key per provider (the user's own, stored on-device). */
+  aiKeys: Partial<Record<AiProviderId, string>>;
+  /** Chosen model id per provider ('' = provider default). */
+  aiModel: Partial<Record<AiProviderId, string>>;
   /** Base URL of the self-hosted AI proxy (Cloudflare Worker). Null = not configured. */
   aiProxyUrl: string | null;
   /** Shared app token the proxy expects (optional). */
   aiProxyToken: string | null;
-  /** Developer / self-host: the user's OWN Groq API key, used directly when no proxy is set. */
-  aiGroqKey: string | null;
+  /** Base URL for the "custom" OpenAI-compatible provider. */
+  aiCustomBaseUrl: string | null;
   /** Stable anonymous id for per-device quotas at the proxy (generated once). */
   aiDeviceId: string;
   hydrate: () => Promise<void>;
@@ -115,7 +122,10 @@ interface SettingsState {
   setAiSpeak: (on: boolean) => void;
   setAiProxyUrl: (url: string | null) => void;
   setAiProxyToken: (token: string | null) => void;
-  setAiGroqKey: (key: string | null) => void;
+  setAiProvider: (provider: AiProviderId) => void;
+  setAiKey: (provider: AiProviderId, key: string | null) => void;
+  setAiModel: (provider: AiProviderId, model: string | null) => void;
+  setAiCustomBaseUrl: (url: string | null) => void;
 }
 
 const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
@@ -138,9 +148,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   removeBgKey: null,
   aiEnabled: false,
   aiSpeak: true,
+  aiProvider: 'groq',
+  aiKeys: {},
+  aiModel: {},
   aiProxyUrl: null,
   aiProxyToken: null,
-  aiGroqKey: null,
+  aiCustomBaseUrl: null,
   aiDeviceId: '',
 
   hydrate: async () => {
@@ -163,7 +176,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (s.aiSpeak != null) patch.aiSpeak = s.aiSpeak === '1';
       if (s.aiProxyUrl) patch.aiProxyUrl = s.aiProxyUrl;
       if (s.aiProxyToken) patch.aiProxyToken = s.aiProxyToken;
-      if (s.aiGroqKey) patch.aiGroqKey = s.aiGroqKey;
+      if (s.aiCustomBaseUrl) patch.aiCustomBaseUrl = s.aiCustomBaseUrl;
+      if (s.aiProvider && (AI_PROVIDERS as readonly string[]).includes(s.aiProvider)) patch.aiProvider = s.aiProvider as AiProviderId;
+      if (s.aiKeys) {
+        try {
+          patch.aiKeys = JSON.parse(s.aiKeys) as Partial<Record<AiProviderId, string>>;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      // Older builds stored a single Groq key — carry it into the per-provider map.
+      if (s.aiGroqKey && !patch.aiKeys?.groq) patch.aiKeys = { ...(patch.aiKeys ?? {}), groq: s.aiGroqKey };
+      if (s.aiModel) {
+        try {
+          patch.aiModel = JSON.parse(s.aiModel) as Partial<Record<AiProviderId, string>>;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      // A saved proxy URL from an older build means the user meant "proxy".
+      if (!s.aiProvider && s.aiProxyUrl) patch.aiProvider = 'proxy';
       // One anonymous device id for proxy quotas, minted on first launch.
       if (s.aiDeviceId) patch.aiDeviceId = s.aiDeviceId;
       else {
@@ -267,9 +299,29 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ aiProxyToken });
     persist('aiProxyToken', aiProxyToken ?? '');
   },
-  setAiGroqKey: (key) => {
-    const aiGroqKey = key?.trim() || null;
-    set({ aiGroqKey });
-    persist('aiGroqKey', aiGroqKey ?? '');
+  setAiProvider: (aiProvider) => {
+    set({ aiProvider });
+    persist('aiProvider', aiProvider);
+  },
+  setAiKey: (provider, key) => {
+    const aiKeys = { ...get().aiKeys };
+    const v = key?.trim();
+    if (v) aiKeys[provider] = v;
+    else delete aiKeys[provider];
+    set({ aiKeys });
+    persist('aiKeys', JSON.stringify(aiKeys));
+  },
+  setAiModel: (provider, model) => {
+    const aiModel = { ...get().aiModel };
+    const v = model?.trim();
+    if (v) aiModel[provider] = v;
+    else delete aiModel[provider];
+    set({ aiModel });
+    persist('aiModel', JSON.stringify(aiModel));
+  },
+  setAiCustomBaseUrl: (url) => {
+    const aiCustomBaseUrl = url?.trim().replace(/\/+$/, '') || null;
+    set({ aiCustomBaseUrl });
+    persist('aiCustomBaseUrl', aiCustomBaseUrl ?? '');
   },
 }));

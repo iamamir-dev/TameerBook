@@ -4,8 +4,7 @@ import {
   buildWorld,
   getAiTransport,
   isAiError,
-  resolveDraft,
-  routeUtterance,
+  runAgent,
   runIntent,
   type AiChatMessage,
   type AiErrorCode,
@@ -19,11 +18,19 @@ import { reportError } from '@/utils/log';
 /** One message in the conversation. */
 export type Turn =
   | { id: string; role: 'user'; text: string }
-  | { id: string; role: 'assistant'; kind: 'text'; text: string }
-  | { id: string; role: 'assistant'; kind: 'answer'; answer: Answer }
-  | { id: string; role: 'assistant'; kind: 'draft'; resolved: ResolvedDraft }
-  | { id: string; role: 'assistant'; kind: 'open'; screen: OpenScreen }
-  | { id: string; role: 'assistant'; kind: 'error'; code: AiErrorCode };
+  | {
+      id: string;
+      role: 'assistant';
+      /** The model's own answer (may be empty when only a draft / open follows). */
+      text: string;
+      /** Data cards from the read tools it used. */
+      cards: Answer[];
+      /** A write awaiting the user's confirmation. */
+      draft?: ResolvedDraft;
+      /** A screen it opened. */
+      open?: OpenScreen;
+    }
+  | { id: string; role: 'assistant'; error: AiErrorCode };
 
 interface State {
   turns: Turn[];
@@ -43,28 +50,28 @@ function reducer(s: State, a: Action): State {
   }
 }
 
-/** How many prior messages the router sees (3 exchanges). */
+/** How many prior messages the model sees (3 exchanges). */
 const HISTORY_TURNS = 6;
 
 let seq = 0;
 const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 export interface AssistantApi extends State {
-  /** Send one utterance (typed or transcribed) through the router. */
+  /** Send one utterance (typed or transcribed) through the agent. */
   ask: (text: string) => Promise<void>;
-  /** Fires when the user asked to open a screen ("add a new project"). */
+  clear: () => void;
+  /** Fires with the sentence to read aloud after an answer lands. */
+  onSpeak: React.MutableRefObject<((text: string) => void) | null>;
+  /** Fires when the user asked to open a screen ("open reports"). */
   onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
-  clear: () => void;
-  /** Fires with the sentence to read aloud after an assistant turn lands. */
-  onSpeak: React.MutableRefObject<((text: string) => void) | null>;
 }
 
 /**
- * The assistant conversation: user text → router (one JSON call) → either a
- * repository-backed answer, a resolved draft, or a short reply. The model
- * never touches the database; every write still goes through a confirm.
+ * The assistant conversation on top of the agent loop: user text → tools →
+ * an exact, grounded answer with data cards; or a draft for confirmation; or
+ * a screen to open. The model never touches the database.
  */
 export function useAssistant(): AssistantApi {
   const [state, dispatch] = useReducer(reducer, { turns: [], busy: false });
@@ -72,10 +79,12 @@ export function useAssistant(): AssistantApi {
   const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
   const onOpenTarget = useRef<((target: AnswerTarget) => void) | null>(null);
   const inFlight = useRef(false);
-  // Short conversational memory for the router (last few turns, compact text).
+  // Short conversational memory for the model (compact text, last few turns).
   const history = useRef<AiChatMessage[]>([]);
-  const remember = (role: AiChatMessage['role'], content: string) => {
-    history.current = [...history.current, { role, content: content.slice(0, 400) }].slice(-HISTORY_TURNS);
+  const remember = (role: 'user' | 'assistant', content: string) => {
+    if (!content) return;
+    const msg: AiChatMessage = role === 'user' ? { role, content: content.slice(0, 500) } : { role, content: content.slice(0, 500) };
+    history.current = [...history.current, msg].slice(-HISTORY_TURNS);
   };
 
   const ask = useCallback(async (raw: string) => {
@@ -87,33 +96,18 @@ export function useAssistant(): AssistantApi {
     try {
       const transport = getAiTransport();
       const world = await buildWorld();
-      // Validate-and-repair routing: a bad shape or an unknown name gets ONE
-      // corrective follow-up before we show anything.
-      const { result: routed, resolved: pre } = await routeUtterance(transport, world, text, history.current);
+      const r = await runAgent(text, { transport, world, runIntent, history: history.current });
       remember('user', text);
-      if (routed.kind === 'question') {
-        const answer = await runIntent(routed.intent, world);
-        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'answer', answer } });
-        remember('assistant', `[answered ${routed.intent.type}] ${answer.speak}`);
-        if (answer.autoOpen && answer.target) onOpenTarget.current?.(answer.target);
-        else onSpeak.current?.(answer.speak);
-      } else if (routed.kind === 'draft') {
-        const resolved = pre ?? resolveDraft(routed.draft, world);
-        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'draft', resolved } });
-        remember('assistant', `[draft ${routed.draft.kind}] ${JSON.stringify(routed.draft)}`);
-      } else if (routed.kind === 'open') {
-        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'open', screen: routed.screen } });
-        remember('assistant', `[opened ${routed.screen}]`);
-        onOpen.current?.(routed.screen);
-      } else {
-        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'text', text: routed.reply } });
-        remember('assistant', routed.reply);
-        onSpeak.current?.(routed.reply);
-      }
+      remember('assistant', r.memory);
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open } });
+      if (r.open) onOpen.current?.(r.open);
+      const auto = r.cards.find((c) => c.autoOpen && c.target);
+      if (auto?.target) onOpenTarget.current?.(auto.target);
+      else if (r.text && !r.draft) onSpeak.current?.(r.text);
     } catch (e) {
       const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
       if (code === 'failed') reportError('assistant:ask', e);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'error', code } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', error: code } });
     } finally {
       inFlight.current = false;
       dispatch({ type: 'busy', busy: false });

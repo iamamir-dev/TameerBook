@@ -35,8 +35,8 @@ free tier (about 1,000 text requests and 8 audio hours per model per day).
 
 | Route | Body | Returns |
 |---|---|---|
-| `POST /v1/chat` | `{ messages, json?, model?, maxTokens?, temperature? }` | `{ content }` |
-| `POST /v1/transcribe` | multipart `file`, `language?`, `prompt?` | `{ text }` |
+| `POST /v1/chat/completions` | OpenAI chat body (`messages`, `tools`, `model`…) | OpenAI-shaped response |
+| `POST /v1/audio/transcriptions` | multipart `file`, `language?`, `prompt?` | `{ text }` |
 | `POST /v1/vision` | `{ image (base64 JPEG), prompt, json?, maxTokens? }` | `{ content }` |
 | `POST /health` | – | `{ ok: true }` |
 

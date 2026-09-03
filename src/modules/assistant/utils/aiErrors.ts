@@ -6,6 +6,7 @@ export const AI_ERROR_KEY: Record<AiErrorCode, TranslationKey> = {
   disabled: 'aiErrDisabled',
   offline: 'aiErrOffline',
   noProvider: 'aiErrNoProvider',
+  noVoice: 'aiErrNoVoice',
   quota: 'aiErrQuota',
   badkey: 'aiErrBadKey',
   unparseable: 'aiErrUnparseable',
@@ -13,4 +14,4 @@ export const AI_ERROR_KEY: Record<AiErrorCode, TranslationKey> = {
 };
 
 /** Codes the user can fix in Settings (the error card offers a shortcut). */
-export const SETTINGS_FIXABLE: ReadonlySet<AiErrorCode> = new Set<AiErrorCode>(['disabled', 'noProvider', 'badkey']);
+export const SETTINGS_FIXABLE: ReadonlySet<AiErrorCode> = new Set<AiErrorCode>(['disabled', 'noProvider', 'noVoice', 'badkey']);

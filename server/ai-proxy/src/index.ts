@@ -2,8 +2,8 @@
  * TameerBook AI proxy — a Cloudflare Worker (free plan) that holds the
  * provider keys so the app never ships one. Three routes, all POST:
  *
- *   /v1/chat        { messages, json?, model?, maxTokens?, temperature? } → { content }
- *   /v1/transcribe  multipart: file, language?, prompt?                    → { text }
+ *   /v1/chat/completions   OpenAI chat body (tools supported)              → OpenAI response
+ *   /v1/audio/transcriptions  multipart: file, language?, prompt?           → { text }
  *   /v1/vision      { image (base64 jpeg), prompt, json?, maxTokens? }     → { content }
  *
  * Provider order: Groq (free, no training on data) → Workers AI (free
@@ -65,8 +65,10 @@ export default {
 
       switch (url.pathname) {
         case '/v1/chat':
+        case '/v1/chat/completions':
           return json(await chat(req, env), 200, cors);
         case '/v1/transcribe':
+        case '/v1/audio/transcriptions':
           return json(await transcribe(req, env), 200, cors);
         case '/v1/vision':
           return json(await vision(req, env), 200, cors);
@@ -116,44 +118,66 @@ interface ChatMessage {
   content: unknown;
 }
 
-async function groqCompletion(env: Env, body: Json): Promise<string> {
+interface OaChoice {
+  message?: { content?: string | null; tool_calls?: unknown[] };
+}
+
+async function groqRaw(env: Env, body: Json): Promise<{ choices?: OaChoice[] }> {
   const res = await fetch(`${GROQ}/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${env.GROQ_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new HttpError(res.status === 429 ? 429 : 502, `groq ${res.status}`);
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const data = (await res.json()) as { choices?: OaChoice[] };
+  if (!data.choices?.[0]?.message) throw new HttpError(502, 'empty completion');
+  return data;
+}
+
+async function groqCompletion(env: Env, body: Json): Promise<string> {
+  const data = await groqRaw(env, body);
   const content = data.choices?.[0]?.message?.content;
   if (typeof content !== 'string') throw new HttpError(502, 'empty completion');
   return content;
 }
 
 async function chat(req: Request, env: Env): Promise<Json> {
-  const b = (await req.json()) as { messages?: ChatMessage[]; json?: boolean; model?: string; maxTokens?: number; temperature?: number };
+  const b = (await req.json()) as {
+    messages?: ChatMessage[];
+    json?: boolean;
+    model?: string;
+    max_tokens?: number;
+    maxTokens?: number;
+    temperature?: number;
+    tools?: unknown[];
+    tool_choice?: unknown;
+    response_format?: unknown;
+  };
   if (!Array.isArray(b.messages) || b.messages.length === 0) throw new HttpError(400, 'messages required');
   const base = {
     messages: b.messages,
     temperature: clamp(b.temperature ?? 0.2, 0, 1),
-    max_tokens: clamp(b.maxTokens ?? MAX_OUTPUT_TOKENS, 1, MAX_OUTPUT_TOKENS),
-    ...(b.json ? { response_format: { type: 'json_object' } } : {}),
+    max_tokens: clamp(b.max_tokens ?? b.maxTokens ?? MAX_OUTPUT_TOKENS, 1, MAX_OUTPUT_TOKENS),
+    ...(b.json || b.response_format ? { response_format: b.response_format ?? { type: 'json_object' } } : {}),
+    ...(Array.isArray(b.tools) && b.tools.length ? { tools: b.tools, tool_choice: b.tool_choice ?? 'auto' } : {}),
   };
-  const model = b.model && b.model.startsWith('openai/') || b.model?.startsWith('qwen/') ? b.model : MODELS.text;
+  const model = b.model && (b.model.startsWith('openai/') || b.model.startsWith('qwen/') || b.model.startsWith('llama')) ? b.model : MODELS.text;
+  // The app speaks the OpenAI shape end-to-end, so return it as-is (tool_calls included).
   try {
-    return { content: await groqCompletion(env, { ...base, model }) };
+    return await groqRaw(env, { ...base, model });
   } catch (first) {
-    // Per-model daily caps on the free tier: try the second Groq model, then Workers AI.
+    // Per-model daily caps on the free tier: try the second Groq model, then Workers AI (text only).
     try {
-      return { content: await groqCompletion(env, { ...base, model: MODELS.textFallback }) };
+      return await groqRaw(env, { ...base, model: MODELS.textFallback });
     } catch {
       if (!env.AI) throw first;
       const out = (await env.AI.run(MODELS.cfText as never, {
-        messages: b.messages.map((m) => ({ role: m.role, content: String(m.content) })),
+        messages: b.messages.map((m) => ({ role: m.role, content: String(m.content ?? '') })),
         max_tokens: base.max_tokens,
         temperature: base.temperature,
       } as never)) as { response?: string };
       if (typeof out.response !== 'string') throw new HttpError(502, 'empty completion');
-      return { content: out.response };
+      return { choices: [{ message: { content: out.response } }] };
     }
   }
 }

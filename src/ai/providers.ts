@@ -1,0 +1,129 @@
+/**
+ * Provider catalogue — everything Settings needs to let the user pick a
+ * provider, paste its key and choose a model. ONE place to bump when a free
+ * model is renamed. Free-tier facts as of Sept 2026; re-check the linked
+ * consoles when something 404s.
+ */
+export const AI_PROVIDERS = ['groq', 'gemini', 'openrouter', 'proxy', 'custom'] as const;
+export type AiProviderId = (typeof AI_PROVIDERS)[number];
+
+export interface ModelPreset {
+  id: string;
+  /** Short human label ("fast", "best Urdu"). */
+  note: string;
+}
+
+export interface ProviderInfo {
+  id: AiProviderId;
+  label: string;
+  /** One line shown under the name in the picker. */
+  hint: string;
+  /** Where to get a key. */
+  consoleUrl?: string;
+  /** OpenAI-compatible base URL (null for Gemini native / proxy / custom). */
+  baseUrl: string | null;
+  defaultModel: string;
+  models: ModelPreset[];
+  /** Whisper / native audio available. */
+  voice: boolean;
+  /** Image input available on the default model. */
+  vision: boolean;
+  /** Needs an API key from the user. */
+  needsKey: boolean;
+  /** Needs a base URL from the user. */
+  needsUrl: boolean;
+  /** Does the free tier train on your data? */
+  trainsOnData: boolean;
+}
+
+export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
+  groq: {
+    id: 'groq',
+    label: 'Groq',
+    hint: 'Free · fast · no training on your data · voice',
+    consoleUrl: 'https://console.groq.com',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'openai/gpt-oss-120b',
+    models: [
+      { id: 'openai/gpt-oss-120b', note: 'best reasoning + tools' },
+      { id: 'qwen/qwen3.6-27b', note: 'good Urdu · vision' },
+      { id: 'openai/gpt-oss-20b', note: 'fastest' },
+      { id: 'llama-3.3-70b-versatile', note: 'Llama 3.3' },
+    ],
+    voice: true,
+    vision: true,
+    needsKey: true,
+    needsUrl: false,
+    trainsOnData: false,
+  },
+  gemini: {
+    id: 'gemini',
+    label: 'Google Gemini',
+    hint: 'Free · best Urdu · voice + vision · trains on data',
+    consoleUrl: 'https://aistudio.google.com/apikey',
+    baseUrl: null,
+    defaultModel: 'gemini-2.5-flash',
+    models: [
+      { id: 'gemini-2.5-flash', note: 'balanced' },
+      { id: 'gemini-2.5-flash-lite', note: 'fastest · higher free limits' },
+      { id: 'gemini-3.5-flash', note: 'newest (check availability)' },
+    ],
+    voice: true,
+    vision: true,
+    needsKey: true,
+    needsUrl: false,
+    trainsOnData: true,
+  },
+  openrouter: {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    hint: 'Free models (50/day, 1000 after $10) · no voice',
+    consoleUrl: 'https://openrouter.ai/keys',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'google/gemma-4-31b-it:free',
+    models: [
+      { id: 'google/gemma-4-31b-it:free', note: 'Gemma 4 · good Urdu' },
+      { id: 'z-ai/glm-5.2:free', note: 'GLM 5.2' },
+      { id: 'nvidia/nemotron-3-super-120b:free', note: 'Nemotron' },
+    ],
+    voice: false,
+    vision: true,
+    needsKey: true,
+    needsUrl: false,
+    trainsOnData: true,
+  },
+  proxy: {
+    id: 'proxy',
+    label: 'My server (Cloudflare Worker)',
+    hint: 'Keys stay on your server · Groq + Workers AI · voice',
+    baseUrl: null,
+    defaultModel: 'openai/gpt-oss-120b',
+    models: [
+      { id: 'openai/gpt-oss-120b', note: 'via Groq' },
+      { id: 'qwen/qwen3.6-27b', note: 'via Groq · vision' },
+    ],
+    voice: true,
+    vision: true,
+    needsKey: false,
+    needsUrl: true,
+    trainsOnData: false,
+  },
+  custom: {
+    id: 'custom',
+    label: 'Custom (OpenAI-compatible)',
+    hint: 'Any /v1/chat/completions endpoint · Ollama, Together, Mistral…',
+    baseUrl: null,
+    defaultModel: 'gpt-4o-mini',
+    models: [],
+    voice: false,
+    vision: false,
+    needsKey: true,
+    needsUrl: true,
+    trainsOnData: false,
+  },
+};
+
+/** Whisper model on Groq (the voice fallback for providers without audio). */
+export const GROQ_WHISPER = 'whisper-large-v3-turbo';
+/** Keep prompts + answers small: Groq's free tier is 8K tokens per minute. */
+export const MAX_OUTPUT_TOKENS = 700;

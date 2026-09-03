@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { coerceDraft, draftToEntryPrefill, draftToMaterialPrefill, resolveDraft, type WorldNames } from './drafts';
-import { coerceIntent, coercePeriod, parseRouterOutput, periodToRange } from './intents';
+import { coerceIntent, coercePeriod, periodToRange } from './intents';
 
 const world: WorldNames = {
   projects: [{ id: 'pr1', name: 'Gulberg House' }],
@@ -80,28 +80,6 @@ describe('coerceIntent', () => {
     expect(coerceIntent({ type: 'purchase_orders' })).toEqual({ type: 'purchase_orders', status: 'open' });
     expect(coerceIntent({ type: 'purchase_orders', status: 'Pending' })).toEqual({ type: 'purchase_orders', status: 'pending' });
     expect(coerceIntent({ type: 'purchase_orders', openOnly: false })).toEqual({ type: 'purchase_orders', status: 'all' });
-  });
-});
-
-describe('parseRouterOutput', () => {
-  it('reads the three wrapper kinds', () => {
-    expect(parseRouterOutput({ kind: 'chat', reply: 'Salam' })).toEqual({ kind: 'chat', reply: 'Salam' });
-    expect(parseRouterOutput({ kind: 'question', intent: { type: 'pnl' } })).toEqual({ kind: 'question', intent: { type: 'pnl' } });
-    expect(parseRouterOutput({ kind: 'draft', draft: { kind: 'expense', amount: 500 } })?.kind).toBe('draft');
-    // No amount but a party → still a draft; the sheet asks for the amount.
-    expect(parseRouterOutput({ kind: 'draft', draft: { kind: 'expense', party: 'Akram', note: 'cement' } })?.kind).toBe('draft');
-  });
-  it('reads an open-screen action and rejects unknown screens', () => {
-    expect(parseRouterOutput({ kind: 'open', screen: 'NewProject' })).toEqual({ kind: 'open', screen: 'NewProject' });
-    expect(parseRouterOutput({ kind: 'open', screen: 'DevTools' })).toBeNull();
-  });
-  it('accepts a bare intent or draft', () => {
-    expect(parseRouterOutput({ type: 'insights' })?.kind).toBe('question');
-    expect(parseRouterOutput({ kind: 'payWorker', worker: 'Bilal', amount: 2000 })?.kind).toBe('draft');
-  });
-  it('returns null for junk', () => {
-    expect(parseRouterOutput('hello')).toBeNull();
-    expect(parseRouterOutput({ kind: 'question', intent: { type: 'nope' } })).toBeNull();
   });
 });
 

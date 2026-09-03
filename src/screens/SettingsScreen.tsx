@@ -16,6 +16,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
+import { AI_PROVIDERS, PROVIDERS, testConnection, type AiProviderId } from '@/ai';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { Language } from '@/i18n/types';
 import type { RootStackParamList } from '@/navigation/types';
@@ -65,31 +66,76 @@ export function SettingsScreen(): React.JSX.Element {
   const setAiEnabled = useSettingsStore((s) => s.setAiEnabled);
   const aiSpeak = useSettingsStore((s) => s.aiSpeak);
   const setAiSpeak = useSettingsStore((s) => s.setAiSpeak);
+  const aiProvider = useSettingsStore((s) => s.aiProvider);
+  const setAiProvider = useSettingsStore((s) => s.setAiProvider);
+  const aiKeys = useSettingsStore((s) => s.aiKeys);
+  const setAiKey = useSettingsStore((s) => s.setAiKey);
+  const aiModel = useSettingsStore((s) => s.aiModel);
+  const setAiModel = useSettingsStore((s) => s.setAiModel);
   const aiProxyUrl = useSettingsStore((s) => s.aiProxyUrl);
   const setAiProxyUrl = useSettingsStore((s) => s.setAiProxyUrl);
   const aiProxyToken = useSettingsStore((s) => s.aiProxyToken);
   const setAiProxyToken = useSettingsStore((s) => s.setAiProxyToken);
-  const aiGroqKey = useSettingsStore((s) => s.aiGroqKey);
-  const setAiGroqKey = useSettingsStore((s) => s.setAiGroqKey);
+  const aiCustomBaseUrl = useSettingsStore((s) => s.aiCustomBaseUrl);
+  const setAiCustomBaseUrl = useSettingsStore((s) => s.setAiCustomBaseUrl);
+  const providerInfo = PROVIDERS[aiProvider];
+  const currentKey = aiKeys[aiProvider] ?? '';
+  const currentModel = aiModel[aiProvider] || providerInfo.defaultModel;
   // Which assistant text setting the sheet is editing (null = closed).
-  const [aiEdit, setAiEdit] = useState<'proxyUrl' | 'proxyToken' | 'groqKey' | null>(null);
+  type AiEdit = 'key' | 'model' | 'proxyUrl' | 'proxyToken' | 'customUrl' | 'groqVoiceKey';
+  const [aiEdit, setAiEdit] = useState<AiEdit | null>(null);
   const [aiDraft, setAiDraft] = useState('');
-  const AI_EDIT_LABEL: Record<'proxyUrl' | 'proxyToken' | 'groqKey', TranslationKey> = {
+  const [providerSheet, setProviderSheet] = useState(false);
+  const [modelSheet, setModelSheet] = useState(false);
+  const [aiTest, setAiTest] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
+  const [aiTestDetail, setAiTestDetail] = useState('');
+  const AI_EDIT_LABEL: Record<AiEdit, TranslationKey> = {
+    key: 'aiKeyLabel',
+    model: 'aiModelLabel',
     proxyUrl: 'aiProxyUrlLabel',
     proxyToken: 'aiProxyTokenLabel',
-    groqKey: 'aiGroqKeyLabel',
+    customUrl: 'aiCustomUrlLabel',
+    groqVoiceKey: 'aiGroqKeyLabel',
   };
-  const openAiEdit = (which: 'proxyUrl' | 'proxyToken' | 'groqKey') => {
-    setAiDraft((which === 'proxyUrl' ? aiProxyUrl : which === 'proxyToken' ? aiProxyToken : aiGroqKey) ?? '');
+  const openAiEdit = (which: AiEdit) => {
+    const cur =
+      which === 'key' ? currentKey
+      : which === 'model' ? currentModel
+      : which === 'proxyUrl' ? aiProxyUrl
+      : which === 'proxyToken' ? aiProxyToken
+      : which === 'customUrl' ? aiCustomBaseUrl
+      : aiKeys.groq;
+    setAiDraft(cur ?? '');
     setAiEdit(which);
   };
   const saveAiEdit = () => {
     const v = aiDraft.trim() || null;
-    if (aiEdit === 'proxyUrl') setAiProxyUrl(v);
+    if (aiEdit === 'key') setAiKey(aiProvider, v);
+    else if (aiEdit === 'model') setAiModel(aiProvider, v);
+    else if (aiEdit === 'proxyUrl') setAiProxyUrl(v);
     else if (aiEdit === 'proxyToken') setAiProxyToken(v);
-    else if (aiEdit === 'groqKey') setAiGroqKey(v);
+    else if (aiEdit === 'customUrl') setAiCustomBaseUrl(v);
+    else if (aiEdit === 'groqVoiceKey') setAiKey('groq', v);
     setAiEdit(null);
+    setAiTest('idle');
   };
+  const runAiTest = () => {
+    setAiTest('busy');
+    testConnection()
+      .then((r) => {
+        setAiTest('ok');
+        setAiTestDetail(r);
+      })
+      .catch((e: unknown) => {
+        setAiTest('fail');
+        setAiTestDetail(e instanceof Error ? e.message.slice(0, 80) : String(e));
+      });
+  };
+  const providerOptions: SelectOption[] = AI_PROVIDERS.map((id) => ({ id, label: PROVIDERS[id].label, subtitle: PROVIDERS[id].hint, icon: 'assistant' as IconKey }));
+  const modelOptions: SelectOption[] = [
+    ...providerInfo.models.map((m) => ({ id: m.id, label: m.id, subtitle: m.note, icon: 'assistant' as IconKey })),
+    { id: '__custom__', label: t('aiModelCustom'), icon: 'edit' as IconKey },
+  ];
   const [keyOpen, setKeyOpen] = useState(false);
   const [draftKey, setDraftKey] = useState('');
 
@@ -285,8 +331,8 @@ export function SettingsScreen(): React.JSX.Element {
           />
         </AppCard>
 
-        {/* Assistant (AI) — opt-in. Keys/URL are the user's own; nothing is
-            bundled. Off by default so no data leaves the phone unasked. */}
+        {/* Assistant (AI) — opt-in. Provider + key + model are the user's own;
+            nothing is bundled. Off by default so no data leaves the phone unasked. */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
           {t('aiSectionTitle')}
         </AppText>
@@ -297,6 +343,61 @@ export function SettingsScreen(): React.JSX.Element {
             trailing={<AppToggle value={aiEnabled} onValueChange={setAiEnabled} accessibilityLabel={t('aiEnabledLabel')} />}
           />
           <Divider />
+          <SettingRow icon="settings" label={t('aiProviderLabel')} value={providerInfo.label} onPress={() => setProviderSheet(true)} />
+          <Divider />
+          {providerInfo.needsKey ? (
+            <>
+              <SettingRow
+                icon="key"
+                label={t('aiKeyLabel')}
+                trailing={currentKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                onPress={() => openAiEdit('key')}
+              />
+              <Divider />
+            </>
+          ) : null}
+          {aiProvider === 'proxy' ? (
+            <>
+              <SettingRow
+                icon="key"
+                label={t('aiProxyUrlLabel')}
+                trailing={aiProxyUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                onPress={() => openAiEdit('proxyUrl')}
+              />
+              <Divider />
+              <SettingRow
+                icon="lock"
+                label={t('aiProxyTokenLabel')}
+                trailing={aiProxyToken ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                onPress={() => openAiEdit('proxyToken')}
+              />
+              <Divider />
+            </>
+          ) : null}
+          {aiProvider === 'custom' ? (
+            <>
+              <SettingRow
+                icon="key"
+                label={t('aiCustomUrlLabel')}
+                trailing={aiCustomBaseUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                onPress={() => openAiEdit('customUrl')}
+              />
+              <Divider />
+            </>
+          ) : null}
+          <SettingRow icon="edit" label={t('aiModelLabel')} value={currentModel} onPress={() => setModelSheet(true)} />
+          <Divider />
+          {!providerInfo.voice ? (
+            <>
+              <SettingRow
+                icon="mic"
+                label={t('aiGroqKeyLabel')}
+                trailing={aiKeys.groq ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                onPress={() => openAiEdit('groqVoiceKey')}
+              />
+              <Divider />
+            </>
+          ) : null}
           <SettingRow
             icon="bell"
             label={t('aiSpeakLabel')}
@@ -304,28 +405,14 @@ export function SettingsScreen(): React.JSX.Element {
           />
           <Divider />
           <SettingRow
-            icon="key"
-            label={t('aiProxyUrlLabel')}
-            trailing={aiProxyUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-            onPress={() => openAiEdit('proxyUrl')}
-          />
-          <Divider />
-          <SettingRow
-            icon="lock"
-            label={t('aiProxyTokenLabel')}
-            trailing={aiProxyToken ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-            onPress={() => openAiEdit('proxyToken')}
-          />
-          <Divider />
-          <SettingRow
-            icon="key"
-            label={t('aiGroqKeyLabel')}
-            trailing={aiGroqKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-            onPress={() => openAiEdit('groqKey')}
+            icon={aiTest === 'ok' ? 'checkCircle' : aiTest === 'fail' ? 'alert' : 'activity'}
+            label={t('aiTestLabel')}
+            value={aiTest === 'busy' ? '…' : aiTest === 'ok' ? t('aiTestOk') : aiTest === 'fail' ? aiTestDetail : undefined}
+            onPress={aiEnabled && aiTest !== 'busy' ? runAiTest : undefined}
           />
         </AppCard>
         <AppText size="xs" color="textSecondary" style={styles.sectionTitle}>
-          {t('aiEnabledHint')}
+          {[t('aiEnabledHint'), !providerInfo.voice ? t('aiGroqVoiceHint') : null, providerInfo.trainsOnData ? t('aiTrainsNote') : null].filter(Boolean).join(' ')}
         </AppText>
 
         {/* Preferences — language, theme, type, version. */}
@@ -537,6 +624,31 @@ export function SettingsScreen(): React.JSX.Element {
         <FloatingLabelInput label={t('removeBgKeyLabel')} value={draftKey} onChangeText={setDraftKey} hint={t('removeBgKeyHint')} />
       </AppSheet>
 
+      <SelectSheet
+        visible={providerSheet}
+        onClose={() => setProviderSheet(false)}
+        options={providerOptions}
+        selectedId={aiProvider}
+        title={t('aiProviderLabel')}
+        searchable={false}
+        onSelect={(o) => {
+          setAiProvider(o.id as AiProviderId);
+          setAiTest('idle');
+        }}
+      />
+      <SelectSheet
+        visible={modelSheet}
+        onClose={() => setModelSheet(false)}
+        options={modelOptions}
+        selectedId={currentModel}
+        title={t('aiModelLabel')}
+        searchable={false}
+        onSelect={(o) => {
+          if (o.id === '__custom__') openAiEdit('model');
+          else setAiModel(aiProvider, o.id);
+          setAiTest('idle');
+        }}
+      />
       <AppSheet
         visible={aiEdit !== null}
         onClose={() => setAiEdit(null)}
@@ -547,7 +659,15 @@ export function SettingsScreen(): React.JSX.Element {
           label={aiEdit ? t(AI_EDIT_LABEL[aiEdit]) : ''}
           value={aiDraft}
           onChangeText={setAiDraft}
-          hint={aiEdit === 'proxyUrl' ? t('aiProxyUrlHint') : aiEdit === 'groqKey' ? t('aiGroqKeyHint') : undefined}
+          hint={
+            aiEdit === 'key' || aiEdit === 'groqVoiceKey'
+              ? `${t('aiKeyHint')}${providerInfo.consoleUrl && aiEdit === 'key' ? ` ${providerInfo.consoleUrl}` : aiEdit === 'groqVoiceKey' ? ' console.groq.com' : ''}`
+              : aiEdit === 'proxyUrl'
+                ? t('aiProxyUrlHint')
+                : aiEdit === 'customUrl'
+                  ? t('aiCustomUrlHint')
+                  : undefined
+          }
         />
       </AppSheet>
     </View>

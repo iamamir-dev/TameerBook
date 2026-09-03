@@ -5,6 +5,7 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText, Toast } from '@/components/ui';
+import { PROVIDERS } from '@/ai';
 import { useToast } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -46,8 +47,14 @@ export function AssistantScreen(): React.JSX.Element {
   const aiEnabled = useSettingsStore((s) => s.aiEnabled);
   const aiSpeak = useSettingsStore((s) => s.aiSpeak);
   const language = useSettingsStore((s) => s.language);
-  const hasProvider = useSettingsStore((s) => !!s.aiProxyUrl || !!s.aiGroqKey);
-  const ready = aiEnabled && hasProvider;
+  // Re-evaluates when any AI setting changes (provider, key, URL).
+  const configured = useSettingsStore((s) => {
+    const info = PROVIDERS[s.aiProvider];
+    const key = s.aiKeys[s.aiProvider] ?? '';
+    const url = s.aiProvider === 'proxy' ? s.aiProxyUrl : s.aiProvider === 'custom' ? s.aiCustomBaseUrl : info.baseUrl;
+    return (!info.needsKey || !!key) && (!info.needsUrl || !!url);
+  });
+  const ready = aiEnabled && configured;
 
   const { turns, busy, ask, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
@@ -172,25 +179,25 @@ export function AssistantScreen(): React.JSX.Element {
 
           {turns.map((turn) => {
             if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} />;
-            let body: React.ReactNode;
-            switch (turn.kind) {
-              case 'text':
-                body = <AssistantBubble text={turn.text} />;
-                break;
-              case 'answer':
-                body = <AnswerCard answer={turn.answer} />;
-                break;
-              case 'draft':
-                body = <DraftCard resolved={turn.resolved} onDone={showToast} />;
-                break;
-              case 'open':
-                body = <OpenBubble screen={turn.screen} />;
-                break;
-              case 'error':
-                body = <ErrorBubble code={turn.code} />;
-                break;
+            if ('error' in turn) {
+              return (
+                <AssistantRow key={turn.id}>
+                  <ErrorBubble code={turn.error} />
+                </AssistantRow>
+              );
             }
-            return <AssistantRow key={turn.id}>{body}</AssistantRow>;
+            return (
+              <AssistantRow key={turn.id}>
+                <View style={styles.turnStack}>
+                  {turn.text ? <AssistantBubble text={turn.text} /> : null}
+                  {turn.cards.map((card, i) => (
+                    <AnswerCard key={`${turn.id}-c${i}`} answer={card} />
+                  ))}
+                  {turn.draft ? <DraftCard resolved={turn.draft} onDone={showToast} /> : null}
+                  {turn.open ? <OpenBubble screen={turn.open} /> : null}
+                </View>
+              </AssistantRow>
+            );
           })}
 
           {busy ? (

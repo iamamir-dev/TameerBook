@@ -742,4 +742,16 @@ export interface TranslationKeys {
   poPartial: string;
   poPending: string;
   poPaid: string;
+  aiErrNoVoice: string;
+  aiProviderLabel: string;
+  aiModelLabel: string;
+  aiModelCustom: string;
+  aiKeyLabel: string;
+  aiKeyHint: string;
+  aiCustomUrlLabel: string;
+  aiCustomUrlHint: string;
+  aiTestLabel: string;
+  aiTestOk: string;
+  aiGroqVoiceHint: string;
+  aiTrainsNote: string;
 }

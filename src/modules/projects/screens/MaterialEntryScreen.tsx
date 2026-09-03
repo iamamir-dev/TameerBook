@@ -44,7 +44,7 @@ import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 import type { UnitDef } from '@/utils/units';
-import { billToMaterialPrefill, billToPurchaseOrderPrefill } from '@/ai';
+import { PROVIDERS, billToMaterialPrefill, billToPurchaseOrderPrefill } from '@/ai';
 import { AI_ERROR_KEY, useBillReader } from '@/modules/assistant';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
@@ -133,7 +133,13 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
   // "Read this bill": vision model → prefilled fields (single line) or a
   // purchase order (many lines). Only offered when AI helpers are on.
-  const aiReady = useSettingsStore((s) => s.aiEnabled && (!!s.aiProxyUrl || !!s.aiGroqKey));
+  const aiReady = useSettingsStore((s) => {
+    if (!s.aiEnabled) return false;
+    const info = PROVIDERS[s.aiProvider];
+    const key = s.aiKeys[s.aiProvider] ?? '';
+    const url = s.aiProvider === 'proxy' ? s.aiProxyUrl : s.aiProvider === 'custom' ? s.aiCustomBaseUrl : info.baseUrl;
+    return (!info.needsKey || !!key) && (!info.needsUrl || !!url);
+  });
   const bill = useBillReader();
   const readBill = async () => {
     if (!receiptUri) return;

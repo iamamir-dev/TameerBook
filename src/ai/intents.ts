@@ -1,6 +1,5 @@
 import { periodRange, type DateRange } from '@/utils/period';
 
-import { coerceDraft, type Draft } from './drafts';
 
 /**
  * The QUESTION catalogue. The model never writes SQL: it picks one of these
@@ -204,35 +203,4 @@ export function coerceIntent(raw: unknown): Intent | null {
     case 'pnl':
       return { type };
   }
-}
-
-/** What the router model returns: a question, a draft entry, or plain talk. */
-export type RouterResult =
-  | { kind: 'question'; intent: Intent }
-  | { kind: 'draft'; draft: Draft }
-  | { kind: 'open'; screen: OpenScreen }
-  | { kind: 'chat'; reply: string };
-
-/** Parse the router's JSON into a `RouterResult` (null = unusable shape). */
-export function parseRouterOutput(raw: unknown): RouterResult | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const o = raw as Record<string, unknown>;
-  if (o.kind === 'question') {
-    const intent = coerceIntent(o.intent);
-    return intent ? { kind: 'question', intent } : null;
-  }
-  if (o.kind === 'draft') {
-    const draft = coerceDraft(o.draft);
-    return draft ? { kind: 'draft', draft } : null;
-  }
-  if (o.kind === 'open' && typeof o.screen === 'string' && (OPEN_SCREENS as readonly string[]).includes(o.screen)) {
-    return { kind: 'open', screen: o.screen as OpenScreen };
-  }
-  if (o.kind === 'chat' && typeof o.reply === 'string' && o.reply.trim()) return { kind: 'chat', reply: o.reply.trim() };
-  // Lenient: a bare intent or draft object without the wrapper.
-  const intent = coerceIntent(o);
-  if (intent) return { kind: 'question', intent };
-  const draft = coerceDraft(o);
-  if (draft) return { kind: 'draft', draft };
-  return null;
 }
