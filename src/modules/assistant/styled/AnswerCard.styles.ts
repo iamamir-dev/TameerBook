@@ -9,7 +9,7 @@ export const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.card,
       borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderColor: theme.colors.track,
       overflow: 'hidden',
     },
     head: { padding: theme.spacing.lg, gap: theme.spacing.xs },

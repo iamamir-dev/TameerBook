@@ -62,8 +62,18 @@ export function AssistantScreen(): React.JSX.Element {
   // Hold-to-talk: the transcript goes straight through the router.
   const voice = useVoiceInput((text) => void ask(text));
   useEffect(() => {
-    if (voice.error) showToast(voice.error === 'mic' ? t('aiMicDenied') : t(AI_ERROR_KEY[voice.error]));
-  }, [voice.error, showToast, t]);
+    if (!voice.error) return;
+    const msg =
+      voice.error === 'mic'
+        ? t('aiMicDenied')
+        : voice.error === 'tooShort'
+          ? t('aiTooShort')
+          : voice.error === 'silence'
+            ? t('aiNoSpeech')
+            : t(AI_ERROR_KEY[voice.error]);
+    // Dev builds append the raw reason so a provider rejection is diagnosable on-device.
+    showToast(__DEV__ && voice.errorDetail ? `${msg} (${voice.errorDetail.slice(0, 80)})` : msg);
+  }, [voice.error, voice.errorDetail, showToast, t]);
 
   // Keep the newest turn in view.
   useEffect(() => {

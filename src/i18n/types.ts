@@ -708,4 +708,6 @@ export interface TranslationKeys {
   aiBillOpenPo: string;
   aiBillNothing: string;
   aiSummaryLabel: string;
+  aiTooShort: string;
+  aiNoSpeech: string;
 }

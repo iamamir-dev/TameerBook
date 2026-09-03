@@ -28,11 +28,9 @@ export const makeStyles = (theme: Theme) =>
     assistant: {
       alignSelf: 'flex-start',
       maxWidth: '100%',
-      backgroundColor: theme.colors.card,
+      backgroundColor: theme.colors.primarySoft,
       borderRadius: theme.radius.hero,
       borderBottomLeftRadius: theme.radius.sm,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
       gap: theme.spacing.sm,

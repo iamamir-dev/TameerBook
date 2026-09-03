@@ -6,16 +6,20 @@ import {
 } from 'expo-audio';
 import { useCallback, useRef, useState } from 'react';
 
-import { buildWorld, getAiTransport, isAiError, transcriptionPrompt, type AiErrorCode } from '@/ai';
+import { buildWorld, getAiTransport, isAiError, isWhisperNoise, MIN_RECORDING_MS, transcriptionPrompt, type AiErrorCode } from '@/ai';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { reportError } from '@/utils/log';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing';
 
+export type VoiceError = AiErrorCode | 'mic' | 'tooShort' | 'silence';
+
 export interface VoiceInput {
   status: VoiceStatus;
   /** Set when the last attempt failed; cleared on the next start. */
-  error: AiErrorCode | 'mic' | null;
+  error: VoiceError | null;
+  /** Developer detail for the last failure (shown in dev builds only). */
+  errorDetail: string | null;
   /** Begin recording (hold). */
   start: () => Promise<void>;
   /** Stop, transcribe, and hand the text to `onText`. */
@@ -27,19 +31,36 @@ export interface VoiceInput {
  * clip to Whisper through the configured transport. The vocabulary prompt
  * carries the user's material / supplier / worker names so spellings match.
  */
+/**
+ * Mono 16 kHz AAC in an .m4a container on every platform. (The LOW_QUALITY
+ * preset records .3gp/AMR on Android, which Whisper endpoints reject.)
+ */
+const SPEECH_RECORDING = {
+  ...RecordingPresets.HIGH_QUALITY,
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 48000,
+};
+
 export function useVoiceInput(onText: (text: string) => void): VoiceInput {
-  const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
+  const recorder = useAudioRecorder(SPEECH_RECORDING);
   const [status, setStatus] = useState<VoiceStatus>('idle');
-  const [error, setError] = useState<VoiceInput['error']>(null);
+  const [error, setError] = useState<VoiceError | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const active = useRef(false);
+  const fail = (code: VoiceError, detail?: string) => {
+    setError(code);
+    setErrorDetail(detail ?? null);
+  };
 
   const start = useCallback(async () => {
     if (active.current) return;
     setError(null);
+    setErrorDetail(null);
     try {
       const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
-        setError('mic');
+        fail('mic');
         return;
       }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
@@ -49,7 +70,7 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
       setStatus('recording');
     } catch (e) {
       reportError('voice:start', e);
-      setError('mic');
+      fail('mic', e instanceof Error ? e.message : undefined);
     }
   }, [recorder]);
 
@@ -58,8 +79,14 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
     active.current = false;
     setStatus('transcribing');
     try {
+      const durationMs = recorder.getStatus().durationMillis;
       await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+      // A tap, not a hold: nothing to transcribe (and Whisper would hallucinate).
+      if (durationMs < MIN_RECORDING_MS) {
+        fail('tooShort');
+        return;
+      }
       const uri = recorder.uri;
       if (!uri) throw new Error('no recording');
       const transport = getAiTransport();
@@ -70,15 +97,19 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
         // English UI → auto-detect (mixed Roman Urdu/English speech).
         { prompt: transcriptionPrompt(world), language: useSettingsStore.getState().language === 'ur' ? 'ur' : undefined }
       );
-      if (text) onText(text);
+      if (isWhisperNoise(text)) {
+        fail('silence');
+        return;
+      }
+      onText(text);
     } catch (e) {
       const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
       if (code === 'failed') reportError('voice:stop', e);
-      setError(code);
+      fail(code, e instanceof Error ? e.message : String(e));
     } finally {
       setStatus('idle');
     }
   }, [recorder, onText]);
 
-  return { status, error, start, stop };
+  return { status, error, errorDetail, start, stop };
 }

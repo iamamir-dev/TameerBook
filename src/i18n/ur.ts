@@ -670,4 +670,6 @@ export const ur: TranslationKeys = {
   aiBillOpenPo: 'پرچیز آرڈر کے طور پر کھولیں',
   aiBillNothing: 'اس تصویر سے کوئی آئٹم نہیں پڑھا جا سکا۔',
   aiSummaryLabel: 'آج کا خلاصہ',
+  aiTooShort: 'بولتے وقت مائیک دبائے رکھیں، پھر چھوڑیں۔',
+  aiNoSpeech: 'سنائی نہیں دیا۔ تھوڑا اونچا دوبارہ بولیں۔',
 };

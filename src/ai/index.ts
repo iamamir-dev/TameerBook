@@ -27,3 +27,4 @@ export { buildWorld } from './context';
 export { periodLabel, runIntent, type Answer, type AnswerRow, type AnswerTarget } from './runner';
 export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';
 export { routeUtterance, type Routed } from './route';
+export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';
