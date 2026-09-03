@@ -180,7 +180,7 @@ const makeStyles = (theme: Theme) =>
     toggle: { flexDirection: 'row', backgroundColor: theme.colors.card, borderRadius: theme.radius.pill, padding: 3 },
     toggleBtn: { paddingHorizontal: theme.spacing.xl, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
     toggleOn: { backgroundColor: theme.colors.accent },
-    pad: { flex: 1, marginHorizontal: theme.spacing.lg, marginBottom: theme.spacing.lg, borderRadius: theme.radius.md, borderWidth: 1.5, borderColor: theme.colors.border, overflow: 'hidden' },
+    pad: { flex: 1, marginHorizontal: theme.spacing.page, marginBottom: theme.spacing.lg, borderRadius: theme.radius.md, borderWidth: 1.5, borderColor: theme.colors.border, overflow: 'hidden' },
     photoArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.lg, padding: theme.spacing.lg },
     preview: { width: '90%', height: 240, backgroundColor: theme.colors.card, borderRadius: theme.radius.md },
     photoBtns: { flexDirection: 'row', gap: theme.spacing.md },

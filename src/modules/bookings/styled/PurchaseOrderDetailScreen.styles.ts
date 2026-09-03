@@ -5,7 +5,7 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     hero: { gap: theme.spacing.sm },
     heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: theme.spacing.md },
     flex: { flex: 1 },

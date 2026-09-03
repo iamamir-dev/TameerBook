@@ -25,6 +25,8 @@ interface AppHeaderProps {
   onBack?: () => void;
   /** Optional single action on the right (icon button). */
   rightAction?: HeaderAction;
+  /** Optional row attached inside the header bar, under the title (e.g. tabs). */
+  bottom?: React.ReactNode;
 }
 
 /**
@@ -38,6 +40,7 @@ export function AppHeader({
   subtitle,
   onBack,
   rightAction,
+  bottom,
 }: AppHeaderProps): React.JSX.Element {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,6 +89,7 @@ export function AppHeader({
           </Pressable>
         ) : null}
       </View>
+      {bottom}
     </View>
   );
 }
@@ -96,16 +100,18 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
       backgroundColor: theme.colors.card,
-      paddingHorizontal: theme.spacing.lg,
-      paddingBottom: theme.spacing.sm,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.colors.border,
     },
+    // Padding lives on the row (not the container) so a `bottom` slot — e.g.
+    // underline tabs — can run edge-to-edge, flush with the bottom border.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
       minHeight: HIT,
+      paddingHorizontal: theme.spacing.page,
+      paddingBottom: theme.spacing.sm,
     },
     iconBtn: {
       width: HIT,

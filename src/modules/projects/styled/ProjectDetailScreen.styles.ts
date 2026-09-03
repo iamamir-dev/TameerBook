@@ -6,7 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.lg },
+    content: { paddingHorizontal: theme.spacing.page, paddingTop: theme.spacing.lg, gap: theme.spacing.lg },
     statusRow: { flexDirection: 'row', marginTop: theme.spacing.sm },
     closedBanner: {
       flexDirection: 'row',

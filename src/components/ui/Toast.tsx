@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme';
@@ -17,23 +17,43 @@ interface ToastProps {
   icon?: IconKey | GlyphName;
 }
 
+const TIMING = { duration: 200, easing: Easing.inOut(Easing.quad) };
+
 /**
- * The shared auto-dismiss toast pill. Renders the `useToast` message as a
- * floating confirmation above the safe area — replaces the identical inline
- * `Animated.View` toast that several screens each hand-rolled.
+ * The shared auto-dismiss toast pill, floating above the safe area. Animated
+ * with a plain shared value — NOT Reanimated layout animations (`entering`/
+ * `exiting`), which break the native stack's push/pop transition when they
+ * run while a screen is being popped (e.g. save → toast fading → back).
  */
 export function Toast({ message, icon = 'checkCircle' }: ToastProps): React.JSX.Element | null {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
 
-  if (!message) return null;
+  const progress = useSharedValue(0);
+  // Keep the last message mounted through the fade-out.
+  const [shown, setShown] = useState<string | null>(message);
+  if (message && message !== shown) setShown(message);
+
+  useEffect(() => {
+    progress.value = withTiming(message ? 1 : 0, TIMING, (finished) => {
+      if (finished && !message) runOnJS(setShown)(null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 16 }],
+  }));
+
+  if (!shown) return null;
 
   return (
-    <Animated.View entering={FadeInDown} exiting={FadeOutDown} style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }]}>
+    <Animated.View style={[styles.toast, { bottom: insets.bottom + theme.spacing.xl }, style]}>
       <AppIcon name={icon} size={20} color="onPrimary" />
       <AppText size="sm" weight="bold" color="onPrimary">
-        {message}
+        {shown}
       </AppText>
     </Animated.View>
   );

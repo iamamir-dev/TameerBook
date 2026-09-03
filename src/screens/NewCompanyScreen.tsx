@@ -121,7 +121,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
   });
 
 /** Shared look for the tappable company-logo picker (both create forms). */

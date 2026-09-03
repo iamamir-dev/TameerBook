@@ -20,7 +20,7 @@ export const makeStyles = (theme: Theme) =>
     },
     dotActive: { backgroundColor: theme.colors.accent, width: 28 },
     dotDone: { backgroundColor: theme.colors.success },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     stepIcon: {
       alignSelf: 'center',
       width: 64,
@@ -75,7 +75,7 @@ export const makeStyles = (theme: Theme) =>
     footer: {
       flexDirection: 'row',
       gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingTop: theme.spacing.sm,
     },
     backBtn: { flex: 1 },

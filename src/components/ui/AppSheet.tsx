@@ -60,7 +60,7 @@ export function AppSheet({
   const { t } = useTranslation();
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
-  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(visible);
 
   // Keyboard lift is iOS-only: Android is configured with
   // `softwareKeyboardLayoutMode: "resize"`, so the OS already shrinks the window
@@ -104,7 +104,7 @@ export function AppSheet({
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('cancel')} />
         </Animated.View>
 
-        <Animated.View style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
+        <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
             <View style={styles.grabber} />
           </Pressable>

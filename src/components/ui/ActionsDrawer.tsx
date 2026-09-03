@@ -37,21 +37,24 @@ export function ActionsDrawer({ visible, onClose, title, actions }: ActionsDrawe
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const styles = makeStyles(theme);
-  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(visible);
 
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
       </Animated.View>
-      <Animated.View style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-        <View style={styles.grabber} />
-        {title ? (
-          <AppText size="lg" weight="bold" numberOfLines={1}>
-            {title}
+      <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+        {/* Title + ✕ header, ruled off from the option rows (Vyapar-style). */}
+        <View style={styles.header}>
+          <AppText size="lg" weight="bold" numberOfLines={1} style={styles.flex}>
+            {title ?? ''}
           </AppText>
-        ) : null}
-        {actions.map((a) => (
+          <Pressable onPress={onClose} hitSlop={theme.touch.hitSlop} accessibilityRole="button" style={({ pressed }) => pressed && styles.dim}>
+            <AppIcon name="close" size={22} color="textSecondary" />
+          </Pressable>
+        </View>
+        {actions.map((a, i) => (
           <Pressable
             key={a.label}
             onPress={() => {
@@ -60,15 +63,12 @@ export function ActionsDrawer({ visible, onClose, title, actions }: ActionsDrawe
             }}
             disabled={a.loading}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.row, (pressed || a.loading) && styles.dim]}
+            style={({ pressed }) => [styles.row, i > 0 && styles.rowRule, (pressed || a.loading) && styles.dim]}
           >
-            <View style={styles.iconChip}>
-              <AppIcon name={a.icon} size={20} color="accent" />
-            </View>
+            <AppIcon name={a.icon} size={20} color="textPrimary" />
             <AppText size="md" weight="semibold" style={styles.flex}>
               {a.label}
             </AppText>
-            <AppIcon name="forward" size={18} color="textSecondary" />
           </Pressable>
         ))}
       </Animated.View>
@@ -111,26 +111,28 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: theme.radius.hero,
       borderTopRightRadius: theme.radius.hero,
-      padding: theme.spacing.xl,
-      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.lg,
       ...theme.shadows.raised,
     },
-    grabber: { alignSelf: 'center', width: 44, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      paddingTop: theme.spacing.lg,
+      paddingBottom: theme.spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,
-      paddingVertical: theme.spacing.md,
-      paddingHorizontal: theme.spacing.sm,
-      borderRadius: theme.radius.md,
+      minHeight: theme.touch.minTarget,
+      paddingHorizontal: theme.spacing.xs,
     },
-    iconChip: {
-      width: 40,
-      height: 40,
-      borderRadius: theme.radius.chip,
-      backgroundColor: theme.colors.accentSoft,
-      alignItems: 'center',
-      justifyContent: 'center',
+    rowRule: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
     },
     dim: { opacity: 0.7 },
     // Same look as the AppHeader action chip, so every "+" in the app matches.

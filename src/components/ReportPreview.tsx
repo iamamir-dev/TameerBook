@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import { AppButton, AppIcon, AppText } from '@/components/ui';
+import { useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
@@ -63,9 +65,11 @@ export function ReportPreview({
     }
   };
 
+  const { mounted, sheetStyle } = useSheetAnimation(visible);
+
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.screen, { paddingTop: insets.top }, sheetStyle]}>
         {/* Top bar */}
         <View style={styles.bar}>
           <Pressable onPress={onClose} hitSlop={theme.touch.hitSlop} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.iconBtn}>
@@ -110,7 +114,7 @@ export function ReportPreview({
             <AppButton label={t('download')} icon="download" onPress={onDownload} loading={busy === 'save'} />
           </View>
         </View>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

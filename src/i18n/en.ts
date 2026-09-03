@@ -102,7 +102,18 @@ export const en: TranslationKeys = {
   filterAll: 'All',
   filterIn: 'In',
   filterOut: 'Out',
+  filtersTitle: 'Filters',
+  clearFilters: 'Clear all',
   thisMonth: 'This Month',
+  thisWeek: 'This Week',
+  thisQuarter: 'This Quarter',
+  thisYear: 'This Year',
+  allTime: 'All Time',
+  customRange: 'Custom',
+  summaryTab: 'Summary',
+  noCategory: 'No category',
+  fromDate: 'From',
+  toDate: 'To',
   fixMistake: 'Fix mistake',
   fixMistakeExplain:
     'This entry will be reversed and a fresh, correct one opened. Nothing is deleted, your record stays complete.',
@@ -333,8 +344,8 @@ export const en: TranslationKeys = {
   fromAccount: 'From account',
   toAccount: 'To account',
   selectAccount: 'Select account',
-  recentActivity: 'Recent activity',
   cashFlowTitle: 'Cash & Accounts',
+  overviewTitle: 'Business Overview',
   noAccountTxns: 'No transactions yet',
 
   // v2  Plots

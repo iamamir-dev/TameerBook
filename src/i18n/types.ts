@@ -121,7 +121,18 @@ export interface TranslationKeys {
   filterAll: string;
   filterIn: string;
   filterOut: string;
+  filtersTitle: string;
+  clearFilters: string;
   thisMonth: string;
+  thisWeek: string;
+  thisQuarter: string;
+  thisYear: string;
+  allTime: string;
+  customRange: string;
+  summaryTab: string;
+  noCategory: string;
+  fromDate: string;
+  toDate: string;
   fixMistake: string;
   fixMistakeExplain: string;
 
@@ -366,8 +377,8 @@ export interface TranslationKeys {
   fromAccount: string;
   toAccount: string;
   selectAccount: string;
-  recentActivity: string;
   cashFlowTitle: string;
+  overviewTitle: string;
   noAccountTxns: string;
 
   // v2  Plots

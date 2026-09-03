@@ -105,7 +105,18 @@ export const ur: TranslationKeys = {
   filterAll: 'سب',
   filterIn: 'آمد',
   filterOut: 'خرچ',
+  filtersTitle: 'فلٹرز',
+  clearFilters: 'سب صاف کریں',
   thisMonth: 'اس مہینے',
+  thisWeek: 'اس ہفتے',
+  thisQuarter: 'اس سہ ماہی',
+  thisYear: 'اس سال',
+  allTime: 'پورا ریکارڈ',
+  customRange: 'اپنی تاریخیں',
+  summaryTab: 'خلاصہ',
+  noCategory: 'بغیر قسم',
+  fromDate: 'سے',
+  toDate: 'تک',
   fixMistake: 'غلطی ٹھیک کریں',
   fixMistakeExplain:
     'یہ اندراج واپس ہو جائے گا اور ایک نیا درست اندراج کھل جائے گا۔ کچھ نہیں مٹے گا، آپ کا ریکارڈ مکمل رہے گا۔',
@@ -336,8 +347,8 @@ export const ur: TranslationKeys = {
   fromAccount: 'کس اکاؤنٹ سے',
   toAccount: 'کس اکاؤنٹ میں',
   selectAccount: 'اکاؤنٹ چنیں',
-  recentActivity: 'حالیہ لین دین',
   cashFlowTitle: 'کیش اور اکاؤنٹس',
+  overviewTitle: 'کاروباری جائزہ',
   noAccountTxns: 'ابھی کوئی لین دین نہیں',
 
   // v2  Plots

@@ -29,6 +29,7 @@ export { AddPhotoTile } from './AddPhotoTile';
 export { AppHeader } from './AppHeader';
 export { StickyFooter } from './StickyFooter';
 export { SelectSheet, type SelectOption } from './SelectSheet';
+export { SkeletonBlock } from './Skeleton';
 export { QtyUnitRow } from './QtyUnitRow';
 export { MaterialItemPicker, type MaterialSelection } from './MaterialItemPicker';
 export { Toast } from './Toast';

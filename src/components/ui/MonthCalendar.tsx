@@ -271,7 +271,9 @@ const makeStyles = (theme: Theme) =>
     weekDay: { flex: 1 },
     grid: { flexDirection: 'row', flexWrap: 'wrap' },
     cell: {
-      width: `${100 / 7}%`,
+      // 14.28 × 7 = 99.96 — never rounds past 100%, so the 7th day can't wrap
+      // (which used to leave an empty right column + phantom bottom rows).
+      width: '14.28%',
       aspectRatio: 1,
       alignItems: 'center',
       justifyContent: 'center',

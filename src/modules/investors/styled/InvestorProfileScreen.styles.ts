@@ -6,7 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     scroll: { flex: 1 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',

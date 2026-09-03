@@ -10,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -39,7 +40,7 @@ import {
   type TransactionRow,
   type UdhaarWithBalance,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -72,6 +73,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
   // Give/return sheet state
   const [actionsOpen, setActionsOpen] = useState(false);
   const [move, setMove] = useState<MoveKind | null>(null);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(move !== null);
   const [amount, setAmount] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO().slice(0, 10));
@@ -208,10 +210,12 @@ export function UdhaarDetailScreen(): React.JSX.Element {
       />
 
       {/* Give / return sheet */}
-      <Modal visible={move !== null} transparent animationType="fade" onRequestClose={() => setMove(null)}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setMove(null)}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={() => setMove(null)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setMove(null)} />
+          </Animated.View>
+          <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
               {t(move === 'return' ? 'returnUdhaar' : 'giveUdhaar')}
@@ -259,7 +263,7 @@ export function UdhaarDetailScreen(): React.JSX.Element {
                   amount > selectedAccount.balance)
               }
             />
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -282,7 +286,7 @@ const makeStyles = (theme: Theme) =>
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     hero: { gap: theme.spacing.xs },
     sectionTitle: { marginTop: theme.spacing.sm },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },

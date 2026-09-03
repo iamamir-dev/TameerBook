@@ -57,7 +57,7 @@ const makeStyles = (theme: Theme) =>
     row: {
       flexDirection: 'row',
       gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingBottom: theme.spacing.sm,
     },
     pill: {

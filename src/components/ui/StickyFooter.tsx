@@ -57,7 +57,7 @@ export function StickyFooter({ children, applyInset = true, style }: StickyFoote
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     footer: {
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingTop: theme.spacing.md,
       gap: theme.spacing.sm,
       backgroundColor: theme.colors.card,

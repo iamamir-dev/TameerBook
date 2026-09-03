@@ -116,7 +116,7 @@ const GAP = 4;
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.lg },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.lg },
     empty: { paddingVertical: theme.spacing.xxxl },
     group: { gap: theme.spacing.sm },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },

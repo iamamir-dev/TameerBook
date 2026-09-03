@@ -2,6 +2,7 @@ import { type RouteProp, useNavigation, useRoute } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -17,7 +18,7 @@ import {
   type CategoryTreeNode,
   type CategoryType,
 } from '@/db';
-import { useCategoryLabel, useFocusReload, useSaveAction } from '@/hooks';
+import { useCategoryLabel, useFocusReload, useSaveAction, useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -145,6 +146,7 @@ export function CategoriesScreen(): React.JSX.Element {
   const [type, setType] = useState<CategoryType>(route.params?.type ?? 'EXPENSE');
   const [tree, setTree] = useState<CategoryTreeNode[] | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(!!editor);
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const [secUnit, setSecUnit] = useState('');
@@ -465,10 +467,12 @@ export function CategoriesScreen(): React.JSX.Element {
 
   function renderEditor() {
     return (
-      <Modal visible={!!editor} transparent animationType="slide" onRequestClose={() => setEditor(null)}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setEditor(null)}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={() => setEditor(null)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditor(null)} />
+          </Animated.View>
+          <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
               {editor?.mode === 'edit' ? t('edit') : t('addCategoryLabel')}
@@ -493,7 +497,7 @@ export function CategoriesScreen(): React.JSX.Element {
               </>
             ) : null}
             <AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!name.trim()} />
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
     );
@@ -516,7 +520,7 @@ const makeStyles = (theme: Theme) =>
     },
     segBtn: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
     segBtnActive: { backgroundColor: theme.colors.accent },
-    content: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, gap: theme.spacing.md },
+    content: { paddingHorizontal: theme.spacing.page, paddingTop: theme.spacing.lg, gap: theme.spacing.md },
     groupLabel: { marginTop: theme.spacing.xs },
     card: { gap: theme.spacing.sm },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },

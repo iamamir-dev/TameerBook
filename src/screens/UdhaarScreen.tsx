@@ -10,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -40,7 +41,7 @@ import {
   type UdhaarTotals,
   type UdhaarWithBalance,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -69,6 +70,7 @@ export function UdhaarScreen(): React.JSX.Element {
 
   // New-udhaar sheet state
   const [newOpen, setNewOpen] = useState(false);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(newOpen);
   const [personName, setPersonName] = useState('');
   const [partyId, setPartyId] = useState<string | null>(null);
   const [parties, setParties] = useState<PartyRow[]>([]);
@@ -236,10 +238,12 @@ export function UdhaarScreen(): React.JSX.Element {
       </View>
 
       {/* New-udhaar sheet */}
-      <Modal visible={newOpen} transparent animationType="fade" onRequestClose={() => setNewOpen(false)}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setNewOpen(false)}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={() => setNewOpen(false)} />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setNewOpen(false)} />
+          </Animated.View>
+          <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
               {t('newUdhaar')}
@@ -315,7 +319,7 @@ export function UdhaarScreen(): React.JSX.Element {
             <FloatingLabelInput label={t('note')} value={note} onChangeText={setNote} />
 
             <AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!canSave} />
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -361,7 +365,7 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       minHeight: theme.touch.minTarget,
     },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     totalsRow: { flexDirection: 'row', gap: theme.spacing.md },
     totalCard: { flex: 1, gap: theme.spacing.xs },
     row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
@@ -380,7 +384,7 @@ const makeStyles = (theme: Theme) =>
       left: 0,
       right: 0,
       bottom: 0,
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingTop: theme.spacing.sm,
     },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.overlay },

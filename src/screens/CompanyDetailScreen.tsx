@@ -2,6 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -17,7 +18,7 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import { getCompanyAssets, updateCompany, type CompanyAssets } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useCompanyStore } from '@/stores/useCompanyStore';
@@ -49,6 +50,7 @@ export function CompanyDetailScreen(): React.JSX.Element {
 
   const [assets, setAssets] = useState<CompanyAssets | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(editOpen);
   const [name, setName] = useState('');
   const [owner, setOwner] = useState('');
   const [phone, setPhone] = useState('');
@@ -176,10 +178,12 @@ export function CompanyDetailScreen(): React.JSX.Element {
       </ScrollView>
 
       {/* Edit identity sheet */}
-      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setEditOpen(false)}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.backdrop} onPress={() => setEditOpen(false)} accessibilityRole="button" />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditOpen(false)} accessibilityRole="button" />
+          </Animated.View>
+          <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
             <View style={styles.grabber} />
             <AppText size="lg" weight="bold">
               {t('edit')}
@@ -188,7 +192,7 @@ export function CompanyDetailScreen(): React.JSX.Element {
             <FloatingLabelInput label={t('ownerName')} value={owner} onChangeText={setOwner} />
             <FloatingLabelInput label={t('phone')} value={phone} onChangeText={setPhone} mask="phone" />
             <AppButton label={t('save')} icon="check" onPress={() => void onSaveEdit()} loading={saving} disabled={!name.trim()} />
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -228,7 +232,7 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     identity: { alignItems: 'center', gap: theme.spacing.sm },
     logoWrap: { alignSelf: 'center' },
     logo: { width: 88, height: 88, borderRadius: 24, backgroundColor: theme.colors.track },

@@ -10,7 +10,7 @@ export const makeStyles = (theme: Theme) =>
     dot: { width: 8, height: 8, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
     dotActive: { backgroundColor: theme.colors.accent, width: 20 },
     dotDone: { backgroundColor: theme.colors.accentSoft },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     hero: { borderRadius: theme.radius.hero, padding: theme.spacing.xl, gap: theme.spacing.xs, ...theme.shadows.card },
     lossNote: { backgroundColor: theme.colors.dangerSoft },
     stepLine: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm },

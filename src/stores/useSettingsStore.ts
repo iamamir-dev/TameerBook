@@ -31,11 +31,10 @@ export const DEFAULT_DONATION_PCT = 0;
 /**
  * The OPTIONAL Home sections a user can show/hide (Settings → Home screen).
  * The essentials — total assets, accounts, shortcuts, projects — are the
- * dashboard and always show; only the extras are configurable. Defaults
- * mirror today's Home: activity on, the rest off until switched on.
+ * dashboard and always show; only the extras are configurable. All extras
+ * default off until switched on.
  */
 export interface HomeSectionPrefs {
-  activity: boolean;
   plots: boolean;
   labor: boolean;
   udhaar: boolean;
@@ -44,7 +43,6 @@ export interface HomeSectionPrefs {
 export type HomeSectionKey = keyof HomeSectionPrefs;
 
 export const DEFAULT_HOME_SECTIONS: HomeSectionPrefs = {
-  activity: true,
   plots: false,
   labor: false,
   udhaar: false,

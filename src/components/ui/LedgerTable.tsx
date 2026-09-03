@@ -6,6 +6,7 @@ import type { Theme } from '@/theme/theme';
 import { formatDisplayDate } from '@/utils/date';
 import { formatPakistaniGrouping } from '@/utils/money';
 
+import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
 
 export interface LedgerRow {
@@ -14,6 +15,9 @@ export interface LedgerRow {
   title: string;
   /** ISO date (YYYY-MM-DD), shown under the title. */
   date: string;
+  /** Overrides the date line under the title (e.g. the category when rows
+      are already grouped under a day header). Empty string = no second line. */
+  subtitle?: string;
   amount: number;
   /** in = money received (green), out = money paid (red). */
   direction: 'in' | 'out';
@@ -31,10 +35,9 @@ interface LedgerTableProps {
 }
 
 /**
- * The notebook-style ruled ledger (modeled on the owner's handwritten khata):
- * each entry is a ruled row with the description + date on the left and the
- * amount + type tag on the right, separated by hairlines  instantly readable
- * for someone used to a paper register.
+ * Bank-statement-style ledger rows: a direction icon chip, the description
+ * with the date (or a caller subtitle) under it, and the signed amount on the
+ * right  separated by hairlines, dense enough for long histories.
  */
 export function LedgerTable({ rows, emptyText, highlightId }: LedgerTableProps): React.JSX.Element {
   const theme = useTheme();
@@ -71,13 +74,20 @@ export function LedgerTable({ rows, emptyText, highlightId }: LedgerTableProps):
               }
               : { style: [styles.row, i > 0 && styles.ruled, hi] })}
           >
+            <AppIcon
+              name={row.direction === 'in' ? 'moneyIn' : 'moneyOut'}
+              size={20}
+              color={row.direction === 'in' ? 'success' : 'danger'}
+            />
             <View style={styles.left}>
-              <AppText size="sm" weight="semibold" numberOfLines={1}>
+              <AppText size="sm" weight="semibold" numberOfLines={2}>
                 {row.title}
               </AppText>
-              <AppText size="xs" color="textSecondary">
-                {formatDisplayDate(row.date)}
-              </AppText>
+              {row.subtitle === '' ? null : (
+                <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                  {row.subtitle ?? formatDisplayDate(row.date)}
+                </AppText>
+              )}
             </View>
             <View style={styles.right}>
               <AppText
@@ -111,8 +121,8 @@ const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: theme.spacing.md,
-      minHeight: 40,
-      paddingVertical: theme.spacing.xs,
+      minHeight: 56,
+      paddingVertical: theme.spacing.sm,
     },
     ruled: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -129,7 +139,7 @@ const makeStyles = (theme: Theme) =>
       marginVertical: -theme.spacing.md,
       paddingVertical: theme.spacing.md + theme.spacing.xs,
     },
-    left: { flex: 1, gap: 2 },
+    left: { flex: 1, gap: 3 },
     right: { alignItems: 'flex-end', gap: 2 },
     empty: {
       paddingVertical: theme.spacing.xl,

@@ -11,7 +11,7 @@ export const makeStyles = (theme: Theme) =>
     dot: { width: 9, height: 9, borderRadius: theme.radius.pill, backgroundColor: theme.colors.border },
     dotActive: { backgroundColor: theme.colors.accent, width: 28 },
     dotDone: { backgroundColor: theme.colors.success },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     optCard: {
       flexDirection: 'row',
       alignItems: 'center',

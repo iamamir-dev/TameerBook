@@ -49,7 +49,7 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
   const [viewer, setViewer] = useState(false);
 
   // Smooth slide/fade; keep the last txn on screen while the sheet animates out.
-  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(txn !== null);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(txn !== null);
   const [shown, setShown] = useState<TransactionRow | null>(txn);
   useEffect(() => {
     if (txn) setShown(txn);
@@ -82,7 +82,7 @@ export function TransactionDetailSheet({ txn, onClose, footer, onOpen, openLabel
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
       </Animated.View>
       {shown ? (
-        <Animated.View style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+        <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
 
           {/* Amount hero */}

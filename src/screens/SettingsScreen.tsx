@@ -102,7 +102,6 @@ export function SettingsScreen(): React.JSX.Element {
   /** Optional Home sections (the essentials always show) — labels reuse the
    *  app's own terms. */
   const HOME_ROWS: { key: HomeSectionKey; labelKey: TranslationKey }[] = [
-    { key: 'activity', labelKey: 'recentActivity' },
     { key: 'plots', labelKey: 'plotsTitle' },
     { key: 'labor', labelKey: 'laborTitle' },
     { key: 'udhaar', labelKey: 'udhaar' },

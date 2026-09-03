@@ -8,3 +8,4 @@ export { NewProjectWizard } from './screens/NewProjectWizard';
 export { PhotoDiaryScreen } from './screens/PhotoDiaryScreen';
 export { MaterialEntryScreen } from './screens/MaterialEntryScreen';
 export { projectStatusMeta } from './utils/status';
+export { ProjectCardSkeleton } from './components/ProjectCardSkeleton';

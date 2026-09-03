@@ -2,6 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
@@ -19,7 +20,7 @@ import {
   type AccountType,
   type AccountWithBalance,
 } from '@/db';
-import { useFocusReload, useSaveAction } from '@/hooks';
+import { useFocusReload, useSaveAction, useSheetAnimation } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
@@ -48,6 +49,7 @@ export function AccountsScreen(): React.JSX.Element {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
 
   const [addOpen, setAddOpen] = useState(false);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(addOpen);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<AccountType>('BANK');
   const [newColor, setNewColor] = useState<string | null>(null);
@@ -121,13 +123,15 @@ export function AccountsScreen(): React.JSX.Element {
       </ScrollView>
 
       {/* Add-account bottom sheet */}
-      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setAddOpen(false)}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-        <Pressable style={styles.backdrop} onPress={() => setAddOpen(false)} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAddOpen(false)} />
+        </Animated.View>
+        <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
           <View style={styles.grabber} />
           <AppText size="lg" weight="bold">
             {t('addAccount')}
@@ -182,7 +186,7 @@ export function AccountsScreen(): React.JSX.Element {
             loading={saving}
             disabled={!newName.trim()}
           />
-        </View>
+        </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -195,7 +199,7 @@ const makeStyles = (theme: Theme) =>
     colorDot: { width: 32, height: 32, borderRadius: 16 },
     colorDotActive: { borderWidth: 3, borderColor: theme.colors.accent },
     screen: { flex: 1, backgroundColor: theme.colors.background },
-    content: { padding: theme.spacing.lg, gap: theme.spacing.md },
+    content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
     hero: {
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.hero,

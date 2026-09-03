@@ -1,6 +1,9 @@
 import React from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useSheetAnimation } from '@/hooks';
 
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -24,11 +27,16 @@ export function ImageLightbox({ uri, onClose }: ImageLightboxProps): React.JSX.E
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
+  const { mounted, backdropStyle } = useSheetAnimation(uri !== null);
+  // Keep the image through the close fade (uri goes null before unmount).
+  const [lastUri, setLastUri] = React.useState<string | null>(null);
+  if (uri && uri !== lastUri) setLastUri(uri);
+  const shown = uri ?? lastUri;
 
   return (
-    <Modal visible={uri !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.viewer}>
-        {uri ? <Image source={{ uri }} style={styles.image} resizeMode="contain" /> : null}
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.viewer, backdropStyle]}>
+        {shown ? <Image source={{ uri: shown }} style={styles.image} resizeMode="contain" /> : null}
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -37,7 +45,7 @@ export function ImageLightbox({ uri, onClose }: ImageLightboxProps): React.JSX.E
         >
           <AppIcon name="close" size={28} color="onHero" />
         </Pressable>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

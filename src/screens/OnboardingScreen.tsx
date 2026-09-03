@@ -370,7 +370,7 @@ const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
     },
     skipTop: {
       minHeight: 40,
@@ -426,7 +426,7 @@ const makeStyles = (theme: Theme) =>
       marginBottom: theme.spacing.sm,
     },
     slideBody: {
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       lineHeight: theme.typography.lineHeights.lg,
     },
 
@@ -455,7 +455,7 @@ const makeStyles = (theme: Theme) =>
 
     /* setup form */
     setupHeader: {
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingBottom: theme.spacing.sm,
     },
     backChip: {

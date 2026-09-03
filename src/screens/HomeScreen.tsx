@@ -6,16 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ProgressBar } from '@/components/ProgressBar';
 import { StageBadge } from '@/components/StageBadge';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   AccountCard,
   AppCard,
   AppIcon,
   AppText,
-  LedgerTable,
   SelectSheet,
+  SkeletonBlock,
   type IconKey,
-  type LedgerRow,
 } from '@/components/ui';
 import {
   getCompanyAssets,
@@ -23,22 +21,16 @@ import {
   getUdhaarTotals,
   listAccountsWithBalance,
   type CompanyAssets,
-  listCategories,
   listLaborersWithTotals,
   listPlots,
-  listRecentTransactions,
-  resolveTxnModuleTarget,
-  type TxnModuleTarget,
   listTransferDeadlines,
   SIZE_UNIT_LABEL_KEYS,
   type AccountWithBalance,
-  type CategoryRow,
   type PlotRow,
   type ProjectSummary,
-  type TransactionRow,
   type UdhaarTotals,
 } from '@/db';
-import { useCategoryLabel, useFocusReload } from '@/hooks';
+import { useFocusReload } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { FLOATING_BAR_CLEARANCE } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
@@ -47,18 +39,17 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { groupTxnActivity } from '@/utils/bookingBatch';
 import { nearestTransferDeadline, type TransferDeadlineWarning } from '@/utils/date';
 import { formatRupees } from '@/utils/money';
 import { softToneColor, type ColorKey } from '@/utils/tones';
-import { projectStatusMeta } from '@/modules/projects';
+import { ProjectCardSkeleton, projectStatusMeta } from '@/modules/projects';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * "Soft Modern" Home dashboard  cash-flow first: the total across all
  * accounts up top, the accounts rail beneath it, quick links to Plots and
- * Udhaar, the projects rail, and recent activity as a notebook-style ledger.
+ * Udhaar and the projects rail. (The full ledger lives on the money page.)
  */
 export function HomeScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -68,6 +59,7 @@ export function HomeScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const projects = useProjectsStore((s) => s.items);
+  const projectsLoaded = useProjectsStore((s) => s.loaded);
   const refreshProjects = useProjectsStore((s) => s.refresh);
   const activeCompanyId = useCompanyStore((s) => s.activeCompanyId);
   const companies = useCompanyStore((s) => s.companies);
@@ -75,7 +67,6 @@ export function HomeScreen(): React.JSX.Element {
   const companyName =
     useCompanyStore((s) => s.companies.find((c) => c.id === activeCompanyId)?.name) ?? t('appName');
   const [companySheet, setCompanySheet] = useState(false);
-  const [txnDetail, setTxnDetail] = useState<TransactionRow | null>(null);
 
   // Which sections this Home shows (Settings → Home screen).
   const sections = useSettingsStore((s) => s.homeSections);
@@ -84,21 +75,16 @@ export function HomeScreen(): React.JSX.Element {
   const [assets, setAssets] = useState<CompanyAssets | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [udhaar, setUdhaar] = useState<UdhaarTotals>({ receivable: 0, payable: 0 });
-  const [recent, setRecent] = useState<TransactionRow[]>([]);
-  // Which recent transactions link to a restructured module page (PO/investor/labor).
-  const [txnTarget, setTxnTarget] = useState<Record<string, TxnModuleTarget>>({});
-  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [deadlineWarn, setDeadlineWarn] = useState<TransferDeadlineWarning | null>(null);
   const [ownedPlots, setOwnedPlots] = useState<PlotRow[]>([]);
   const [laborOwed, setLaborOwed] = useState(0);
+  const [loaded, setLoaded] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [tot, accs, ud, txns, cats, deadlines, companyAssets, plots, workers] = await Promise.all([
+    const [tot, accs, ud, deadlines, companyAssets, plots, workers] = await Promise.all([
       getTotalBalance(),
       listAccountsWithBalance(),
       getUdhaarTotals(),
-      listRecentTransactions(8),
-      listCategories(),
       listTransferDeadlines(),
       getCompanyAssets(),
       // Optional sections only pay their query cost when switched on.
@@ -109,12 +95,6 @@ export function HomeScreen(): React.JSX.Element {
     setAssets(companyAssets);
     setAccounts(accs);
     setUdhaar(ud);
-    setRecent(txns);
-    // Resolve which recent transactions link to a restructured module page, so
-    // their detail drawer can offer a jump straight to it.
-    const targets = await Promise.all(txns.map(async (x) => [x.id, await resolveTxnModuleTarget(x)] as const));
-    setTxnTarget(Object.fromEntries(targets.filter(([, tt]) => tt) as [string, TxnModuleTarget][]));
-    setCategories(cats);
     setDeadlineWarn(nearestTransferDeadline(deadlines));
     // Show every plot still held (OWNED first, then IN_PROJECT); sold ones
     // are history and stay off the dashboard.
@@ -124,6 +104,7 @@ export function HomeScreen(): React.JSX.Element {
         .sort((a, b) => (a.status === b.status ? 0 : a.status === 'OWNED' ? -1 : 1))
     );
     setLaborOwed(workers.reduce((sum, w) => sum + w.balance, 0));
+    setLoaded(true);
   }, [sections.plots, sections.labor]);
 
   const load = useCallback(async () => {
@@ -131,51 +112,6 @@ export function HomeScreen(): React.JSX.Element {
   }, [refreshProjects, loadData]);
 
   useFocusReload(load);
-
-  const catLabel = useCategoryLabel();
-  const catName = useCallback(
-    (id: string | null): string => {
-      if (!id) return '';
-      const c = categories.find((x) => x.id === id);
-      return c ? catLabel(c) : '';
-    },
-    [categories, catLabel]
-  );
-
-  // Booking payments made in one PO action collapse into a single row.
-  const activityGroups = useMemo(() => groupTxnActivity(recent).slice(0, 8), [recent]);
-
-  const ledgerRows: LedgerRow[] = useMemo(
-    () =>
-      activityGroups.map((g) => {
-        const first = g.txns[0];
-        return {
-          id: g.id,
-          title:
-            first.description ||
-            catName(first.category_id) ||
-            first.counterparty_name ||
-            t(first.direction === 'IN' ? 'aamdani' : 'kharcha'),
-          date: first.date,
-          amount: g.total,
-          direction: first.direction === 'IN' ? ('in' as const) : ('out' as const),
-          typeLabel: catName(first.category_id) || undefined,
-          // Always open the detail drawer; a batch shows the summed total there.
-          onPress: () => setTxnDetail(g.isBatch ? { ...first, amount: g.total } : first),
-        };
-      }),
-    [activityGroups, catName, t]
-  );
-
-  const targetLabel = (tt?: TxnModuleTarget) =>
-    tt?.kind === 'po' ? t('viewPurchaseOrder') : tt?.kind === 'investor' ? t('viewInvestor') : tt?.kind === 'labor' ? t('viewLabor') : undefined;
-
-  const openTxnTarget = (tt: TxnModuleTarget, focusTxnId: string) => {
-    setTxnDetail(null);
-    if (tt.kind === 'po') navigation.navigate('PurchaseOrderDetail', { poId: tt.poId, focusTxnId });
-    else if (tt.kind === 'investor') navigation.navigate('InvestorProfile', { investorId: tt.investorId, focusTxnId });
-    else navigation.navigate('LaborerDetail', { laborerId: tt.laborerId, focusTxnId });
-  };
 
   const accountTypeLabel = (a: AccountWithBalance) =>
     t(a.type === 'BANK' ? 'accountBank' : a.type === 'CASH' ? 'accountCash' : 'accountWallet');
@@ -244,6 +180,16 @@ export function HomeScreen(): React.JSX.Element {
 
         {/* Company hero → the FULL asset picture (cash + plots + construction
             + receivable). The Cash tile below opens the cash-only view. */}
+        {!loaded ? (
+          <View style={styles.hero}>
+            <SkeletonBlock width={110} />
+            <SkeletonBlock width="62%" height={30} />
+            <View style={styles.assetsBlock}>
+              <SkeletonBlock width="70%" height={14} />
+              <SkeletonBlock width="52%" height={10} />
+            </View>
+          </View>
+        ) : (
         <Pressable
           onPress={() => navigation.navigate('Cash', { scope: 'assets' })}
           accessibilityRole="button"
@@ -281,6 +227,7 @@ export function HomeScreen(): React.JSX.Element {
             ) : null}
           </View>
         </Pressable>
+        )}
 
         {/* Accounts rail */}
         <SectionHeader
@@ -289,7 +236,20 @@ export function HomeScreen(): React.JSX.Element {
           onAction={() => navigation.navigate('Cash')}
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.railBleed} contentContainerStyle={styles.rail}>
-          {accounts.map((a) => (
+          {!loaded
+            ? [0, 1].map((i) => (
+                <View key={i} style={styles.skelAccountCard}>
+                  <View style={styles.skelAccountHead}>
+                    <SkeletonBlock width={40} height={40} round />
+                    <View style={styles.skelCol}>
+                      <SkeletonBlock width="70%" />
+                      <SkeletonBlock width="45%" height={10} />
+                    </View>
+                  </View>
+                  <SkeletonBlock width="60%" height={18} />
+                </View>
+              ))
+            : accounts.map((a) => (
             <AccountCard
               key={a.id}
               compact
@@ -421,7 +381,13 @@ export function HomeScreen(): React.JSX.Element {
           action={t('seeAll')}
           onAction={() => navigation.navigate('Tabs', { screen: 'Projects' })}
         />
-        {projects.length === 0 ? (
+        {!projectsLoaded ? (
+          <View style={styles.projectList}>
+            {[0, 1].map((i) => (
+              <ProjectCardSkeleton key={i} />
+            ))}
+          </View>
+        ) : projects.length === 0 ? (
           <AppCard onPress={() => navigation.navigate('NewProject')}>
             <View style={styles.emptyProjects}>
               <AppIcon name="add" size={22} color="accent" />
@@ -442,15 +408,6 @@ export function HomeScreen(): React.JSX.Element {
           </View>
         )}
 
-        {/* Recent activity  notebook-style ledger */}
-        {sections.activity ? (
-          <>
-            <SectionHeader title={t('recentActivity')} action={t('seeAll')} onAction={() => navigation.navigate('Transactions')} />
-            <AppCard compact>
-              <LedgerTable rows={ledgerRows} emptyText={t('noAccountTxns')} />
-            </AppCard>
-          </>
-        ) : null}
       </ScrollView>
 
       <SelectSheet
@@ -464,12 +421,6 @@ export function HomeScreen(): React.JSX.Element {
           setCompanySheet(false);
           void switchTo(o.id);
         }}
-      />
-      <TransactionDetailSheet
-        txn={txnDetail}
-        onClose={() => setTxnDetail(null)}
-        onOpen={txnDetail && txnTarget[txnDetail.id] ? () => openTxnTarget(txnTarget[txnDetail.id], txnDetail.id) : undefined}
-        openLabel={txnDetail ? targetLabel(txnTarget[txnDetail.id]) : undefined}
       />
     </View>
   );
@@ -598,7 +549,7 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.background,
     },
     content: {
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       gap: theme.spacing.lg,
     },
     /* header */
@@ -670,9 +621,19 @@ const makeStyles = (theme: Theme) =>
        are never clipped at the padded edge; inner padding restores alignment
        and vertical padding gives the soft shadows room to render. */
     railBleed: { marginHorizontal: -theme.spacing.lg },
+    skelAccountCard: {
+      width: 190,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.card,
+      padding: theme.spacing.lg,
+      gap: theme.spacing.md,
+      ...theme.shadows.card,
+    },
+    skelAccountHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+    skelCol: { flex: 1, gap: 5 },
     rail: {
       gap: theme.spacing.md,
-      paddingHorizontal: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.page,
       paddingVertical: theme.spacing.xs,
     },
     /* optional sections: udhaar/labor split card + plot rows */

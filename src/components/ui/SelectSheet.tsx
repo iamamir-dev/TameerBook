@@ -65,7 +65,7 @@ export function SelectSheet({
   const { t } = useTranslation();
   const { height: screenHeight } = useWindowDimensions();
   const styles = makeStyles(theme);
-  const { mounted, backdropStyle, sheetStyle } = useSheetAnimation(visible);
+  const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(visible);
 
   const [query, setQuery] = useState('');
 
@@ -108,14 +108,16 @@ export function SelectSheet({
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('cancel')} />
         </Animated.View>
 
-        <Animated.View style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * 0.85 - kb, paddingBottom: (kb > 0 ? 0 : insets.bottom) + theme.spacing.md }]}>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
-            <View style={styles.grabber} />
-          </Pressable>
-
-          <AppText size="lg" weight="bold" style={styles.title}>
-            {title}
-          </AppText>
+        <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * 0.85 - kb, paddingBottom: (kb > 0 ? 0 : insets.bottom) + theme.spacing.md }]}>
+          {/* Title + ✕ header, ruled off from the list below. */}
+          <View style={styles.header}>
+            <AppText size="lg" weight="bold" numberOfLines={1} style={styles.headerTitle}>
+              {title}
+            </AppText>
+            <Pressable onPress={onClose} hitSlop={theme.touch.hitSlop} accessibilityRole="button" accessibilityLabel={t('cancel')} style={({ pressed }) => pressed && styles.rowPressed}>
+              <AppIcon name="close" size={22} color="textSecondary" />
+            </Pressable>
+          </View>
 
           {searchable ? (
             <View style={styles.searchBox}>
@@ -144,7 +146,7 @@ export function SelectSheet({
                 {t('search')}
               </AppText>
             ) : (
-              filtered.map((option) => {
+              filtered.map((option, i) => {
                 const isSelected = option.id === selectedId;
                 const disabled = !!option.disabled;
                 return (
@@ -156,7 +158,7 @@ export function SelectSheet({
                     accessibilityState={{ selected: isSelected, disabled }}
                     style={({ pressed }) => [
                       styles.row,
-                      isSelected && styles.rowSelected,
+                      i > 0 && styles.rowRule,
                       pressed && !disabled && styles.rowPressed,
                       disabled && styles.rowDisabled,
                     ]}
@@ -165,13 +167,7 @@ export function SelectSheet({
                       <View style={[styles.dot, { backgroundColor: option.dotColor }]} />
                     ) : null}
                     {option.icon ? (
-                      <View style={styles.rowChip}>
-                        <AppIcon
-                          name={option.icon}
-                          size={22}
-                          color={isSelected ? 'primary' : 'textSecondary'}
-                        />
-                      </View>
+                      <AppIcon name={option.icon} size={20} color="textSecondary" />
                     ) : null}
                     <View style={styles.rowBody}>
                       <AppText size="md" weight={isSelected ? 'bold' : 'semibold'}>
@@ -183,7 +179,7 @@ export function SelectSheet({
                         </AppText>
                       ) : null}
                     </View>
-                    {isSelected ? <AppIcon name="checkCircle" size={24} color="primary" /> : null}
+                    {isSelected ? <View style={styles.selectedDot} /> : null}
                   </Pressable>
                 );
               })
@@ -212,19 +208,17 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.lg,
       ...theme.shadows.raised,
     },
-    grabberArea: {
+    header: {
+      flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.md,
+      paddingTop: theme.spacing.lg,
+      paddingBottom: theme.spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+      marginBottom: theme.spacing.xs,
     },
-    grabber: {
-      width: 44,
-      height: 5,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.track,
-    },
-    title: {
-      marginBottom: theme.spacing.md,
-    },
+    headerTitle: { flex: 1 },
     searchBox: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -250,22 +244,23 @@ const makeStyles = (theme: Theme) =>
       flexShrink: 1,
     },
     listContent: {
-      gap: theme.spacing.xs,
       paddingBottom: theme.spacing.sm,
     },
     empty: {
       paddingVertical: theme.spacing.xl,
     },
+    // Vyapar-style: flat full-width rows ruled by hairlines; the chosen one
+    // is marked by a small accent dot on the right.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,
-      minHeight: theme.touch.minTarget + 4,
-      paddingHorizontal: theme.spacing.md,
-      borderRadius: theme.radius.chip,
+      minHeight: theme.touch.minTarget,
+      paddingHorizontal: theme.spacing.xs,
     },
-    rowSelected: {
-      backgroundColor: theme.colors.primarySoft,
+    rowRule: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
     },
     rowPressed: {
       opacity: 0.7,
@@ -274,13 +269,11 @@ const makeStyles = (theme: Theme) =>
       opacity: 0.38,
     },
     dot: { width: 14, height: 14, borderRadius: 7 },
-    rowChip: {
-      width: 44,
-      height: 44,
-      borderRadius: theme.radius.chip,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.primarySoft,
+    selectedDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: theme.colors.accent,
     },
     rowBody: {
       flex: 1,

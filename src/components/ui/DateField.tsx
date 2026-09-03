@@ -1,6 +1,9 @@
 import dayjs from 'dayjs';
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+
+import { useSheetAnimation } from '@/hooks';
 
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -31,6 +34,7 @@ export function DateField({ value, onChange, maxDate }: DateFieldProps): React.J
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const [open, setOpen] = useState(false);
+  const { mounted, backdropStyle, dialogStyle } = useSheetAnimation(open);
 
   const today = todayISO().slice(0, 10);
   const isToday = value === today;
@@ -56,17 +60,19 @@ export function DateField({ value, onChange, maxDate }: DateFieldProps): React.J
         <AppIcon name="forward" size={18} color="textSecondary" />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)} statusBarTranslucent>
+      <Modal visible={mounted} transparent animationType="none" onRequestClose={() => setOpen(false)} statusBarTranslucent>
         <View style={styles.root}>
-          <Pressable style={styles.backdrop} onPress={() => setOpen(false)} accessibilityLabel={t('cancel')} />
+          <Animated.View style={[styles.backdrop, backdropStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel={t('cancel')} />
+          </Animated.View>
 
-          <View style={styles.dialog}>
+          <Animated.View style={[styles.dialog, dialogStyle]}>
             {/* Green hero header: the chosen date, written out */}
             <View style={styles.hero}>
               <AppText size="sm" weight="semibold" color="onAccent" style={styles.heroDay}>
                 {dayjs(value).format('dddd')}
               </AppText>
-              <AppText size="xxl" weight="bold" color="onAccent">
+              <AppText size="xl" weight="bold" color="onAccent">
                 {dayjs(value).format('DD MMM YYYY')}
               </AppText>
             </View>
@@ -102,7 +108,7 @@ export function DateField({ value, onChange, maxDate }: DateFieldProps): React.J
                 </AppText>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </>
@@ -127,13 +133,12 @@ const makeStyles = (theme: Theme) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.colors.overlay,
       padding: theme.spacing.xl,
     },
-    backdrop: { ...StyleSheet.absoluteFillObject },
+    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.colors.overlay },
     dialog: {
       width: '100%',
-      maxWidth: 380,
+      maxWidth: 330,
       borderRadius: theme.radius.hero,
       backgroundColor: theme.colors.card,
       overflow: 'hidden',
@@ -141,8 +146,8 @@ const makeStyles = (theme: Theme) =>
     },
     hero: {
       backgroundColor: theme.colors.accent,
-      paddingVertical: theme.spacing.lg,
-      paddingHorizontal: theme.spacing.xl,
+      paddingVertical: theme.spacing.md,
+      paddingHorizontal: theme.spacing.lg,
       gap: 2,
     },
     heroDay: { opacity: 0.85 },
