@@ -1,7 +1,7 @@
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
 import {
@@ -44,6 +44,9 @@ import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
 import { captureReceipt } from '@/utils/photo';
 import type { UnitDef } from '@/utils/units';
+import { billToMaterialPrefill, billToPurchaseOrderPrefill } from '@/ai';
+import { AI_ERROR_KEY, useBillReader } from '@/modules/assistant';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type MaterialRoute = RouteProp<RootStackParamList, 'MaterialEntry'>;
@@ -127,6 +130,50 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
   const { saving, run: runSave } = useSaveAction();
   const { toast, showToast } = useToast();
+
+  // "Read this bill": vision model → prefilled fields (single line) or a
+  // purchase order (many lines). Only offered when AI helpers are on.
+  const aiReady = useSettingsStore((s) => s.aiEnabled && (!!s.aiProxyUrl || !!s.aiGroqKey));
+  const bill = useBillReader();
+  const readBill = async () => {
+    if (!receiptUri) return;
+    const res = await bill.read(receiptUri);
+    if (!res) {
+      if (bill.error) showToast(t(AI_ERROR_KEY[bill.error]));
+      return;
+    }
+    const { bill: b, world } = res;
+    if (b.items.length === 0) {
+      showToast(t('aiBillNothing'));
+      return;
+    }
+    if (b.items.length > 1) {
+      Alert.alert(`${b.items.length} ${t('aiBillItems')}`, b.items.map((i) => i.item).join(', '), [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('aiBillOpenPo'),
+          onPress: () => navigation.navigate('NewPurchaseOrder', { prefill: billToPurchaseOrderPrefill(b, world, projectId ?? undefined) }),
+        },
+      ]);
+      return;
+    }
+    const p = billToMaterialPrefill(b, world);
+    if (!p) return;
+    if (p.categoryId) {
+      const c = await getCategory(p.categoryId).catch(swallow('material:billCat'));
+      if (c) setMaterial({ categoryId: c.id, name: c.name_en, unit: { primary: c.default_unit, secondary: c.secondary_unit, factor: c.secondary_factor } });
+    } else if (p.itemName) {
+      setMaterial({ ...EMPTY_MATERIAL, name: p.itemName });
+    }
+    if (p.qty) setQty(p.qty);
+    if (p.rate) setRate(String(p.rate));
+    if (p.amount && !(p.qty && p.rate)) setTotalOverride(p.amount);
+    if (p.partyId) setPartyId(p.partyId);
+    if (p.date) setDate(p.date);
+    setBillQty(p.qty ?? null);
+  };
+  // Pushes a read quantity into QtyUnitRow (which owns its own text field).
+  const [billQty, setBillQty] = useState<number | null>(null);
 
   const loadParties = useCallback(async () => setParties(await listParties()), []);
 
@@ -244,7 +291,12 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
           <MaterialItemPicker value={material} onChange={setMaterial} />
 
-          <QtyUnitRow unit={unit} resetToken={formNonce} initialPrimary={formNonce === 0 ? prefill?.qty : undefined} onQty={(v) => { setQty(v); setTotalOverride(0); }} />
+          <QtyUnitRow
+            unit={unit}
+            resetToken={billQty ?? formNonce}
+            initialPrimary={billQty ?? (formNonce === 0 ? prefill?.qty : undefined)}
+            onQty={(v) => { setQty(v); setTotalOverride(0); }}
+          />
 
           <FloatingLabelInput
             label={t('rateLabel')}
@@ -286,13 +338,24 @@ export function MaterialEntryScreen(): React.JSX.Element {
           <DateField value={date} onChange={setDate} />
 
           {receiptUri ? (
-            <Pressable onPress={() => setReceiptUri(null)} style={styles.chip} accessibilityRole="button">
-              <Image source={{ uri: receiptUri }} style={styles.thumb} />
-              <AppText size="sm" style={styles.flex}>
-                {t('billPhoto')}
-              </AppText>
-              <AppIcon name="close" size={18} color="danger" />
-            </Pressable>
+            <>
+              <Pressable onPress={() => setReceiptUri(null)} style={styles.chip} accessibilityRole="button">
+                <Image source={{ uri: receiptUri }} style={styles.thumb} />
+                <AppText size="sm" style={styles.flex}>
+                  {t('billPhoto')}
+                </AppText>
+                <AppIcon name="close" size={18} color="danger" />
+              </Pressable>
+              {aiReady ? (
+                <AppButton
+                  label={bill.reading ? t('aiReadingBill') : t('aiReadBill')}
+                  icon="assistant"
+                  variant="secondary"
+                  loading={bill.reading}
+                  onPress={() => void readBill()}
+                />
+              ) : null}
+            </>
           ) : (
             <AppButton
               label={t('billPhoto')}

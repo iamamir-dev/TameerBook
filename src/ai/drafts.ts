@@ -258,3 +258,11 @@ export function draftToMaterialPrefill(r: ResolvedDraft): MaterialPrefill | null
     date: d.date,
   };
 }
+
+/** Prefill for the New Purchase Order screen (a multi-line bill). */
+export interface PurchaseOrderPrefill {
+  supplierName?: string;
+  partyId?: string | null;
+  projectId?: string;
+  items: { categoryId?: string | null; name: string; qty: number; rate: number }[];
+}

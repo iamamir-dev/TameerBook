@@ -47,9 +47,9 @@ server/ai-proxy/                  Cloudflare Worker (wrangler), excluded from ro
 - [x] **3 Assistant screen.** Route `Assistant`. Turns list, suggestion chips,
       composer. Answer card (LedgerTable + stat), Draft card (Open form), text turn.
       Settings → Assistant section. Quick Entry tile. Home card "Ask".
-- [ ] **4 Voice.** `expo-audio` recording → Groq Whisper (via proxy) → same
+- [x] **4 Voice.** `expo-audio` recording → Groq Whisper (via proxy) → same
       pipeline. Spoken answers via `expo-speech` (device Urdu voice when present).
-- [ ] **5 Read the bill.** Receipt photo → Groq Qwen vision → BillDraft →
+- [x] **5 Read the bill.** Receipt photo → Groq Qwen vision → BillDraft →
       MaterialEntry prefill (single line) / NewPurchaseOrder prefill (multi line).
 - [ ] **6 Proxy.** `server/ai-proxy`: `/v1/chat`, `/v1/transcribe`, `/v1/vision`;
       app-token header, per-device rate limit binding, Groq → Workers AI fallback.

@@ -292,7 +292,7 @@ export function SettingsScreen(): React.JSX.Element {
         </AppText>
         <AppCard compact>
           <SettingRow
-            icon="activity"
+            icon="assistant"
             label={t('aiEnabledLabel')}
             trailing={<AppToggle value={aiEnabled} onValueChange={setAiEnabled} accessibilityLabel={t('aiEnabledLabel')} />}
           />

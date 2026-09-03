@@ -1,6 +1,6 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-import type { MaterialPrefill } from '@/ai/drafts';
+import type { MaterialPrefill, PurchaseOrderPrefill } from '@/ai/drafts';
 import type { TxnDirection } from '@/db';
 
 /** Pre-filled values when opening the entry screen to correct a mistake. */
@@ -59,7 +59,7 @@ export type RootStackParamList = {
   MaterialEntry: { prefill?: MaterialPrefill } | undefined;
   // Material bookings
   Bookings: undefined;
-  NewPurchaseOrder: { poId?: string } | undefined;
+  NewPurchaseOrder: { poId?: string; prefill?: PurchaseOrderPrefill } | undefined;
   PurchaseOrderDetail: { poId: string; focusTxnId?: string };
   Investment: { investorId?: string } | undefined;
   // Udhaar

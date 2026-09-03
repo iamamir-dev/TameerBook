@@ -18,9 +18,11 @@ export {
   resolveDraft,
   type Draft,
   type MaterialPrefill,
+  type PurchaseOrderPrefill,
   type ResolvedDraft,
   type WorldNames,
 } from './drafts';
 export { billSystemPrompt, narrationSystemPrompt, routerSystemPrompt, transcriptionPrompt, type World } from './prompts';
 export { buildWorld } from './context';
 export { periodLabel, runIntent, type Answer, type AnswerRow, type AnswerTarget } from './runner';
+export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';

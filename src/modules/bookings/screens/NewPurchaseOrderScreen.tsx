@@ -63,7 +63,9 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const poId = useRoute<PoRoute>().params?.poId;
+  const routeParams = useRoute<PoRoute>().params;
+  const poId = routeParams?.poId;
+  const poPrefill = routeParams?.prefill;
   const editing = !!poId;
   const styles = makeStyles(theme);
   const { saving, run: runSave } = useSaveAction();
@@ -85,6 +87,25 @@ export function NewPurchaseOrderScreen(): React.JSX.Element {
   useEffect(() => {
     listProjects().then((r) => setProjects(r.filter((p) => p.status === 'ACTIVE'))).catch(swallow('po:projects'));
     listParties('SUPPLIER').then(setParties).catch(swallow('po:parties'));
+  }, []);
+
+  // Assistant prefill (a bill photo read into line items). Applied once.
+  useEffect(() => {
+    if (!poPrefill || poId) return;
+    if (poPrefill.supplierName) setSupplierName(poPrefill.supplierName);
+    if (poPrefill.partyId) setPartyId(poPrefill.partyId);
+    if (poPrefill.projectId) setProjectId(poPrefill.projectId);
+    if (poPrefill.items.length) {
+      setItems(
+        poPrefill.items.map((i) => ({
+          key: keyRef.current++,
+          material: { categoryId: i.categoryId ?? null, name: i.name, unit: EMPTY_UNIT },
+          qty: i.qty,
+          rate: i.rate,
+        }))
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Edit mode: prefill supplier / project / existing line-items from the PO.

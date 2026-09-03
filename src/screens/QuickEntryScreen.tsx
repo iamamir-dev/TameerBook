@@ -34,7 +34,7 @@ interface Tile {
 
 /** The quick-entry actions, keyed by labelKey (order comes from settings). */
 const TILES: Record<string, Tile> = {
-  assistant: { labelKey: 'assistantTitle', icon: 'activity', tone: 'accent' },
+  assistant: { labelKey: 'assistantTitle', icon: 'assistant', tone: 'accent' },
   kharcha: { labelKey: 'kharcha', icon: 'kharcha', tone: 'danger' },
   // Keyed 'aamdani' so saved orders keep working; the tile is the Payment In
   // hub — it asks WHERE the money is from and routes to the right flow.

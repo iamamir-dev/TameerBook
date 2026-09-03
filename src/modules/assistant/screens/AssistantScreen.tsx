@@ -15,7 +15,11 @@ import { AnswerCard } from '../components/AnswerCard';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
 import { AssistantBubble, ErrorBubble, UserBubble } from '../components/MessageBubble';
+import { MicButton } from '../components/MicButton';
 import { useAssistant } from '../hooks/useAssistant';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { AI_ERROR_KEY } from '../utils/aiErrors';
+import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -37,13 +41,30 @@ export function AssistantScreen(): React.JSX.Element {
   const styles = makeStyles(theme);
 
   const aiEnabled = useSettingsStore((s) => s.aiEnabled);
+  const aiSpeak = useSettingsStore((s) => s.aiSpeak);
+  const language = useSettingsStore((s) => s.language);
   const hasProvider = useSettingsStore((s) => !!s.aiProxyUrl || !!s.aiGroqKey);
   const ready = aiEnabled && hasProvider;
 
-  const { turns, busy, ask } = useAssistant();
+  const { turns, busy, ask, onSpeak } = useAssistant();
   const { toast, showToast } = useToast();
   const [input, setInput] = useState(params?.seed ?? '');
   const scroll = useRef<ScrollView>(null);
+
+  // Read answers aloud when enabled; stop talking when the screen closes.
+  useEffect(() => {
+    onSpeak.current = aiSpeak ? (text) => void speak(text, language) : null;
+    return () => {
+      onSpeak.current = null;
+      stopSpeaking();
+    };
+  }, [aiSpeak, language, onSpeak]);
+
+  // Hold-to-talk: the transcript goes straight through the router.
+  const voice = useVoiceInput((text) => void ask(text));
+  useEffect(() => {
+    if (voice.error) showToast(voice.error === 'mic' ? t('aiMicDenied') : t(AI_ERROR_KEY[voice.error]));
+  }, [voice.error, showToast, t]);
 
   // Keep the newest turn in view.
   useEffect(() => {
@@ -76,7 +97,7 @@ export function AssistantScreen(): React.JSX.Element {
             <View style={styles.intro}>
               <View style={styles.introHead}>
                 <View style={styles.introIcon}>
-                  <AppIcon name="activity" size={22} color="accent" />
+                  <AppIcon name="assistant" size={22} color="accent" />
                 </View>
                 <AppText size="sm" color="textSecondary" style={styles.flex}>
                   {t('assistantHint')}
@@ -116,18 +137,25 @@ export function AssistantScreen(): React.JSX.Element {
             }
           })}
 
-          {busy ? (
+          {busy || voice.status !== 'idle' ? (
             <View style={styles.thinking}>
-              <ActivityIndicator color={theme.colors.accent} />
+              <ActivityIndicator color={voice.status === 'recording' ? theme.colors.danger : theme.colors.accent} />
               <AppText size="sm" color="textSecondary">
-                {t('aiThinking')}
+                {voice.status === 'recording' ? t('aiListening') : t('aiThinking')}
               </AppText>
             </View>
           ) : null}
         </ScrollView>
 
         {ready ? (
-          <Composer value={input} onChange={setInput} onSend={send} disabled={busy} bottomInset={insets.bottom} />
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSend={send}
+            disabled={busy}
+            bottomInset={insets.bottom}
+            leading={<MicButton status={voice.status} onPressIn={() => void voice.start()} onPressOut={() => void voice.stop()} disabled={busy} />}
+          />
         ) : (
           <View style={[styles.setup, { marginBottom: insets.bottom + theme.spacing.sm }]}>
             <AppText size="md" weight="bold">

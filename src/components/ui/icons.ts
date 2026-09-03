@@ -43,6 +43,7 @@ import {
   type LucideIcon,
   Map as MapIcon,
   Maximize2,
+  Mic,
   Minimize2,
   Image as ImageIcon,
   Moon,
@@ -57,6 +58,7 @@ import {
   Search,
   Settings,
   Share2,
+  Sparkles,
   Stamp,
   Tag,
   Trash2,
@@ -161,6 +163,8 @@ export const ICONS = {
   camera: Camera,
   lock: Lock,
   reorder: ArrowDownUp,
+  mic: Mic,
+  assistant: Sparkles,
 } satisfies Record<string, LucideIcon>;
 
 /** Type-safe semantic icon keys. */
