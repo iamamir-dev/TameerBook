@@ -45,3 +45,4 @@ export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bil
 export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';
 export { TOOLS, interpretToolCall, summarizeAnswerForModel, type ToolAction } from './tools';
 export { runAgent, splitSuggestions, type AgentDeps, type AgentResult } from './agent';
+export { CORE_KNOWLEDGE, KNOWLEDGE_TOPICS, MODULE_KNOWLEDGE, explainTopic, type KnowledgeTopic } from './knowledge';

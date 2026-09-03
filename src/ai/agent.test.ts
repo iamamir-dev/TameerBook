@@ -80,6 +80,12 @@ describe('interpretToolCall', () => {
   it('accepts add_project with no details (the sheet asks)', () => {
     expect(interpretToolCall({ id: '1', name: 'add_project', args: {} })).toEqual({ kind: 'write', draft: { kind: 'createProject', name: undefined, plot: undefined, investors: undefined } });
   });
+  it('hands module knowledge back to the model', () => {
+    const a = interpretToolCall({ id: '1', name: 'explain_app', args: { topic: 'settlement' } });
+    expect(a.kind).toBe('knowledge');
+    expect(a.kind === 'knowledge' && a.text).toContain('LOSS always splits by capital ratio');
+    expect(interpretToolCall({ id: '1', name: 'explain_app', args: { topic: 'weather' } }).kind).toBe('invalid');
+  });
   it('maps open_screen and rejects junk', () => {
     expect(interpretToolCall({ id: '1', name: 'open_screen', args: { screen: 'NewProject' } })).toEqual({ kind: 'open', screen: 'NewProject' });
     expect(interpretToolCall({ id: '1', name: 'open_screen', args: { screen: 'DevTools' } }).kind).toBe('invalid');
@@ -167,6 +173,18 @@ describe('runAgent', () => {
     const toolMsg = t.seen[1].find((m) => m.role === 'tool') as { content: string };
     expect(toolMsg.content).toContain('error');
     expect(r.cards).toHaveLength(1);
+  });
+
+  it('feeds knowledge back as a tool result without a card', async () => {
+    const t = fake([
+      { content: null, toolCalls: [{ id: 'c1', name: 'explain_app', args: { topic: 'labor' } }] },
+      { content: 'Balance = accrued − paid.', toolCalls: [] },
+    ]);
+    const r = await runAgent('worker balance kaise banta hai', { transport: t, world, runIntent: async () => poAnswer });
+    expect(r.cards).toHaveLength(0);
+    expect(r.text).toBe('Balance = accrued − paid.');
+    const toolMsg = t.seen[1].find((m) => m.role === 'tool') as { content: string };
+    expect(toolMsg.content).toContain('dihari');
   });
 
   it('passes history between system and user', async () => {

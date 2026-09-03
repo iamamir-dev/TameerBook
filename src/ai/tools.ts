@@ -1,5 +1,6 @@
 import { coerceDraft, type Draft } from './drafts';
 import { coerceIntent, ENTITY_FILTERS, ENTITY_KINDS, OPEN_SCREENS, PERIOD_KINDS, PO_STATUS_FILTERS, REPORT_KINDS, type Intent, type OpenScreen } from './intents';
+import { KNOWLEDGE_TOPICS, explainTopic } from './knowledge';
 import type { Answer } from './runner';
 import type { ToolCall, ToolSpec } from './types';
 
@@ -234,6 +235,13 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
   },
 ];
 
+const EXPLAIN_TOOL: ToolSpec = {
+  name: 'explain_app',
+  description:
+    'Deep knowledge of one TameerBook module (rules, formulas, guards, screens). Call it BEFORE answering how something works, why a number is what it is, or what a rule means (e.g. how settlement splits profit, how worker balance is computed, what PO statuses mean).',
+  parameters: obj({ topic: { type: 'string', enum: [...KNOWLEDGE_TOPICS] } }, ['topic']),
+};
+
 const OPEN_TOOL: ToolSpec = {
   name: 'open_screen',
   description:
@@ -245,6 +253,7 @@ const OPEN_TOOL: ToolSpec = {
 export const TOOLS: ToolSpec[] = [
   ...READ_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })),
   ...WRITE_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })),
+  EXPLAIN_TOOL,
   OPEN_TOOL,
 ];
 
@@ -252,6 +261,8 @@ export type ToolAction =
   | { kind: 'read'; intent: Intent }
   | { kind: 'write'; draft: Draft }
   | { kind: 'open'; screen: OpenScreen }
+  /** Module knowledge handed straight back to the model (no card). */
+  | { kind: 'knowledge'; text: string }
   | { kind: 'invalid'; reason: string };
 
 /** Validate a model tool call into something the app can run. */
@@ -265,6 +276,10 @@ export function interpretToolCall(call: ToolCall): ToolAction {
   if (write) {
     const draft = coerceDraft({ ...call.args, kind: write.kind });
     return draft ? { kind: 'write', draft } : { kind: 'invalid', reason: `Missing required details for ${call.name} (e.g. a name).` };
+  }
+  if (call.name === EXPLAIN_TOOL.name) {
+    const text = explainTopic(typeof call.args.topic === 'string' ? call.args.topic : '');
+    return text ? { kind: 'knowledge', text } : { kind: 'invalid', reason: `Unknown topic. Use one of: ${KNOWLEDGE_TOPICS.join(', ')}.` };
   }
   if (call.name === OPEN_TOOL.name) {
     const screen = typeof call.args.screen === 'string' ? call.args.screen : '';

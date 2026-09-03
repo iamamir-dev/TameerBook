@@ -116,6 +116,8 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
         } catch (e) {
           content = JSON.stringify({ error: e instanceof Error ? e.message : 'failed' });
         }
+      } else if (action.kind === 'knowledge') {
+        content = action.text;
       } else {
         content = JSON.stringify({ error: action.kind === 'invalid' ? action.reason : 'unexpected' });
       }
