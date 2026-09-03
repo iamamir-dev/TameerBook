@@ -57,6 +57,8 @@ export interface DraftChoices {
   plotId?: string | null;
   accountId?: string | null;
   projectId?: string | null;
+  /** Purchase order from an earlier step of the same message (order → delivery → payment). */
+  poId?: string | null;
   /** payWorker: which participation (project) the payment settles. */
   projectLaborerId?: string | null;
 }
@@ -121,9 +123,18 @@ export function draftNeeds(r: ResolvedDraft): DraftNeeds {
   }
 }
 
-/** Find the purchase order the user meant by number ("PO-0015") or supplier name. */
-async function findPo(q: string | undefined): Promise<PurchaseOrderSummary | null> {
-  const pos = (await listPurchaseOrders()).filter((p) => p.status === 'OPEN');
+/**
+ * Find the purchase order the user meant: the one linked from an earlier step,
+ * else by number ("PO-0015"), else by supplier name (newest first, so a fresh
+ * order wins over an older one from the same supplier).
+ */
+async function findPo(q: string | undefined, linkedId?: string | null): Promise<PurchaseOrderSummary | null> {
+  const all = await listPurchaseOrders();
+  if (linkedId) {
+    const linked = all.find((p) => p.poId === linkedId);
+    if (linked) return linked;
+  }
+  const pos = all.filter((p) => p.status === 'OPEN').sort((a, b) => b.poNumber.localeCompare(a.poNumber));
   if (pos.length === 0) return null;
   if (!q) return pos.length === 1 ? pos[0] : null;
   const byNumber = pos.find((p) => p.poNumber.toLowerCase().replace(/\s+/g, '') === q.toLowerCase().replace(/\s+/g, ''));
@@ -297,7 +308,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     }
 
     case 'receiveDelivery': {
-      const po = await findPo(d.po);
+      const po = await findPo(d.po, c.poId);
       if (!po) throw new Error(t('aiNoPoFound'));
       const date = d.date ?? today;
       let n = 0;
@@ -319,7 +330,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     }
 
     case 'payPurchaseOrder': {
-      const po = await findPo(d.po);
+      const po = await findPo(d.po, c.poId);
       if (!po) throw new Error(t('aiNoPoFound'));
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       let left = needAmount(d.amount ?? c.amount);

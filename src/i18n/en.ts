@@ -696,6 +696,7 @@ export const en: TranslationKeys = {
   aiReadyToAdd: 'Ready to add',
   poLabelShort: 'Order',
   aiDaysLabel: 'days present',
+  aiStep: 'Step',
   aiWillWrite: 'Check the details, then confirm',
   aiWage: 'Daily wage',
   aiOpeningBalance: 'Opening balance',

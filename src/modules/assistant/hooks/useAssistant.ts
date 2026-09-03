@@ -37,7 +37,8 @@ export type Turn =
       /** Which option the user tapped (kept so the list shows the choice). */
       picked?: string;
       /** Per-draft outcome, by index (survives restarts). */
-      settled?: Record<number, { status: 'accepted' | 'rejected'; message?: string }>;
+      /** Per draft: outcome, message, and the purchase order it created / touched (later steps reuse it). */
+      settled?: Record<number, { status: 'accepted' | 'rejected'; message?: string; poId?: string }>;
     }
   | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText?: string };
 
@@ -58,7 +59,7 @@ type Action =
   | { type: 'remove'; turnId: string }
   | { type: 'working'; phase: 'thinking' | 'tools' | 'writing'; tools: string[] }
   | { type: 'pick'; turnId: string; option: string }
-  | { type: 'settle'; turnId: string; index: number; status: 'accepted' | 'rejected'; message?: string };
+  | { type: 'settle'; turnId: string; index: number; status: 'accepted' | 'rejected'; message?: string; poId?: string };
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
@@ -80,7 +81,7 @@ function reducer(s: State, a: Action): State {
       return {
         ...s,
         turns: s.turns.map((t) =>
-          t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { ...(t.settled ?? {}), [a.index]: { status: a.status, message: a.message } } } : t
+          t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { ...(t.settled ?? {}), [a.index]: { status: a.status, message: a.message, poId: a.poId } } } : t
         ),
       };
   }
@@ -149,7 +150,7 @@ export interface AssistantApi extends State {
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
   /** Record that a draft card was accepted or rejected. */
-  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string) => void;
+  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string) => void;
   /** Re-run the prompt behind a failed reply (replaces the error bubble). */
   retry: (turnId: string) => Promise<void>;
   /** The user tapped one of the offered choices: remember it and send it. */
@@ -189,7 +190,12 @@ export function useAssistant(): AssistantApi {
         try {
           const saved = JSON.parse(s[CHAT_KEY]) as SavedChat;
           history.current = Array.isArray(saved.history) ? saved.history : [];
-          dispatch({ type: 'hydrate', turns: (Array.isArray(saved.turns) ? saved.turns : []).map(normalizeTurn).filter((x): x is Turn => x !== null) });
+          const turns = (Array.isArray(saved.turns) ? saved.turns : []).map(normalizeTurn).filter((x): x is Turn => x !== null);
+          // The app died while a reply was in flight (backgrounded, killed, crashed): the last
+          // message has no answer. Show the failure bubble so Retry is one tap away.
+          const last = turns[turns.length - 1];
+          if (last && last.role === 'user') turns.push({ id: nextId(), role: 'assistant', error: 'failed', retryText: last.text });
+          dispatch({ type: 'hydrate', turns });
         } catch {
           dispatch({ type: 'hydrate', turns: [] });
         }
@@ -276,8 +282,8 @@ export function useAssistant(): AssistantApi {
     void saveSetting(CHAT_KEY, '').catch(swallow('assistant:clear'));
   }, []);
 
-  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string) => {
-    dispatch({ type: 'settle', turnId, index, status, message });
+  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string) => {
+    dispatch({ type: 'settle', turnId, index, status, message, poId });
   }, []);
 
   return { ...state, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget };

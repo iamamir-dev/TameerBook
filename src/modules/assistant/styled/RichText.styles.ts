@@ -9,29 +9,33 @@ export const makeStyles = (theme: Theme) =>
     headingWrap: { marginTop: theme.spacing.sm, marginBottom: theme.spacing.xs },
     /** Each new section starts after a clear gap and a hairline, so blocks never run together. */
     headingRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border, paddingTop: theme.spacing.md, marginTop: theme.spacing.lg },
-    tableScroll: { flexGrow: 0, flexShrink: 0, marginVertical: theme.spacing.xs },
-    tableScrollContent: { flexGrow: 0, alignItems: 'flex-start' },
+    tableWrap: { marginVertical: theme.spacing.sm, borderRadius: theme.radius.md, overflow: 'hidden' },
+    tableScroll: { flexGrow: 0, flexShrink: 0 },
+    tableFade: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 28 },
+    tableScrollContent: { flexGrow: 0 },
     bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.xs },
     dot: { lineHeight: theme.typography.lineHeights.sm, minWidth: 14 },
     bulletText: { flexShrink: 1, minWidth: 0 },
     /** Compact table inside a bubble. */
     /** Tables wear the message tint (no shadow, no outline); plain text around them has no fill. */
+    /** At least the bubble width; wider when the columns need it (then the ScrollView scrolls). */
     table: {
-      marginVertical: theme.spacing.sm,
       borderRadius: theme.radius.md,
       backgroundColor: theme.colors.primarySoft,
       overflow: 'hidden',
     },
-    tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md, minHeight: 36 },
-    trHead: { borderBottomWidth: 1, borderBottomColor: theme.colors.border, minHeight: 32 },
+    tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.sm, minHeight: 38 },
+    /** Header sits on a firmer rule, like the head of a printed bill. */
+    trHead: { borderBottomWidth: 1.5, borderBottomColor: theme.colors.textSecondary, minHeight: 34 },
+    /** Closing total row: firm rule above, a little taller. */
+    trTotal: { borderTopWidth: 1.5, borderTopColor: theme.colors.textSecondary, minHeight: 42 },
     /** Soft rule between rows so the eye tracks across the table. */
     trRuled: { borderTopWidth: 1, borderTopColor: theme.colors.border },
-    cell: { flex: 1, minWidth: 0, paddingVertical: 4, paddingRight: theme.spacing.xs },
-    cellFirst: { flex: 1.6 },
-    cellNum: { flex: 0, flexShrink: 0, textAlign: 'right', paddingRight: 0, paddingLeft: theme.spacing.sm },
-    /** Header over a numeric column: right-aligned, but allowed to shrink. */
-    cellNumHead: { minWidth: 72 },
-    /** Fixed widths inside a horizontally scrolling table. */
-    cellWide: { flex: 0, width: 104 },
-    cellWideFirst: { flex: 0, width: 150 },
+    /** Every cell: a fixed width per column (from content), so rows stay aligned. */
+    cell: { flexShrink: 0, paddingVertical: 6, paddingRight: theme.spacing.sm, justifyContent: 'center' },
+    cellNum: { textAlign: 'right', paddingRight: 0 },
+    /** Status cell: coloured dot + coloured word. */
+    statusCell: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    statusDot: { width: 7, height: 7, borderRadius: theme.radius.pill },
+    statusText: { flexShrink: 1, minWidth: 0 },
   });

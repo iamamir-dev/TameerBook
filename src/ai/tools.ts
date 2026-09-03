@@ -376,7 +376,7 @@ export function summarizeAnswerForModel(a: Answer): string {
   const total = (a.list ?? a.rows).length;
   const sections = a.sections?.map((sec) => ({
     title: sec.title,
-    rows: sec.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
+    rows: sec.rows.slice(0, 12).map((r) => (r.fields ? { title: r.title, ...r.fields } : { title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
   }));
   // `cardRows` tells the model the UI already renders these rows as a card, so
   // it should summarise rather than repeat them (see WRITING template C).

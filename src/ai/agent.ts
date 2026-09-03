@@ -199,7 +199,8 @@ async function confirmationLine(transport: AiTransport, messages: AiChatMessage[
   const ask: AiChatMessage = {
     role: 'user',
     content:
-      `[app] You proposed this action and the app is showing it as a card with Accept and Reject buttons: ${JSON.stringify(facts)}. ` +
+      `[app] You proposed ${facts.length > 1 ? `these ${facts.length} actions; the app shows them ONE AT A TIME as cards (step 1, then 2…), each with Accept and Reject` : 'this action and the app is showing it as a card with Accept and Reject buttons'}: ${JSON.stringify(facts)}. ` +
+      (facts.length > 1 ? 'Describe the steps in order in one short sentence each ("Pehle… phir… aakhir mein…"). ' : '') +
       'Write 1 to 2 short sentences for a builder who knows nothing about accounting, in the SAME language and script the user wrote in (Roman Urdu → Roman Urdu, Urdu script → Urdu, English → English). ' +
       'Say what is happening in everyday words: who, how much (always "Rs 1,500" style), what it is for, and which account the money leaves or enters and by how much. ' +
       'Patterns to copy: paying someone → "Aap Rafiq Traders ko bricks ke baqaye ke **Rs 1,500** cash de rahe hain. Cash in Hand se Rs 1,500 kam ho jayenge." / "You are paying Rafiq Traders **Rs 1,500** in cash for the bricks balance. Cash in Hand goes down by Rs 1,500." · ' +

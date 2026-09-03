@@ -50,6 +50,8 @@ export interface AnswerRow {
   amount: number;
   direction: 'in' | 'out';
   typeLabel?: string;
+  /** Separate facts for the model's tables (wage, days, supplier, status…), one per column. */
+  fields?: Record<string, string | number>;
 }
 
 export type AnswerTarget =
@@ -280,15 +282,31 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         },
         {
           title: `${t('investors')} · ${money(capital.totalCapital)}`,
-          rows: capital.shares.map((sh) => ({ id: sh.projectInvestorId, title: sh.name, date: '', subtitle: `${Math.round(sh.ownershipPct)}%`, amount: sh.capital, direction: 'in' as const })),
+          rows: capital.shares.map((sh) => ({ id: sh.projectInvestorId, title: sh.name, date: '', subtitle: `${Math.round(sh.ownershipPct)}%`, amount: sh.capital, direction: 'in' as const, fields: { sharePct: Math.round(sh.ownershipPct), invested: sh.capital } })),
         },
         {
           title: `${t('laborTitle')} · ${workers.length} ${t('aiWorkersLabel')}`,
-          rows: workers.map((x) => ({ id: x.projectLaborer.id, title: x.laborer.name, date: '', subtitle: `${t('aiWage')} ${money(x.projectLaborer.daily_wage)} · ${x.balance.daysFull + x.balance.daysHalf} ${t('daysLabel')}`, amount: x.balance.balance, direction: 'out' as const })),
+          rows: workers.map((x) => ({
+            id: x.projectLaborer.id,
+            title: x.laborer.name,
+            date: '',
+            subtitle: `${t('aiWage')} ${money(x.projectLaborer.daily_wage)} · ${x.balance.daysFull + x.balance.daysHalf} ${t('daysLabel')}`,
+            amount: x.balance.balance,
+            direction: 'out' as const,
+            fields: { dailyWage: x.projectLaborer.daily_wage, days: x.balance.daysFull + x.balance.daysHalf, toPay: x.balance.balance },
+          })),
         },
         {
           title: `${t('bookingsTitle')} · ${projectPos.length}`,
-          rows: projectPos.map((p) => ({ id: p.poId, title: [p.poNumber, p.supplierName].filter(Boolean).join(' · '), date: '', subtitle: p.fullyReceived ? t('poDelivered') : t('poPending'), amount: p.payRemaining, direction: 'out' as const })),
+          rows: projectPos.map((p) => ({
+            id: p.poId,
+            title: p.poNumber,
+            date: '',
+            subtitle: `${p.supplierName ?? ''} · ${p.fullyReceived ? t('poDelivered') : t('poPending')}`,
+            amount: p.payRemaining,
+            direction: 'out' as const,
+            fields: { supplier: p.supplierName ?? '', status: p.fullyReceived ? t('poDelivered') : t('poPending'), toPay: p.payRemaining },
+          })),
         },
         {
           title: t('suggestionsTitle'),

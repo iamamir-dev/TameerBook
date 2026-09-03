@@ -699,6 +699,7 @@ export const ur: TranslationKeys = {
   aiReadyToAdd: 'شامل کرنے کے لیے تیار',
   poLabelShort: 'آرڈر',
   aiDaysLabel: 'دن حاضر',
+  aiStep: 'مرحلہ',
   aiWillWrite: 'تفصیل دیکھیں، پھر تصدیق کریں',
   aiWage: 'دیہاڑی',
   aiOpeningBalance: 'ابتدائی بیلنس',

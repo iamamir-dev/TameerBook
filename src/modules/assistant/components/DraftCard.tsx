@@ -32,11 +32,15 @@ import { navigateToTarget } from '../utils/navigateTarget';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 interface DraftCardProps {
+  /** "Step 2 of 3" when this card is one of several dependent actions from one message. */
+  step?: { index: number; total: number };
   resolved: ResolvedDraft;
   /** Restored outcome (the conversation is persisted across restarts). */
   settled?: { status: 'accepted' | 'rejected'; message?: string };
   /** Fires when the user accepts (message = what was saved) or rejects. */
-  onSettled?: (status: 'accepted' | 'rejected', message?: string) => void;
+  onSettled?: (status: 'accepted' | 'rejected', message?: string, poId?: string) => void;
+  /** Purchase order created or touched by an earlier step in the same message: later steps act on it. */
+  poId?: string | null;
   /** Toast after the write lands. */
   onDone?: (message: string) => void;
 }
@@ -77,7 +81,7 @@ type Picker = 'account' | 'project' | 'participation' | 'plot';
  * ends with Reject · Accept. Accept saves through the same repository guards
  * the forms use; nothing is written before that.
  */
-export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardProps): React.JSX.Element {
+export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: linkedPoId }: DraftCardProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -164,12 +168,12 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
   const accept = () => {
     setFailed(null);
     void run(async () => {
-      const choices: DraftChoices = { amount: amountTyped || null, name: nameTyped.trim() || null, wage: wageTyped || null, plotId, accountId, projectId, projectLaborerId: plId };
+      const choices: DraftChoices = { amount: amountTyped || null, name: nameTyped.trim() || null, wage: wageTyped || null, plotId, accountId, projectId, projectLaborerId: plId, poId: linkedPoId ?? null };
       const target = blocked && plotId ? { ...resolved, plot: { id: plotId, name: plot?.name ?? '' }, issues: [] } : resolved;
       try {
         const a = await applyDraft(target, choices);
         setApplied(a);
-        onSettled?.('accepted', a.message);
+        onSettled?.('accepted', a.message, a.target && 'poId' in a.target ? a.target.poId : undefined);
         onDone?.(a.message);
       } catch (e) {
         // Repository guards throw readable reasons ("No sale is set for this
@@ -236,6 +240,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
             </View>
           ) : (
             <AppText size="xs" color="textSecondary" numberOfLines={1}>
+              {step ? `${t('aiStep')} ${step.index}/${step.total} · ` : ''}
               {blocked ? t('aiPlotTaken') : ready ? (isCreate ? t('aiReadyToAdd') : t('aiWillWrite')) : t('aiFillMissing')}
             </AppText>
           )}

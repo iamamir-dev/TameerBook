@@ -737,6 +737,7 @@ export interface TranslationKeys {
   aiReadyToAdd: string;
   poLabelShort: string;
   aiDaysLabel: string;
+  aiStep: string;
   aiWillWrite: string;
   aiWage: string;
   aiOpeningBalance: string;

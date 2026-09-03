@@ -255,9 +255,25 @@ export function AssistantScreen(): React.JSX.Element {
                   {turn.options.length > 0 ? (
                     <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
                   ) : null}
-                  {turn.drafts.map((d, di) => (
-                    <DraftCard key={`${turn.id}-d${di}`} resolved={d} settled={turn.settled?.[di]} onSettled={(status, message) => settle(turn.id, di, status, message)} onDone={showToast} />
-                  ))}
+                  {/* Several actions from one message (a bill: order → delivery → payment) run one step at a time: the next card
+                      appears only after the previous is accepted or rejected, because later steps depend on the earlier ones. */}
+                  {turn.drafts.map((d, di) => {
+                    const previousSettled = turn.drafts.slice(0, di).every((_, k) => !!turn.settled?.[k]);
+                    if (!previousSettled) return null;
+                    // The order created / touched by an earlier accepted step, so delivery and payment hit the same one.
+                    const linkedPo = turn.drafts.slice(0, di).map((_, k) => turn.settled?.[k]?.poId).filter(Boolean).pop() ?? null;
+                    return (
+                      <DraftCard
+                        key={`${turn.id}-d${di}`}
+                        resolved={d}
+                        settled={turn.settled?.[di]}
+                        step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
+                        poId={linkedPo}
+                        onSettled={(status, message, poId) => settle(turn.id, di, status, message, poId)}
+                        onDone={showToast}
+                      />
+                    );
+                  })}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
                   {/* Same action row under EVERY reply — copy takes the text plus the cards. */}
                   <MessageActions
