@@ -114,13 +114,20 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     if (ref) f.push({ label, value: ref.name });
     else if (spoken) f.push({ label, value: spoken, unresolved: true });
   };
+  /** A party that is not in contacts is fine: the entry keeps the name. Show it as new, not as a problem. */
+  const partyOrNew = (label: string) => {
+    if (r.party) f.push({ label, value: r.party.name });
+    else if (d.kind === 'expense' || d.kind === 'income' || d.kind === 'material') {
+      if (d.party) f.push({ label, value: `${d.party} · ${t('aiNewShort')}` });
+    }
+  };
   const date = (iso?: string) => f.push({ label: t('date'), value: iso && iso !== todayISO() ? formatDisplayDate(iso) : t('today') });
 
   switch (d.kind) {
     case 'expense':
     case 'income':
       named(t('category'), r.category, d.category);
-      named(t('party'), r.party, d.party);
+      partyOrNew(t('party'));
       named(t('projectLabel'), r.project, d.project);
       named(t('accountsTitle'), r.account, d.account);
       if (d.note) f.push({ label: t('note'), value: d.note });
@@ -130,7 +137,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       named(t('material'), r.category, d.item);
       if (d.qty) f.push({ label: t('size'), value: `${formatQty(d.qty)} ${d.unit ?? ''}`.trim() });
       if (d.rate) f.push({ label: t('rateLabel'), value: formatRupees(d.rate), money: true });
-      named(t('supplier'), r.party, d.party);
+      partyOrNew(t('supplier'));
       named(t('projectLabel'), r.project, d.project);
       named(t('accountsTitle'), r.account, d.account);
       date(d.date);

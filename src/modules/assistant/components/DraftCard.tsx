@@ -213,6 +213,9 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
   );
 
   const done = applied || rejected;
+  // A free-text party on an expense / income / material is stored by name; only true misses warn.
+  const freeParty = (d.kind === 'expense' || d.kind === 'income' || d.kind === 'material') && !resolved.party ? d.party : undefined;
+  const unresolvedShown = resolved.unresolved.filter((n) => n !== freeParty);
 
   return (
     <View style={[styles.card, done && styles.cardDone]}>
@@ -296,11 +299,11 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
                 {t('aiPlotTaken')}
               </AppText>
             </View>
-          ) : resolved.unresolved.length > 0 ? (
+          ) : unresolvedShown.length > 0 ? (
             <View style={styles.warn}>
               <AppIcon name="alert" size={14} color="gold" />
               <AppText size="xs" weight="semibold" color="gold" style={styles.warnText}>
-                {t('aiUnresolved')} {resolved.unresolved.join(', ')}
+                {t('aiUnresolved')} {unresolvedShown.join(', ')}
               </AppText>
             </View>
           ) : d.kind === 'payWorker' && !resolved.worker ? (
@@ -326,7 +329,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
                 onSettled?.('rejected');
               }}
               disabled={saving} accessibilityRole="button" style={({ pressed }) => [styles.btn, styles.btnReject, pressed && styles.pressed]}>
-              <AppText size="xs" weight="bold" color="textSecondary">
+              <AppText size="xs" weight="bold">
                 {t('aiReject')}
               </AppText>
             </Pressable>

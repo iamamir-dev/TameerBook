@@ -5,15 +5,17 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /**
-     * The inline approval card: a plain white surface (no shadow, no outline) with a header (icon · title · amount), a recessed details
-     * panel of hairline-ruled rows, and a compact Reject / Accept footer.
+     * The inline approval card: a soft tinted surface (no shadow, no outline)
+     * with a header (icon · title · amount), a white details panel of
+     * hairline-ruled rows, and a compact Reject / Accept footer.
      */
     card: {
       alignSelf: 'stretch',
-      backgroundColor: theme.colors.card,
+      backgroundColor: theme.colors.accentSoft,
       borderRadius: theme.radius.lg,
+      overflow: 'hidden',
     },
-    cardDone: { opacity: 0.92 },
+    cardDone: { backgroundColor: theme.colors.primarySoft },
     head: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -26,7 +28,7 @@ export const makeStyles = (theme: Theme) =>
       width: 36,
       height: 36,
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.accentSoft,
+      backgroundColor: theme.colors.card,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -43,14 +45,14 @@ export const makeStyles = (theme: Theme) =>
       paddingHorizontal: theme.spacing.sm,
       height: 20,
       borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.successSoft,
+      backgroundColor: theme.colors.card,
       marginTop: 2,
     },
     statusPillMuted: { backgroundColor: theme.colors.track },
-    /** Recessed panel holding the detail rows. */
+    /** White panel holding the detail rows. */
     panel: {
-      marginHorizontal: theme.spacing.md,
-      backgroundColor: theme.colors.background,
+      marginHorizontal: theme.spacing.sm,
+      backgroundColor: theme.colors.card,
       borderRadius: theme.radius.md,
       overflow: 'hidden',
     },
@@ -74,7 +76,7 @@ export const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
-      marginHorizontal: theme.spacing.md,
+      marginHorizontal: theme.spacing.sm,
       marginTop: theme.spacing.sm,
       backgroundColor: theme.colors.goldSoft,
       borderRadius: theme.radius.sm,
@@ -103,7 +105,7 @@ export const makeStyles = (theme: Theme) =>
     },
     btnAccept: { backgroundColor: theme.colors.accent, paddingHorizontal: theme.spacing.lg },
     btnAcceptDisabled: { backgroundColor: theme.colors.track, paddingHorizontal: theme.spacing.lg },
-    btnReject: { backgroundColor: 'transparent' },
+    btnReject: { backgroundColor: theme.colors.card },
     pressed: { opacity: 0.8 },
     editLink: { alignItems: 'center', paddingBottom: theme.spacing.sm },
     /** Footer after saving: "Saved · View ›" */
@@ -113,9 +115,7 @@ export const makeStyles = (theme: Theme) =>
       gap: theme.spacing.xs,
       paddingHorizontal: theme.spacing.md,
       minHeight: 40,
-      marginTop: theme.spacing.sm,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: theme.colors.border,
+      marginTop: theme.spacing.xs,
     },
     doneText: { flex: 1 },
     /** Breathing room under the panel when there is no footer. */

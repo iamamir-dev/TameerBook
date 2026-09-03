@@ -40,7 +40,7 @@ export {
 } from './drafts';
 export { agentSystemPrompt, billSystemPrompt, narrationSystemPrompt, transcriptionPrompt, type World } from './prompts';
 export { buildWorld } from './context';
-export { periodLabel, runIntent, type Answer, type AnswerChart, type AnswerListItem, type AnswerRow, type AnswerTarget } from './runner';
+export { periodLabel, runIntent, type Answer, type AnswerCalendar, type AnswerChart, type AnswerListItem, type AnswerRow, type AnswerTarget } from './runner';
 export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';
 export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';
 export { TOOLS, interpretToolCall, summarizeAnswerForModel, type ToolAction } from './tools';
