@@ -72,3 +72,18 @@ server/ai-proxy/                  Cloudflare Worker (wrangler), excluded from ro
 - Real-device pass: record 10 Roman-Urdu utterances + 30 real bills; measure how
   many land fully correct; tune the few-shots from the misses.
 - Spoken daily summary card on Home (narration prompt exists in `prompts.ts`).
+
+## Rebuild (2026-09-03, second pass) — tool-calling agent
+The single-shot JSON router was replaced by a proper agent loop:
+- `src/ai/tools.ts` — the tool catalogue (OpenAI function-calling specs): read
+  tools → intents → `runIntent`; write tools → drafts → confirmation sheet;
+  `open_screen`. `interpretToolCall` validates every call.
+- `src/ai/agent.ts` — `runAgent`: up to 4 model calls; read results are fed
+  back so the model writes an EXACT grounded answer; writes/opens end the turn.
+- `src/ai/providers.ts` + `client.ts` — provider catalogue (Groq, Gemini native,
+  OpenRouter, custom OpenAI-compatible, own proxy) with keys + model per provider,
+  `testConnection()`. Voice: Groq Whisper / Gemini audio / Groq-key fallback.
+- Settings → Assistant (AI): provider picker, key, model presets + custom id,
+  proxy URL/token, custom base URL, voice key hint, connection test.
+- Turn = model text + data cards + optional draft/open. Prompt is short; tool
+  schemas carry the shapes.
