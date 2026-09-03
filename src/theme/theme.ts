@@ -157,10 +157,25 @@ const darkColors: ColorPalette = {
 export interface Gradients {
   /** Warm charcoal pair for the hero balance card (expo-linear-gradient). */
   hero: readonly [string, string];
+  /** The assistant orb — two rotating sweeps (green → teal → violet, gold → coral). */
+  orbA: readonly [string, string, string];
+  orbB: readonly [string, string, string];
+  /** Soft glow behind the orb. */
+  orbGlow: string;
 }
 
-const lightGradients: Gradients = { hero: ['#2A2820', '#16150F'] };
-const darkGradients: Gradients = { hero: ['#262420', '#131210'] };
+const lightGradients: Gradients = {
+  hero: ['#2A2820', '#16150F'],
+  orbA: ['#1FA15D', '#2BB3B0', '#6B5BD6'],
+  orbB: ['#F0B35A', '#E9736B', '#1FA15D'],
+  orbGlow: 'rgba(43, 179, 176, 0.35)',
+};
+const darkGradients: Gradients = {
+  hero: ['#262420', '#131210'],
+  orbA: ['#2BB06E', '#37C4C0', '#7C6CF0'],
+  orbB: ['#F5C069', '#F07D74', '#2BB06E'],
+  orbGlow: 'rgba(55, 196, 192, 0.35)',
+};
 
 /* -------------------------------------------------------------------------- */
 /*  Typography                                                                */
