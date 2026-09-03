@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
-import { GROQ_WHISPER, MAX_OUTPUT_TOKENS, PROVIDERS, type AiProviderId } from './providers';
+import { GROQ_WHISPER, MAX_OUTPUT_TOKENS, PROVIDERS, TOOL_MAX_TOKENS, type AiProviderId } from './providers';
 import {
   AiError,
   type AiChatMessage,
@@ -231,13 +231,16 @@ class OpenAiCompatTransport implements AiTransport {
   }
 
   async chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
+    const model = opts.model ?? this.model;
     const data = await this.completion({
-      model: opts.model ?? this.model,
+      model,
       messages: toOaMessages(messages),
       temperature: opts.temperature ?? 0,
-      max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
+      max_tokens: opts.maxTokens ?? TOOL_MAX_TOKENS,
       tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
       tool_choice: 'auto',
+      // gpt-oss thinks before it answers; keep that short so the reply fits.
+      ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
     });
     const msg = data.choices?.[0]?.message;
     if (!msg) throw new AiError('failed', 'empty completion');
@@ -371,7 +374,7 @@ class GeminiTransport implements AiTransport {
       ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
       contents,
       tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }],
-      generationConfig: { temperature: opts.temperature ?? 0, maxOutputTokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS },
+      generationConfig: { temperature: opts.temperature ?? 0, maxOutputTokens: opts.maxTokens ?? TOOL_MAX_TOKENS },
     });
     const toolCalls: ToolCall[] = parts
       .filter((p) => p.functionCall?.name)

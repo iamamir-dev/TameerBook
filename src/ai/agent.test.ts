@@ -175,8 +175,16 @@ describe('runAgent', () => {
     expect(t.seen[0].map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
   });
 
-  it('throws unparseable when the model returns nothing usable', async () => {
-    const t = fake([{ content: '', toolCalls: [] }]);
+  it('nudges once after an empty reply, then answers', async () => {
+    const t = fake([{ content: '', toolCalls: [] }, { content: 'Theek hai.', toolCalls: [] }]);
+    const r = await runAgent('?', { transport: t, world, runIntent: async () => poAnswer });
+    expect(r.text).toBe('Theek hai.');
+    expect(r.calls).toBe(2);
+    expect(t.seen[1].at(-1)).toMatchObject({ role: 'user' });
+  });
+
+  it('throws unparseable when the model stays empty after the nudge', async () => {
+    const t = fake([{ content: '', toolCalls: [] }, { content: '', toolCalls: [] }]);
     await expect(runAgent('?', { transport: t, world, runIntent: async () => poAnswer })).rejects.toMatchObject({ code: 'unparseable' });
   });
 });

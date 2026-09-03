@@ -58,14 +58,29 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   const messages: AiChatMessage[] = [{ role: 'system', content: agentSystemPrompt(world) }, ...(deps.history ?? []), { role: 'user', content: text }];
   const cards: Answer[] = [];
   const memoryBits: string[] = [];
+  let nudged = false;
 
   for (let call = 1; call <= maxCalls; call++) {
     const res = await transport.chatTools(messages, TOOLS);
 
     if (res.toolCalls.length === 0) {
       const { text: answer, suggestions } = splitSuggestions(res.content);
-      if (!answer && cards.length === 0) throw new AiError('unparseable', 'no text and no tool call');
-      return { text: answer, cards, suggestions, memory: [...memoryBits, answer && `assistant: ${answer}`].filter(Boolean).join('\n'), calls: call };
+      if (!answer && cards.length === 0) {
+        // An empty turn (reasoning-only output, truncated completion): nudge once.
+        if (!nudged && call < maxCalls) {
+          nudged = true;
+          messages.push({ role: 'assistant', content: '' });
+          messages.push({ role: 'user', content: 'Your reply was empty. Either call the right tool now or answer in text (1–3 sentences).' });
+          continue;
+        }
+        throw new AiError('unparseable', 'no text and no tool call');
+      }
+      if (!answer) {
+        // Tools ran but the model added nothing: use the cards' own sentences.
+        const fallback = cards.map((c) => c.speak).join(' ');
+        return { text: fallback, cards, suggestions, memory: memoryBits.join('\n'), calls: call };
+      }
+      return { text: answer, cards, suggestions, memory: [...memoryBits, `assistant: ${answer}`].join('\n'), calls: call };
     }
 
     // Writes and opens end the turn: the user decides next.

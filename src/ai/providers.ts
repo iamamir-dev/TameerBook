@@ -146,3 +146,5 @@ export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
 export const GROQ_WHISPER = 'whisper-large-v3-turbo';
 /** Keep prompts + answers small: Groq's free tier is 8K tokens per minute. */
 export const MAX_OUTPUT_TOKENS = 700;
+/** Tool turns need room for reasoning + a JSON call + the final answer. */
+export const TOOL_MAX_TOKENS = 1400;
