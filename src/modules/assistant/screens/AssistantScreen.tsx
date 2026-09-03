@@ -117,6 +117,9 @@ export function AssistantScreen(): React.JSX.Element {
     return () => clearTimeout(id);
   }, [turns.length, busy]);
 
+  // Follow-up chips show only on the newest assistant turn.
+  const lastAssistantId = [...turns].reverse().find((x) => x.role === 'assistant')?.id;
+
   const send = () => {
     const text = input;
     setInput('');
@@ -195,6 +198,23 @@ export function AssistantScreen(): React.JSX.Element {
                   ))}
                   {turn.draft ? <DraftCard resolved={turn.draft} onDone={showToast} /> : null}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
+                  {turn.suggestions.length > 0 && turn.id === lastAssistantId ? (
+                    <View style={styles.chips}>
+                      {turn.suggestions.map((sug) => (
+                        <Pressable
+                          key={sug}
+                          onPress={() => void ask(sug)}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          style={({ pressed }) => [styles.chip, styles.chipFollow, pressed && styles.chipPressed]}
+                        >
+                          <AppText size="xs" weight="semibold" color="accent">
+                            {sug}
+                          </AppText>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               </AssistantRow>
             );

@@ -44,4 +44,4 @@ export { periodLabel, runIntent, type Answer, type AnswerChart, type AnswerListI
 export { billToMaterialPrefill, billToPurchaseOrderPrefill, coerceBill, type Bill, type BillItem } from './bill';
 export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';
 export { TOOLS, interpretToolCall, summarizeAnswerForModel, type ToolAction } from './tools';
-export { runAgent, type AgentDeps, type AgentResult } from './agent';
+export { runAgent, splitSuggestions, type AgentDeps, type AgentResult } from './agent';

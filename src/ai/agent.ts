@@ -21,6 +21,8 @@ export interface AgentResult {
   draft?: ResolvedDraft;
   /** A screen the user asked to open. */
   open?: OpenScreen;
+  /** Tappable follow-ups the model offered ("you can also…"). */
+  suggestions: string[];
   /** Compact memory of this turn for the next one. */
   memory: string;
   /** How many model calls it took. */
@@ -36,6 +38,20 @@ export interface AgentDeps {
   maxCalls?: number;
 }
 
+/** Split "…\nSUGGEST: a | b | c" into the answer and up to three follow-ups. */
+export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[] } {
+  const src = (raw ?? '').trim();
+  if (!src) return { text: '', suggestions: [] };
+  const m = src.match(/(?:^|\n)\s*SUGGEST\s*:\s*(.+)\s*$/i);
+  if (!m) return { text: src, suggestions: [] };
+  const suggestions = m[1]
+    .split('|')
+    .map((x) => x.trim().replace(/^["'“”]+|["'“”.]+$/g, ''))
+    .filter((x) => x.length > 0 && x.length <= 60)
+    .slice(0, 3);
+  return { text: src.slice(0, m.index).trim(), suggestions };
+}
+
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
   const { transport, world, runIntent } = deps;
   const maxCalls = deps.maxCalls ?? 4;
@@ -47,9 +63,9 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     const res = await transport.chatTools(messages, TOOLS);
 
     if (res.toolCalls.length === 0) {
-      const answer = (res.content ?? '').trim();
+      const { text: answer, suggestions } = splitSuggestions(res.content);
       if (!answer && cards.length === 0) throw new AiError('unparseable', 'no text and no tool call');
-      return { text: answer, cards, memory: [...memoryBits, answer && `assistant: ${answer}`].filter(Boolean).join('\n'), calls: call };
+      return { text: answer, cards, suggestions, memory: [...memoryBits, answer && `assistant: ${answer}`].filter(Boolean).join('\n'), calls: call };
     }
 
     // Writes and opens end the turn: the user decides next.
@@ -58,15 +74,16 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       if (action.kind === 'write') {
         const draft = resolveDraft(action.draft, world);
         return {
-          text: (res.content ?? '').trim(),
+          text: splitSuggestions(res.content).text,
           cards,
           draft,
+          suggestions: [],
           memory: [...memoryBits, `assistant proposed ${tc.name}: ${JSON.stringify(action.draft)} (awaiting user confirmation)`].join('\n'),
           calls: call,
         };
       }
       if (action.kind === 'open') {
-        return { text: (res.content ?? '').trim(), cards, open: action.screen, memory: [...memoryBits, `assistant opened ${action.screen}`].join('\n'), calls: call };
+        return { text: splitSuggestions(res.content).text, cards, open: action.screen, suggestions: [], memory: [...memoryBits, `assistant opened ${action.screen}`].join('\n'), calls: call };
       }
     }
 
@@ -94,5 +111,5 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   // Out of calls: fall back to the cards' own sentences.
   const fallback = cards.map((c) => c.speak).join(' ');
   if (!fallback) throw new AiError('unparseable', 'agent loop exhausted');
-  return { text: fallback, cards, memory: memoryBits.join('\n'), calls: maxCalls };
+  return { text: fallback, cards, suggestions: [], memory: memoryBits.join('\n'), calls: maxCalls };
 }

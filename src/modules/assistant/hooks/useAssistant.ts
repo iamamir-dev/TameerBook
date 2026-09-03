@@ -29,6 +29,8 @@ export type Turn =
       draft?: ResolvedDraft;
       /** A screen it opened. */
       open?: OpenScreen;
+      /** Tappable follow-ups. */
+      suggestions: string[];
     }
   | { id: string; role: 'assistant'; error: AiErrorCode };
 
@@ -99,7 +101,7 @@ export function useAssistant(): AssistantApi {
       const r = await runAgent(text, { transport, world, runIntent, history: history.current });
       remember('user', text);
       remember('assistant', r.memory);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open, suggestions: r.suggestions } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);

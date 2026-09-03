@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { runAgent } from './agent';
+import { runAgent, splitSuggestions } from './agent';
 import type { World } from './prompts';
 import type { Answer } from './runner';
 import { interpretToolCall, summarizeAnswerForModel, TOOLS } from './tools';
@@ -97,11 +97,25 @@ describe('summarizeAnswerForModel', () => {
   });
 });
 
+describe('splitSuggestions', () => {
+  it('peels the SUGGEST line off the answer', () => {
+    expect(splitSuggestions('Cash: Rs 1,00,000.\nSUGGEST: Is mahine ka kharcha | Akram ko kitna dena hai | Pending orders')).toEqual({
+      text: 'Cash: Rs 1,00,000.',
+      suggestions: ['Is mahine ka kharcha', 'Akram ko kitna dena hai', 'Pending orders'],
+    });
+  });
+  it('leaves plain answers alone and caps at three', () => {
+    expect(splitSuggestions('Salam!')).toEqual({ text: 'Salam!', suggestions: [] });
+    expect(splitSuggestions('x\nSUGGEST: a | b | c | d').suggestions).toHaveLength(3);
+    expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [] });
+  });
+});
+
 describe('runAgent', () => {
   it('runs a read tool, feeds the result back, and returns the model text + card', async () => {
     const t = fake([
       { content: null, toolCalls: [{ id: 'c1', name: 'get_purchase_orders', args: { status: 'pending' } }] },
-      { content: '2 orders are still pending: PO-0015 Akram Traders (Rs 5,40,293) and PO-0011 Bilal Depot.', toolCalls: [] },
+      { content: '2 orders are still pending: PO-0015 Akram Traders (Rs 5,40,293) and PO-0011 Bilal Depot.\nSUGGEST: Akram ko kitna dena hai | Delivered orders', toolCalls: [] },
     ]);
     const calls: string[] = [];
     const r = await runAgent('which orders are not delivered yet', {
@@ -115,6 +129,8 @@ describe('runAgent', () => {
     expect(calls).toEqual(['purchase_orders']);
     expect(r.cards).toHaveLength(1);
     expect(r.text).toContain('PO-0015');
+    expect(r.text).not.toContain('SUGGEST');
+    expect(r.suggestions).toEqual(['Akram ko kitna dena hai', 'Delivered orders']);
     expect(r.calls).toBe(2);
     // Second model call saw the tool result.
     const roles = t.seen[1].map((m) => m.role);

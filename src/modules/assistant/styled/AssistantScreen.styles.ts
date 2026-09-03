@@ -40,6 +40,8 @@ export const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.primarySoft,
     },
     chipPressed: { opacity: 0.7 },
+    /** Model-offered follow-ups: outlined in the accent, quieter than answers. */
+    chipFollow: { backgroundColor: theme.colors.accentSoft },
     turnStack: { gap: theme.spacing.sm },
     sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
     setup: {
