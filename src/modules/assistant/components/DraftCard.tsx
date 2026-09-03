@@ -95,6 +95,8 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
 
   const [applied, setApplied] = useState<Applied | null>(settled?.status === 'accepted' ? { message: settled.message ?? '' } : null);
   const [rejected, setRejected] = useState(settled?.status === 'rejected');
+  /** Why the last Accept failed, shown inside the card instead of a generic alert. */
+  const [failed, setFailed] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [plots, setPlots] = useState<PlotRow[]>([]);
@@ -160,13 +162,20 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
     !(d.kind === 'payWorker' && !resolved.worker);
 
   const accept = () => {
+    setFailed(null);
     void run(async () => {
       const choices: DraftChoices = { amount: amountTyped || null, name: nameTyped.trim() || null, wage: wageTyped || null, plotId, accountId, projectId, projectLaborerId: plId };
       const target = blocked && plotId ? { ...resolved, plot: { id: plotId, name: plot?.name ?? '' }, issues: [] } : resolved;
-      const a = await applyDraft(target, choices);
-      setApplied(a);
-      onSettled?.('accepted', a.message);
-      onDone?.(a.message);
+      try {
+        const a = await applyDraft(target, choices);
+        setApplied(a);
+        onSettled?.('accepted', a.message);
+        onDone?.(a.message);
+      } catch (e) {
+        // Repository guards throw readable reasons ("No sale is set for this
+        // project yet"). Keep them in the card, where the user is looking.
+        setFailed(e instanceof Error && e.message ? e.message : t('errorBody'));
+      }
     });
   };
 
@@ -254,6 +263,15 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
               {needs.workerProject && d.kind === 'createWorker' && !d.wage ? (
                 <AmountInput label={t('aiWage')} value={wageTyped} onChange={setWageTyped} floating surface={theme.colors.card} />
               ) : null}
+            </View>
+          ) : null}
+
+          {failed ? (
+            <View style={styles.warn}>
+              <AppIcon name="alert" size={14} color="danger" />
+              <AppText size="xs" weight="semibold" color="danger" style={styles.warnText}>
+                {failed}
+              </AppText>
             </View>
           ) : null}
 

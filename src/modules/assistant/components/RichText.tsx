@@ -115,13 +115,18 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
         <View key={ri} style={[styles.tr, ri > 0 && styles.trRuled]}>
           {Array.from({ length: cols }, (_, c) => (
             <AppText key={c} size="sm" weight={numeric[c] ? 'bold' : 'regular'} tabular={numeric[c]} numberOfLines={2} selectable style={cellStyle(c)}>
-              {renderInline(r[c] ?? '')}
+              {renderInline(noBreakRupees(r[c] ?? ''))}
             </AppText>
           ))}
         </View>
       ))}
     </View>
   );
+}
+
+/** Keep "Rs 5,000" on one line inside narrow table cells. */
+function noBreakRupees(s: string): string {
+  return s.replace(/\b(Rs\.?|PKR)\s+(?=[\d(−-])/g, '$1\u00A0');
 }
 
 /** Split "**bold**" spans into nested Text runs. */

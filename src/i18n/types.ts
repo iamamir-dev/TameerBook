@@ -693,6 +693,8 @@ export interface TranslationKeys {
   aiOpenForm: string;
   aiMarkAttendance: string;
   aiAttendanceDone: string;
+  paymentType: string;
+  aiAllItems: string;
   aiAllPresent: string;
   aiThinking: string;
   aiChip1: string;
@@ -714,6 +716,7 @@ export interface TranslationKeys {
   aiMore: string;
   statusActive: string;
   statusCompleted: string;
+  aiConfirmHint: string;
   aiConfirmTitle: string;
   aiAddLabel: string;
   aiSaveLabel: string;

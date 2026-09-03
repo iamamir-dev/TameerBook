@@ -484,8 +484,15 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       const order = { pending: 0, partial: 1, delivered: 2 } as const;
       const sorted = [...filtered].sort((a, b) => order[deliveryOf(a)] - order[deliveryOf(b)] || b.payRemaining - a.payRemaining);
       const statusLabel = { delivered: t('poDelivered'), partial: t('poPartial'), pending: t('poPending') } as const;
+      const statusTitle: Record<typeof intent.status, string> = {
+        pending: t('poPending'),
+        delivered: t('poDelivered'),
+        unpaid: t('owedToSuppliers'),
+        open: t('bookingsTitle'),
+        all: t('bookingsTitle'),
+      };
       return {
-        title: `${t('bookingsTitle')} · ${filtered.length}`,
+        title: `${statusTitle[intent.status]} · ${filtered.length}`,
         headline: owed > 0 ? money(owed) : undefined,
         sub: `${delivered} ${t('poDelivered').toLowerCase()} · ${pending} ${t('poPending').toLowerCase()}${owed > 0 ? ` · ${t('owedToSuppliers').toLowerCase()}` : ''}`,
         rows: sorted.slice(0, MAX_ROWS).map((p) => ({

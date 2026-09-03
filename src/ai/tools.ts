@@ -372,5 +372,17 @@ export function summarizeAnswerForModel(a: Answer): string {
     title: sec.title,
     rows: sec.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
   }));
-  return JSON.stringify({ title: a.title, headline: a.headline, sub: a.sub, count: total, rows, more: Math.max(0, total - rows.length), ...(sections ? { sections } : {}) });
+  // `cardRows` tells the model the UI already renders these rows as a card, so
+  // it should summarise rather than repeat them (see WRITING template C).
+  const showsCard = total > 0 || Boolean(a.chart);
+  return JSON.stringify({
+    title: a.title,
+    headline: a.headline,
+    sub: a.sub,
+    count: total,
+    ...(showsCard ? { cardRows: total, note: 'The app shows these rows as a card under your reply. Do not repeat them as a table or list; summarise in 1 to 2 sentences.' } : {}),
+    rows,
+    more: Math.max(0, total - rows.length),
+    ...(sections ? { sections } : {}),
+  });
 }

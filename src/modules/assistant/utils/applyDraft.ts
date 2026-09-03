@@ -315,7 +315,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
         await addDelivery({ bookingId: it.booking.id, qty: Math.min(d.qty ?? it.qtyRemaining, it.qtyRemaining), date });
         n = 1;
       }
-      return { message: `${t('aiSaved')} · ${po.poNumber} · ${n} ${t('items').toLowerCase()}`, target: { screen: 'PurchaseOrderDetail', poId: po.poId } };
+      return { message: `${t('aiSaved')} · ${po.poNumber} · ${n} ${(n === 1 ? t('item') : t('items')).toLowerCase()}`, target: { screen: 'PurchaseOrderDetail', poId: po.poId } };
     }
 
     case 'payPurchaseOrder': {

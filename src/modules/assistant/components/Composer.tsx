@@ -78,13 +78,14 @@ export function Composer({
         </View>
       ) : null}
       <View style={[styles.pill, recording && styles.pillRecording, transcribing && styles.pillBusy]}>
+        <View style={styles.leading}>
         <Pressable
           onPress={onAttach}
           disabled={disabled || recording || transcribing}
           accessibilityRole="button"
           accessibilityLabel={t('aiAttach')}
           hitSlop={theme.touch.hitSlop}
-          style={({ pressed }) => [styles.round, styles.mic, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.round, styles.lead, styles.mic, pressed && styles.pressed]}
         >
           <AppIcon name="image" size={20} color="textSecondary" />
         </Pressable>
@@ -95,10 +96,11 @@ export function Composer({
           accessibilityRole="button"
           accessibilityLabel={t('aiHoldToTalk')}
           hitSlop={theme.touch.hitSlop}
-          style={({ pressed }) => [styles.round, styles.mic, recording && styles.micRecording, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.round, styles.lead, styles.mic, recording && styles.micRecording, pressed && styles.pressed]}
         >
           <AppIcon name="mic" size={22} color={recording ? 'onAccent' : 'primary'} />
         </Pressable>
+        </View>
 
         {recording ? (
           <View style={styles.status}>

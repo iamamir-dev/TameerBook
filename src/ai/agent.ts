@@ -66,12 +66,13 @@ export function splitSuggestions(raw: string | null | undefined): { text: string
   if (!text) return { text: '', suggestions: [], options: [] };
   let suggestions: string[] = [];
   let options: string[] = [];
-  const sug = text.match(/(?:^|\n)\s*SUGGEST\s*:\s*(.+)\s*$/i);
+  // Markers may land mid-line ("…kya tha? OPTIONS: a | b"); accept them anywhere.
+  const sug = text.match(/(?:^|\n|\s)SUGGEST\s*:\s*(.+)\s*$/i);
   if (sug) {
     suggestions = splitPipes(sug[1], 3);
     text = text.slice(0, sug.index).trim();
   }
-  const opt = text.match(/(?:^|\n)\s*OPTIONS\s*:\s*(.+)\s*$/i);
+  const opt = text.match(/(?:^|\n|\s)OPTIONS\s*:\s*(.+)\s*$/i);
   if (opt) {
     options = splitPipes(opt[1], 8);
     text = text.slice(0, opt.index).trim();
@@ -120,9 +121,18 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     const writes = actions.filter((a) => a.action.kind === 'write');
     if (writes.length > 0) {
       const drafts = writes.map((a) => resolveDraft((a.action as { kind: 'write'; draft: Draft }).draft, world));
+      let text = splitSuggestions(res.content).text;
+      if (!text) {
+        // Tool-only replies carry no words. Non-technical users need a plain
+        // sentence above the card saying what will be saved, so ask for one.
+        deps.onProgress?.('writing', []);
+        text = await confirmationLine(deps.transport, messages, drafts);
+      }
       return {
-        text: splitSuggestions(res.content).text,
-        cards,
+        text,
+        // Read cards fetched on the way (checking a balance, finding the PO) are
+        // scaffolding, not the answer: the user asked to record something.
+        cards: [],
         drafts,
         suggestions: [],
         options: [],
@@ -164,4 +174,38 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   const fallback = cards.map((c) => c.speak).join(' ');
   if (!fallback) throw new AiError('unparseable', 'agent loop exhausted');
   return { text: fallback, cards, drafts: [], suggestions: [], options: [], memory: memoryBits.join('\n'), calls: maxCalls };
+}
+
+/**
+ * One or two sentences, in the user's language, restating what the proposed
+ * action will save and asking them to accept or reject. Empty on failure; the
+ * screen then shows its fixed hint instead.
+ */
+async function confirmationLine(transport: AiTransport, messages: AiChatMessage[], drafts: ResolvedDraft[]): Promise<string> {
+  const facts = drafts.map((r) => ({
+    ...r.draft,
+    ...(r.account ? { account: r.account.name } : {}),
+    ...(r.accountTo ? { accountTo: r.accountTo.name } : {}),
+    ...(r.project ? { project: r.project.name } : {}),
+    ...(r.plot ? { plot: r.plot.name } : {}),
+    ...(r.party ? { party: r.party.name } : {}),
+    ...(r.worker ? { worker: r.worker.name } : {}),
+    ...(r.investor ? { investor: r.investor.name } : {}),
+  }));
+  const ask: AiChatMessage = {
+    role: 'user',
+    content:
+      `[app] You proposed this action and the app is showing it as a card with Accept and Reject buttons: ${JSON.stringify(facts)}. ` +
+      'Write 1 to 2 short sentences in the same language the user wrote in (Roman Urdu stays Roman Urdu), restating in plain words exactly what will be saved: who, how much, from which account, for which project or plot, and the date if not today. ' +
+      'End by telling them to tap Accept if this is right or Reject if not. No lists, no headings, no tool calls, no markdown except **bold** for the amount.',
+  };
+  try {
+    // Tool-call turns cannot be replayed without the tools list, so restate
+    // from a clean context: system prompt, the user's own words, this ask.
+    const clean = messages.filter((m) => m.role === 'system' || m.role === 'user').map((m) => (m.role === 'user' ? { role: 'user' as const, content: m.content } : m));
+    const out = await transport.chat([...clean, ask], { temperature: 0.2 });
+    return cleanDashes(splitSuggestions(out).text);
+  } catch {
+    return '';
+  }
 }

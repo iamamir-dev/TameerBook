@@ -50,15 +50,15 @@ export function draftTitle(r: ResolvedDraft, t: T): string {
     case 'receiveDelivery':
       return t('poDelivered');
     case 'payPurchaseOrder':
-      return `${t('bookingsTitle')} · ${t('payWorker').split(' ')[0]}`;
+      return t('payBookingLabel');
     case 'plotPayment':
-      return t('seller');
+      return t('sellerPaymentTypes');
     case 'plotExpense':
       return `${t('plotsTitle')} · ${t('kharcha')}`;
     case 'setSale':
       return t('aiSoldLabel');
     case 'saleReceipt':
-      return t('fromProjectSale');
+      return t('buyerPaymentTypes');
     case 'saleCost':
       return `${t('aiSoldLabel')} · ${t('kharcha')}`;
     case 'investorPayment':
@@ -194,7 +194,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     case 'receiveDelivery':
       if (d.po) f.push({ label: t('bookingsTitle'), value: d.po });
       if (d.item) f.push({ label: t('material'), value: `${d.item}${d.qty ? ` · ${formatQty(d.qty)}` : ''}` });
-      else f.push({ label: t('material'), value: t('aiAllPresent') });
+      else f.push({ label: t('material'), value: t('aiAllItems') });
       date(d.date);
       break;
     case 'payPurchaseOrder':
@@ -204,7 +204,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       break;
     case 'plotPayment':
       named(t('plotsTitle'), r.plot, d.plot);
-      if (d.payType) f.push({ label: t('party'), value: d.payType });
+      if (d.payType) f.push({ label: t('paymentType'), value: payTypeLabel(t, d.payType) });
       named(t('accountsTitle'), r.account, d.account);
       date(d.date);
       break;
@@ -221,7 +221,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       break;
     case 'saleReceipt':
       named(t('projectLabel'), r.project, d.project);
-      if (d.payType) f.push({ label: t('party'), value: d.payType });
+      if (d.payType) f.push({ label: t('paymentType'), value: payTypeLabel(t, d.payType) });
       named(t('accountsTitle'), r.account, d.account);
       date(d.date);
       break;
@@ -261,4 +261,10 @@ export function draftSummary(r: ResolvedDraft, t: T): { title: string; line: str
   const amount = draftAmount(r);
   const parts = [amount != null ? formatRupees(amount) : undefined, ...draftFields(r, t).filter((x) => x.label !== t('date')).map((x) => x.value)];
   return { title: draftTitle(r, t), line: parts.filter((p): p is string => !!p).join(' · ') };
+}
+
+const PAY_TYPE_KEYS = { TOKEN: 'ptToken', BAYANA: 'ptBayana', INSTALLMENT: 'ptInstallment', FINAL: 'ptFinal' } as const;
+function payTypeLabel(t: T, pt: string): string {
+  const key = PAY_TYPE_KEYS[pt as keyof typeof PAY_TYPE_KEYS];
+  return key ? t(key) : pt;
 }

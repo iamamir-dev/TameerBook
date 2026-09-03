@@ -246,7 +246,7 @@ export function AssistantScreen(): React.JSX.Element {
             return (
               <AssistantRow key={turn.id}>
                 <View style={styles.turnStack}>
-                  {turn.text ? <AssistantBubble text={turn.text} /> : null}
+                  {turn.text ? <AssistantBubble text={turn.text} /> : turn.drafts.length > 0 && !turn.settled ? <AssistantBubble text={t('aiConfirmHint')} /> : null}
                   {turn.cards.map((card, i) => (
                     <AnswerCard
                       key={`${turn.id}-c${i}`}
@@ -269,7 +269,7 @@ export function AssistantScreen(): React.JSX.Element {
                     onSpeak={turn.text ? (x) => void speak(x, language) : undefined}
                     disabled={busy}
                   />
-                  {turn.suggestions.length > 0 && turn.id === lastAssistantId ? (
+                  {turn.suggestions.length > 0 && turn.options.length === 0 && turn.id === lastAssistantId ? (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
                       {turn.suggestions.map((sug) => (
                         <Pressable

@@ -36,7 +36,8 @@ export const makeStyles = (theme: Theme) =>
       // Android needs top alignment or long text floats to the middle.
       paddingTop: theme.spacing.md,
       paddingBottom: theme.spacing.md,
-      paddingHorizontal: theme.spacing.sm,
+      paddingLeft: theme.spacing.xs,
+      paddingRight: theme.spacing.sm,
       textAlignVertical: 'top',
       maxHeight: 132,
     },
@@ -57,6 +58,9 @@ export const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    /** Attach + mic sit as one tight group at the left edge. */
+    leading: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+    lead: { width: theme.touch.minTarget - 2 * theme.spacing.xs - 6 },
     send: { backgroundColor: theme.colors.accent },
     sendDisabled: { backgroundColor: theme.colors.track },
     mic: { backgroundColor: 'transparent' },
