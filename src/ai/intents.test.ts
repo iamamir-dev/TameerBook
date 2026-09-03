@@ -61,6 +61,9 @@ describe('coerceIntent', () => {
   it('rejects unknown types', () => {
     expect(coerceIntent({ type: 'drop_tables' })).toBeNull();
   });
+  it('accepts the company overview', () => {
+    expect(coerceIntent({ type: 'company_overview' })).toEqual({ type: 'company_overview' });
+  });
   it('defaults purchase_orders to open only', () => {
     expect(coerceIntent({ type: 'purchase_orders' })).toEqual({ type: 'purchase_orders', openOnly: true });
   });

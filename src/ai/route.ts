@@ -2,7 +2,7 @@ import { chatJson } from './json';
 import { resolveDraft, type ResolvedDraft } from './drafts';
 import { parseRouterOutput, type RouterResult } from './intents';
 import { routerSystemPrompt, type World } from './prompts';
-import { AiError, type AiTransport } from './types';
+import { AiError, type AiChatMessage, type AiTransport } from './types';
 
 /**
  * Route one utterance with a VALIDATE-AND-REPAIR loop: the model's first JSON
@@ -32,9 +32,9 @@ function problems(raw: unknown, parsed: RouterResult | null, world: World): { ok
   };
 }
 
-export async function routeUtterance(transport: AiTransport, world: World, text: string): Promise<Routed> {
+export async function routeUtterance(transport: AiTransport, world: World, text: string, history: AiChatMessage[] = []): Promise<Routed> {
   const system = routerSystemPrompt(world);
-  const first = await chatJson(transport, system, text);
+  const first = await chatJson(transport, system, text, undefined, history);
   const parsed = parseRouterOutput(first);
   const check = problems(first, parsed, world);
   if (check.ok && parsed) return { result: parsed, resolved: check.resolved, attempts: 1 };
@@ -43,7 +43,7 @@ export async function routeUtterance(transport: AiTransport, world: World, text:
   const repairUser = `User said: "${text}"\nYour JSON was: ${JSON.stringify(first).slice(0, 1500)}\nProblem: ${check.note}\nReturn the corrected JSON object only.`;
   let second: unknown = null;
   try {
-    second = await chatJson(transport, system, repairUser);
+    second = await chatJson(transport, system, repairUser, undefined, history);
   } catch (e) {
     if (!(e instanceof AiError && e.code === 'unparseable')) throw e;
   }

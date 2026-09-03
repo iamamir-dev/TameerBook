@@ -7,6 +7,7 @@ import {
   listPlots,
   listProjects,
 } from '@/db';
+import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { todayISO } from '@/utils/date';
 
@@ -36,9 +37,12 @@ export async function buildWorld(): Promise<World> {
     unit: c.default_unit,
     parentId: c.parent_id,
   }));
+  const cs = useCompanyStore.getState();
+  const company = cs.companies.find((c) => c.id === cs.activeCompanyId);
   return {
     today: todayISO(),
     language: useSettingsStore.getState().language,
+    company: company ? { name: company.name, owner: company.owner_name } : undefined,
     projects: projects.filter((p) => p.status === 'ACTIVE' || p.status === 'ON_HOLD').map((p) => ({ id: p.id, name: p.name })),
     plots: plots.map((p) => ({ id: p.id, name: p.name })),
     accounts: accounts.map((a) => ({ id: a.id, name: a.name })),

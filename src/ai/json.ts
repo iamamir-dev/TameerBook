@@ -1,5 +1,5 @@
 import { MAX_OUTPUT_TOKENS } from './models';
-import { AiError, type AiTransport, type ChatOptions } from './types';
+import { AiError, type AiChatMessage, type AiTransport, type ChatOptions } from './types';
 
 /**
  * JSON helpers shared by the client and the router. PURE (no store, no
@@ -21,12 +21,16 @@ export function extractJson(text: string): unknown {
 }
 
 /** Ask for a JSON object (temperature 0 — precision over variety) and parse it. */
-export async function chatJson(transport: AiTransport, system: string, user: string, opts?: ChatOptions): Promise<unknown> {
+export async function chatJson(
+  transport: AiTransport,
+  system: string,
+  user: string,
+  opts?: ChatOptions,
+  /** Earlier turns (oldest first) so follow-ups like "aur pichle mahine?" resolve. */
+  history: AiChatMessage[] = []
+): Promise<unknown> {
   const raw = await transport.chat(
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
+    [{ role: 'system', content: system }, ...history, { role: 'user', content: user }],
     { json: true, temperature: 0, maxTokens: MAX_OUTPUT_TOKENS, ...opts }
   );
   return extractJson(raw);

@@ -1,4 +1,5 @@
 import {
+  getCompanyAssets,
   getInvestorSummary,
   getLaborerKhata,
   getSaleSummary,
@@ -11,6 +12,7 @@ import {
   listProjectSummaries,
   listPurchaseOrders,
   listUdhaar,
+  getUdhaarTotals,
   getPnl,
   getTopSuppliers,
   type TransactionRow,
@@ -383,6 +385,36 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         headline: list.length ? String(list.length) : undefined,
         rows: list.map((i) => ({ id: i.id, title: describeInsight(i, labels, money), date: '', subtitle: '', amount: i.amount ?? 0, direction: 'out' as const })),
         speak: list.length ? list.slice(0, 3).map((i) => describeInsight(i, labels, money)).join('. ') : t('insightsAllGood'),
+      };
+    }
+
+    case 'company_overview': {
+      const [assets, accounts, projects, plots, workers, udhaar] = await Promise.all([
+        getCompanyAssets(),
+        listAccountsWithBalance(),
+        listProjectSummaries(),
+        listPlotSummaries(),
+        listLaborersWithTotals(),
+        getUdhaarTotals(),
+      ]);
+      const active = projects.filter((p) => p.project.status === 'ACTIVE');
+      const held = plots.filter((p) => p.plot.status !== 'SOLD');
+      const owed = workers.reduce((s, x) => s + Math.max(0, x.balance), 0);
+      const name = w.company?.name ?? t('companyTitle');
+      const rows: AnswerRow[] = [
+        { id: 'cash', title: t('totalBalance'), date: '', subtitle: `${accounts.length} ${t('accountsTitle').toLowerCase()}`, amount: assets.cash, direction: 'in' as const },
+        { id: 'plots', title: t('assetPlots'), date: '', subtitle: `${held.length} ${t('plotsTitle').toLowerCase()}`, amount: assets.plotsValue, direction: 'out' as const },
+        { id: 'con', title: t('assetConstruction'), date: '', subtitle: `${active.length} ${t('projects').toLowerCase()}`, amount: assets.constructionValue, direction: 'out' as const },
+        { id: 'recv', title: t('receivable'), date: '', subtitle: t('udhaar'), amount: udhaar.receivable, direction: 'in' as const },
+        { id: 'labor', title: t('laborTitle'), date: '', subtitle: t('outstanding'), amount: owed, direction: 'out' as const },
+      ].filter((r) => r.amount > 0 || r.id === 'cash');
+      return {
+        title: `${name}${w.company?.owner ? ` · ${w.company.owner}` : ''}`,
+        headline: money(assets.total),
+        sub: `${t('totalAssets')} · ${active.length} ${t('projects').toLowerCase()} · ${held.length} ${t('plotsTitle').toLowerCase()} · ${workers.length} ${t('aiWorkersLabel')}`,
+        rows,
+        speak: `${name}: ${t('totalAssets')} ${money(assets.total)}. ${t('totalBalance')} ${money(assets.cash)}. ${active.length} ${t('projects')}, ${held.length} ${t('plotsTitle')}.${owed > 0 ? ` ${t('laborTitle')} ${t('outstanding')} ${money(owed)}.` : ''}${udhaar.receivable > 0 ? ` ${t('receivable')} ${money(udhaar.receivable)}.` : ''}`,
+        target: { screen: 'Cash' },
       };
     }
 

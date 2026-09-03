@@ -77,6 +77,16 @@ describe('routeUtterance', () => {
     expect(r.resolved?.unresolved).toEqual(['Kamran']);
   });
 
+  it('passes prior turns to the model between system and user', async () => {
+    const t = fake(['{"kind":"question","intent":{"type":"spend_summary","period":{"kind":"lastMonth"}}}']);
+    await routeUtterance(t, world, 'aur pichle mahine?', [
+      { role: 'user', content: 'is mahine kitna kharcha' },
+      { role: 'assistant', content: '[answered spend_summary] This month: Rs 1' },
+    ]);
+    expect(t.calls[0].map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
+    expect(t.calls[0][3].content).toBe('aur pichle mahine?');
+  });
+
   it('throws unparseable when both attempts fail', async () => {
     const t = fake(['??', '??']);
     await expect(routeUtterance(t, world, 'x')).rejects.toMatchObject({ code: 'unparseable' });

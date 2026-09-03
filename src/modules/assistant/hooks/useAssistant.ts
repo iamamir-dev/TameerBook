@@ -7,6 +7,7 @@ import {
   resolveDraft,
   routeUtterance,
   runIntent,
+  type AiChatMessage,
   type AiErrorCode,
   type Answer,
   type ResolvedDraft,
@@ -39,6 +40,9 @@ function reducer(s: State, a: Action): State {
   }
 }
 
+/** How many prior messages the router sees (3 exchanges). */
+const HISTORY_TURNS = 6;
+
 let seq = 0;
 const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
 
@@ -59,6 +63,11 @@ export function useAssistant(): AssistantApi {
   const [state, dispatch] = useReducer(reducer, { turns: [], busy: false });
   const onSpeak = useRef<((text: string) => void) | null>(null);
   const inFlight = useRef(false);
+  // Short conversational memory for the router (last few turns, compact text).
+  const history = useRef<AiChatMessage[]>([]);
+  const remember = (role: AiChatMessage['role'], content: string) => {
+    history.current = [...history.current, { role, content: content.slice(0, 400) }].slice(-HISTORY_TURNS);
+  };
 
   const ask = useCallback(async (raw: string) => {
     const text = raw.trim();
@@ -71,16 +80,20 @@ export function useAssistant(): AssistantApi {
       const world = await buildWorld();
       // Validate-and-repair routing: a bad shape or an unknown name gets ONE
       // corrective follow-up before we show anything.
-      const { result: routed, resolved: pre } = await routeUtterance(transport, world, text);
+      const { result: routed, resolved: pre } = await routeUtterance(transport, world, text, history.current);
+      remember('user', text);
       if (routed.kind === 'question') {
         const answer = await runIntent(routed.intent, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'answer', answer } });
+        remember('assistant', `[answered ${routed.intent.type}] ${answer.speak}`);
         onSpeak.current?.(answer.speak);
       } else if (routed.kind === 'draft') {
         const resolved = pre ?? resolveDraft(routed.draft, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'draft', resolved } });
+        remember('assistant', `[draft ${routed.draft.kind}] ${JSON.stringify(routed.draft)}`);
       } else {
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'text', text: routed.reply } });
+        remember('assistant', routed.reply);
         onSpeak.current?.(routed.reply);
       }
     } catch (e) {
@@ -93,7 +106,10 @@ export function useAssistant(): AssistantApi {
     }
   }, []);
 
-  const clear = useCallback(() => dispatch({ type: 'clear' }), []);
+  const clear = useCallback(() => {
+    history.current = [];
+    dispatch({ type: 'clear' });
+  }, []);
 
   return { ...state, ask, clear, onSpeak };
 }

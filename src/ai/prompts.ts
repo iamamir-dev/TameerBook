@@ -13,6 +13,8 @@ import { INTENT_TYPES, PERIOD_KINDS } from './intents';
 export interface World extends WorldNames {
   today: string;
   language: Language;
+  /** The active company (workspace) — name + owner only. */
+  company?: { name: string; owner?: string | null };
 }
 
 const list = (label: string, names: readonly string[], max = 40): string =>
@@ -25,6 +27,7 @@ export function worldBlock(w: World): string {
   const income = w.categories.filter((c) => c.type === 'INCOME');
   return [
     `Today: ${w.today}`,
+    w.company ? `Company: ${w.company.name}${w.company.owner ? ` (owner ${w.company.owner})` : ''}` : 'Company: (not set)',
     list('Projects', w.projects.map((p) => p.name)),
     list('Plots', w.plots.map((p) => p.name)),
     list('Accounts', w.accounts.map((a) => a.name)),
@@ -67,7 +70,8 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   udhaar_balance: person?       account_balance: account?
   plot_status: plot?            investor_status: investor?
   purchase_orders: openOnly (boolean, default true)
-  recent_entries: period        insights | top_suppliers | pnl: no params
+  recent_entries: period        insights | company_overview | top_suppliers | pnl: no params
+  company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — use for "tell me about my company / business / overall position".
   period = {"kind":<one of ${PERIOD_KINDS.map((s) => `"${s}"`).join('|')}>} or {"kind":"custom","start":"YYYY-MM-DD","end":"YYYY-MM-DD"}. "is mahine" = month, "pichle mahine" = lastMonth, "aaj" = today, "kal" (past) = yesterday, "is hafte" = week.
 
 2) An entry the user wants to record (never save it yourself; the app shows a form to confirm):
@@ -79,9 +83,16 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 {"kind":"draft","draft":{"kind":"transfer","from":string,"to":string,"amount":number}}
   Buying a material with a quantity ("50 bori cement 1200 wala") is a "material" draft (qty=50, rate=1200). Any other spend is "expense". Money received that is not a loan repayment or investor money is "income". "sab aaye" / "all present" → attendance with allPresent=true. Omit fields the user did not say. Dates only if the user gave one.
 
-3) Anything else (greeting, thanks, off-topic, or a question the app cannot answer):
-{"kind":"chat","reply":<one or two short sentences>}
-  If the question is about money, workers, plots, projects or suppliers but no intent fits, say so briefly and suggest what you can answer.
+3) Anything else:
+{"kind":"chat","reply":<a genuinely helpful answer, 1 to 4 short sentences>}
+  Be a knowledgeable assistant, not a gatekeeper. Answer general questions (construction materials, rough Pakistani market rates with a caveat, Musharakah / profit-sharing basics, how to plan a build, how taxes and transfer fees usually work) and how-to questions about the app using this guide:
+  - Quick Entry (the + button): Expense, Payment In (investor / project sale / plot sale / loan return / other), Material, PO (purchase order), Transfer, Loans (udhaar), Investor, Daily wage (labor), Home expense, Assistant.
+  - Projects tab: create a project (needs a plot + investors), Construction page (expenses, workers, attendance), Sale page (buyer receipts), Settle Up (profit split), Photo diary, PDF report.
+  - Plots tab: buy a plot (seller payments token / advance / instalments, expenses, documents), mark transferred, sell standalone.
+  - Investors tab: investors, their capital, statements, exit wizard.
+  - Home → Cash: accounts, transfers, all transactions with filters; Home → Labor: worker khatas; Home → PO: purchase orders.
+  - Settings: company, accounts, reports (7 PDF reports), categories & materials, signature, language / dark mode / font, reminders, charity %, Assistant (AI).
+  Never say you cannot help with the ledger — every ledger question maps to an intent above. Only when a request is truly outside the app AND outside general knowledge, say so in one sentence.
 
 Rules for precision:
 - Numbers: "50 bori" → qty 50; "1200 wala" / "1200 ka" / "@1200" → rate 1200; "12 hazar" → 12000; "2 lakh 50 hazar" → 250000; "dhai lakh" → 250000; "sawa lakh" → 125000; "aadha" → HALF.
@@ -117,6 +128,10 @@ Examples (user → JSON):
 "buyer ne kitna dena hai Gulberg" → {"kind":"question","intent":{"type":"sale_status","project":"Gulberg"}}
 "kya order pending hain" → {"kind":"question","intent":{"type":"purchase_orders","openOnly":true}}
 "aaj kya dhyan dena hai" → {"kind":"question","intent":{"type":"insights"}}
+"can you tell me about company" → {"kind":"question","intent":{"type":"company_overview"}}
+"mera business kaisa chal raha hai" → {"kind":"question","intent":{"type":"company_overview"}}
+"how do I add a worker" → {"kind":"chat","reply":"Open Home → Labor and tap Add worker, or from a project's Construction page tap Add worker to set his daily wage for that project."}
+"cement ka rate kya chal raha hai" → {"kind":"chat","reply":"Market rates change weekly; in 2026 a 50 kg bag has mostly been in the Rs 1,300–1,500 range in Punjab. Your own last rate is shown on the Material entry form."}
 "total profit" → {"kind":"question","intent":{"type":"pnl"}}
 "salam" → {"kind":"chat","reply":"Wa alaikum assalam! Kya poochna hai?"}`;
 }

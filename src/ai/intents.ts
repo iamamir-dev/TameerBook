@@ -64,6 +64,7 @@ export const INTENT_TYPES = [
   'sale_status',
   'purchase_orders',
   'insights',
+  'company_overview',
   'recent_entries',
   'top_suppliers',
   'pnl',
@@ -83,6 +84,7 @@ export type Intent =
   | { type: 'sale_status'; project?: string }
   | { type: 'purchase_orders'; openOnly: boolean }
   | { type: 'insights' }
+  | { type: 'company_overview' }
   | { type: 'recent_entries'; period: Period }
   | { type: 'top_suppliers' }
   | { type: 'pnl' };
@@ -128,6 +130,7 @@ export function coerceIntent(raw: unknown): Intent | null {
     case 'recent_entries':
       return { type, period: coercePeriod(o.period, 'week') };
     case 'insights':
+    case 'company_overview':
     case 'top_suppliers':
     case 'pnl':
       return { type };
