@@ -728,10 +728,14 @@ export interface TranslationKeys {
   aiChooseProject: string;
   aiChooseParticipation: string;
   aiNewWorker: string;
+  aiNewShort: string;
+  aiFreePlots: string;
   aiNewParty: string;
   aiNewInvestor: string;
   aiNewAccount: string;
   aiNewPlot: string;
+  aiReadyToAdd: string;
+  poLabelShort: string;
   aiWillWrite: string;
   aiWage: string;
   aiOpeningBalance: string;

@@ -538,7 +538,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
           const all = (await listPlotSummaries()).filter((s) =>
             intent.filter === 'sold' ? s.plot.status === 'SOLD' : intent.filter === 'owned' ? s.plot.status === 'OWNED' : true
           );
-          title = intent.filter === 'sold' ? `${t('aiSoldLabel')} · ${t('plotsTitle')}` : t('plotsTitle');
+          title = intent.filter === 'sold' ? `${t('aiSoldLabel')} · ${t('plotsTitle')}` : intent.filter === 'owned' ? `${t('aiFreePlots')}` : t('plotsTitle');
           list = all.map((s) => ({ id: s.plot.id, title: s.plot.name, subtitle: s.projectName ?? (s.plot.status === 'SOLD' ? t('aiSoldLabel') : undefined) }));
           target = { screen: 'Plots' };
           break;

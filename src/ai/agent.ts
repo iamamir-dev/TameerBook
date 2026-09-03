@@ -197,7 +197,7 @@ async function confirmationLine(transport: AiTransport, messages: AiChatMessage[
     content:
       `[app] You proposed this action and the app is showing it as a card with Accept and Reject buttons: ${JSON.stringify(facts)}. ` +
       'Write 1 to 2 short sentences in the same language the user wrote in (Roman Urdu stays Roman Urdu), restating in plain words exactly what will be saved: who, how much, from which account, for which project or plot, and the date if not today. ' +
-      'End by telling them to tap Accept if this is right or Reject if not. No lists, no headings, no tool calls, no markdown except **bold** for the amount.',
+      'Mention only details that are present; never say what is missing or not used. End by telling them to tap Accept if this is right or Reject if not. No lists, no headings, no tool calls, no markdown except **bold** for the amount.',
   };
   try {
     // Tool-call turns cannot be replayed without the tools list, so restate

@@ -62,7 +62,7 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
         const heading = /^#{1,3}\s+/.test(line) || (/[:：]$/.test(line) && line.length <= 40 && !marker);
         if (heading) {
           return (
-            <AppText key={i} size="xs" weight="bold" color="textSecondary" uppercase style={styles.heading}>
+            <AppText key={i} size="sm" weight="bold" style={styles.heading}>
               {line.replace(/^#{1,3}\s+/, '').replace(/[:：]$/, '')}
             </AppText>
           );

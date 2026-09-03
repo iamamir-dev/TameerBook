@@ -202,14 +202,14 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
           : parts.map((p) => ({ id: p.projectLaborer.id, label: p.projectName, subtitle: formatRupees(p.balance.balance), icon: 'project' as IconKey }));
 
   const pickRow = (label: string, value: string | undefined, which: Picker, optional = false) => (
-    <Pressable key={which} onPress={() => setPicker(which)} accessibilityRole="button" style={[styles.row, !value && !optional && styles.pick]}>
+    <Pressable key={which} onPress={() => setPicker(which)} accessibilityRole="button" style={[styles.row, styles.rowRuled]}>
       <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.label}>
         {label}
       </AppText>
-      <AppText size="sm" weight="bold" color={value ? 'textPrimary' : optional ? 'textSecondary' : 'accent'} numberOfLines={2} style={styles.value}>
+      <AppText size="sm" weight="semibold" color={value ? 'accent' : optional ? 'textSecondary' : 'accent'} numberOfLines={2} style={styles.value}>
         {value ?? (optional ? t('optional') : t('selectOne'))}
       </AppText>
-      <AppIcon name="forward" size={14} color="textSecondary" />
+      <AppIcon name="forward" size={14} color={value || !optional ? 'accent' : 'textSecondary'} />
     </Pressable>
   );
 
@@ -225,9 +225,18 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
           <AppText size="sm" weight="bold" numberOfLines={1}>
             {draftTitle(resolved, t)}
           </AppText>
-          <AppText size="xs" color={applied ? 'success' : 'textSecondary'} numberOfLines={1}>
-            {applied ? applied.message : rejected ? t('aiRejected') : blocked ? t('aiPlotTaken') : ready ? t('aiWillWrite') : t('aiFillMissing')}
-          </AppText>
+          {done ? (
+            <View style={[styles.statusPill, rejected && styles.statusPillMuted]}>
+              <AppIcon name={applied ? 'check' : 'close'} size={11} color={applied ? 'success' : 'textSecondary'} />
+              <AppText size="xs" weight="bold" color={applied ? 'success' : 'textSecondary'} numberOfLines={1}>
+                {applied ? t('aiSaved') : t('aiRejected')}
+              </AppText>
+            </View>
+          ) : (
+            <AppText size="xs" color="textSecondary" numberOfLines={1}>
+              {blocked ? t('aiPlotTaken') : ready ? (isCreate ? t('aiReadyToAdd') : t('aiWillWrite')) : t('aiFillMissing')}
+            </AppText>
+          )}
         </View>
         {amount != null ? (
           <AppText size="lg" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit style={styles.headAmount}>
@@ -236,25 +245,31 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
         ) : null}
       </View>
 
-      {fields.map((f, i) => (
-        <View key={`${f.label}-${i}`} style={styles.row}>
-          <AppText size="xs" color="textSecondary" style={styles.label} numberOfLines={1}>
-            {f.label}
-          </AppText>
-          <AppText size="sm" weight={f.money ? 'bold' : 'semibold'} tabular={f.money} color={f.unresolved ? 'gold' : 'textPrimary'} numberOfLines={2} style={styles.value}>
-            {f.value}
-          </AppText>
-          {f.unresolved ? <AppIcon name="alert" size={14} color="gold" /> : null}
-        </View>
-      ))}
+      <View style={styles.panel}>
+        {fields.map((f, i) => (
+          <View key={`${f.label}-${i}`} style={[styles.row, i > 0 && styles.rowRuled]}>
+            <AppText size="xs" color="textSecondary" style={styles.label} numberOfLines={1}>
+              {f.label}
+            </AppText>
+            <AppText size="sm" weight={f.money ? 'bold' : 'semibold'} tabular={f.money} color={f.unresolved ? 'gold' : 'textPrimary'} numberOfLines={2} style={styles.value}>
+              {f.value}
+            </AppText>
+            {f.unresolved ? <AppIcon name="alert" size={14} color="gold" /> : null}
+          </View>
+        ))}
+        {!done ? (
+          <>
+            {needs.account ? pickRow(t('accountsTitle'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account') : null}
+            {needs.project ? pickRow(t('projectLabel'), project?.name, 'project') : null}
+            {needs.participation ? pickRow(t('aiChooseParticipation'), part ? `${part.projectName} · ${formatRupees(part.balance.balance)}` : undefined, 'participation') : null}
+            {needs.plot || blocked ? pickRow(t('plotLabel'), plot?.name, 'plot', !blocked) : null}
+            {needs.workerProject ? pickRow(t('projectLabel'), project?.name, 'project', true) : null}
+          </>
+        ) : null}
+      </View>
 
       {!done ? (
         <>
-          {needs.account ? pickRow(t('accountsTitle'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account') : null}
-          {needs.project ? pickRow(t('projectLabel'), project?.name, 'project') : null}
-          {needs.participation ? pickRow(t('aiChooseParticipation'), part ? `${part.projectName} · ${formatRupees(part.balance.balance)}` : undefined, 'participation') : null}
-          {needs.plot || blocked ? pickRow(t('plotsTitle'), plot?.name, 'plot', !blocked) : null}
-          {needs.workerProject ? pickRow(t('projectLabel'), project?.name, 'project', true) : null}
 
           {needs.name || needs.amount || (needs.workerProject && d.kind === 'createWorker' && !d.wage) ? (
             <View style={styles.inputs}>
@@ -312,8 +327,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
                 onSettled?.('rejected');
               }}
               disabled={saving} accessibilityRole="button" style={({ pressed }) => [styles.btn, styles.btnReject, pressed && styles.pressed]}>
-              <AppIcon name="close" size={14} color="textPrimary" />
-              <AppText size="xs" weight="bold">
+              <AppText size="xs" weight="bold" color="textSecondary">
                 {t('aiReject')}
               </AppText>
             </Pressable>
@@ -345,15 +359,17 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
         </>
       ) : applied?.target ? (
         <Pressable onPress={() => navigateToTarget(navigation, applied.target!)} accessibilityRole="button" style={styles.doneRow}>
-          <AppText size="xs" color="textSecondary" style={styles.doneText}>
-            {t('aiSaved')}
+          <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.doneText}>
+            {applied.message}
           </AppText>
           <AppText size="sm" weight="bold" color="accent">
             {t('aiView')}
           </AppText>
           <AppIcon name="forward" size={14} color="accent" />
         </Pressable>
-      ) : null}
+      ) : (
+        <View style={styles.panelGap} />
+      )}
 
       <SelectSheet
         visible={picker !== null}

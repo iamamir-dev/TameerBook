@@ -192,24 +192,24 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       for (const it of d.items) f.push({ label: `${it.item} · ${formatQty(it.qty)}${it.unit ? ` ${it.unit}` : ''} @ ${formatQty(it.rate)}`, value: formatRupees(it.qty * it.rate), money: true });
       break;
     case 'receiveDelivery':
-      if (d.po) f.push({ label: t('bookingsTitle'), value: d.po });
+      if (d.po) f.push({ label: t('poLabelShort'), value: d.po });
       if (d.item) f.push({ label: t('material'), value: `${d.item}${d.qty ? ` · ${formatQty(d.qty)}` : ''}` });
       else f.push({ label: t('material'), value: t('aiAllItems') });
       date(d.date);
       break;
     case 'payPurchaseOrder':
-      if (d.po) f.push({ label: t('bookingsTitle'), value: d.po });
+      if (d.po) f.push({ label: t('poLabelShort'), value: d.po });
       named(t('accountsTitle'), r.account, d.account);
       date(d.date);
       break;
     case 'plotPayment':
-      named(t('plotsTitle'), r.plot, d.plot);
+      named(t('plotLabel'), r.plot, d.plot);
       if (d.payType) f.push({ label: t('paymentType'), value: payTypeLabel(t, d.payType) });
       named(t('accountsTitle'), r.account, d.account);
       date(d.date);
       break;
     case 'plotExpense':
-      named(t('plotsTitle'), r.plot, d.plot);
+      named(t('plotLabel'), r.plot, d.plot);
       named(t('category'), r.category, d.category);
       named(t('accountsTitle'), r.account, d.account);
       if (d.note) f.push({ label: t('note'), value: d.note });
@@ -238,15 +238,16 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       date(d.date);
       break;
     case 'markTransferred':
-      named(t('plotsTitle'), r.plot, d.plot);
+      named(t('plotLabel'), r.plot, d.plot);
       date(d.date);
       break;
     case 'createProject':
       if (d.name) f.push({ label: t('projectName'), value: d.name });
-      named(t('plotsTitle'), r.plot, d.plot);
+      named(t('plotLabel'), r.plot, d.plot);
       for (const inv of r.investors) {
         f.push({
-          label: `${t('investor')} · ${inv.ref?.name ?? inv.draft.name}${inv.ref ? '' : ` (${t('addNew').toLowerCase()})`}`,
+          // Short label so the amount keeps its column: "Umar · new" not "Investor · Umar (add new)".
+          label: `${inv.ref?.name ?? inv.draft.name}${inv.ref ? '' : ` · ${t('aiNewShort')}`}`,
           value: inv.draft.amount ? formatRupees(inv.draft.amount) : '—',
           money: !!inv.draft.amount,
         });
