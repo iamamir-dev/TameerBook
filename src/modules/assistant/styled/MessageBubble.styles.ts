@@ -50,4 +50,15 @@ export const makeStyles = (theme: Theme) =>
     },
     noticeText: { flex: 1, minWidth: 0 },
     link: { paddingHorizontal: theme.spacing.xs, minHeight: 32, justifyContent: 'center' },
+    /** Copy icon tucked in the bubble's bottom-right corner. */
+    copy: { alignSelf: 'flex-end', marginTop: 2, marginBottom: -2, marginRight: -4, padding: 4 },
+    retry: {
+      width: 32,
+      height: 32,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressed: { opacity: 0.7 },
   });

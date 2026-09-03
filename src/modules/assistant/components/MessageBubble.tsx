@@ -1,5 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as Clipboard from 'expo-clipboard';
 import React from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -8,6 +9,7 @@ import { AppIcon, AppText } from '@/components/ui';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
+import { swallow } from '@/utils/log';
 
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
@@ -45,13 +47,27 @@ export function AssistantRow({ children }: { children: React.ReactNode }): React
   );
 }
 
-/** A short spoken-style reply from the assistant. */
-export function AssistantBubble({ text }: { text: string }): React.JSX.Element {
+/** A reply from the assistant, with a copy icon so the text can be reused. */
+export function AssistantBubble({ text, onCopied }: { text: string; onCopied?: () => void }): React.JSX.Element {
   const theme = useTheme();
+  const { t } = useTranslation();
   const styles = makeStyles(theme);
   return (
     <View style={styles.assistant}>
       <RichText text={text} />
+      <Pressable
+        onPress={() => {
+          Clipboard.setStringAsync(text)
+            .then(() => onCopied?.())
+            .catch(swallow('assistant:copy'));
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={t('aiCopy')}
+        hitSlop={theme.touch.hitSlop}
+        style={({ pressed }) => [styles.copy, pressed && styles.pressed]}
+      >
+        <AppIcon name="copy" size={14} color="textSecondary" />
+      </Pressable>
     </View>
   );
 }
@@ -79,7 +95,7 @@ export function OpenBubble({ screen }: { screen: OpenScreen }): React.JSX.Elemen
 }
 
 /** A failure, in one sentence, with a Settings link when that is the fix. */
-export function ErrorBubble({ code, detail }: { code: AiErrorCode; detail?: string }): React.JSX.Element {
+export function ErrorBubble({ code, detail, onRetry }: { code: AiErrorCode; detail?: string; onRetry?: () => void }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -96,6 +112,11 @@ export function ErrorBubble({ code, detail }: { code: AiErrorCode; detail?: stri
           <AppText size="sm" weight="bold" color="accent">
             {t('settings')}
           </AppText>
+        </Pressable>
+      ) : null}
+      {onRetry ? (
+        <Pressable onPress={onRetry} accessibilityRole="button" accessibilityLabel={t('aiRetry')} hitSlop={theme.touch.hitSlop} style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
+          <AppIcon name="retry" size={16} color="accent" />
         </Pressable>
       ) : null}
     </View>

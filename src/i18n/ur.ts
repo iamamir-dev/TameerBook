@@ -723,4 +723,7 @@ export const ur: TranslationKeys = {
   aiClearChat: 'چیٹ صاف کریں',
   aiClearChatConfirm: 'یہ گفتگو حذف کریں؟ محفوظ اندراجات رہیں گے۔',
   aiShowAll: 'سب دکھائیں',
+  aiRetry: 'دوبارہ',
+  aiCopy: 'کاپی',
+  aiCopied: 'کاپی ہو گیا',
 };

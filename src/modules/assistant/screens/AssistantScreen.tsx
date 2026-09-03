@@ -56,7 +56,7 @@ export function AssistantScreen(): React.JSX.Element {
   });
   const ready = aiEnabled && configured;
 
-  const { turns, busy, ask, clear, settle, onSpeak, onOpen, onOpenTarget } = useAssistant();
+  const { turns, busy, ask, clear, settle, retry, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
@@ -204,14 +204,14 @@ export function AssistantScreen(): React.JSX.Element {
             if ('error' in turn) {
               return (
                 <AssistantRow key={turn.id}>
-                  <ErrorBubble code={turn.error} detail={turn.detail} />
+                  <ErrorBubble code={turn.error} detail={turn.detail} onRetry={busy ? undefined : () => void retry(turn.id)} />
                 </AssistantRow>
               );
             }
             return (
               <AssistantRow key={turn.id}>
                 <View style={styles.turnStack}>
-                  {turn.text ? <AssistantBubble text={turn.text} /> : null}
+                  {turn.text ? <AssistantBubble text={turn.text} onCopied={() => showToast(t('aiCopied'))} /> : null}
                   {turn.cards.map((card, i) => (
                     <AnswerCard key={`${turn.id}-c${i}`} answer={card} />
                   ))}

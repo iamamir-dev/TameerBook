@@ -720,4 +720,7 @@ export const en: TranslationKeys = {
   aiClearChat: 'Clear chat',
   aiClearChatConfirm: 'Delete this conversation? The saved entries stay.',
   aiShowAll: 'Show all',
+  aiRetry: 'Retry',
+  aiCopy: 'Copy',
+  aiCopied: 'Copied',
 };

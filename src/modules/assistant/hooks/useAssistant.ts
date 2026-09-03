@@ -35,7 +35,7 @@ export type Turn =
       /** Set once the user accepted or rejected the draft (survives restarts). */
       settled?: { status: 'accepted' | 'rejected'; message?: string };
     }
-  | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string };
+  | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText: string };
 
 interface State {
   turns: Turn[];
@@ -49,6 +49,7 @@ type Action =
   | { type: 'busy'; busy: boolean }
   | { type: 'clear' }
   | { type: 'hydrate'; turns: Turn[] }
+  | { type: 'remove'; turnId: string }
   | { type: 'settle'; turnId: string; status: 'accepted' | 'rejected'; message?: string };
 
 function reducer(s: State, a: Action): State {
@@ -61,6 +62,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, turns: [], busy: false };
     case 'hydrate':
       return { ...s, turns: a.turns, hydrated: true };
+    case 'remove':
+      return { ...s, turns: s.turns.filter((t) => t.id !== a.turnId) };
     case 'settle':
       return {
         ...s,
@@ -96,6 +99,8 @@ export interface AssistantApi extends State {
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
   /** Record that a draft card was accepted or rejected. */
   settle: (turnId: string, status: 'accepted' | 'rejected', message?: string) => void;
+  /** Re-run the prompt behind a failed reply (replaces the error bubble). */
+  retry: (turnId: string) => Promise<void>;
 }
 
 /**
@@ -141,11 +146,11 @@ export function useAssistant(): AssistantApi {
     void saveSetting(CHAT_KEY, JSON.stringify(payload)).catch(swallow('assistant:persist'));
   }, [state.turns, state.hydrated]);
 
-  const ask = useCallback(async (raw: string) => {
-    const text = raw.trim();
+  /** One agent run. `echoUser` false = a retry, the user bubble is already there. */
+  const runTurn = useCallback(async (text: string, echoUser: boolean) => {
     if (!text || inFlight.current) return;
     inFlight.current = true;
-    dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text } });
+    if (echoUser) dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text } });
     dispatch({ type: 'busy', busy: true });
     try {
       const transport = getAiTransport();
@@ -161,12 +166,24 @@ export function useAssistant(): AssistantApi {
     } catch (e) {
       const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
       if (code === 'failed') reportError('assistant:ask', e);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', error: code, detail: e instanceof Error ? e.message.slice(0, 160) : undefined, retryText: text } });
     } finally {
       inFlight.current = false;
       dispatch({ type: 'busy', busy: false });
     }
   }, []);
+
+  const ask = useCallback((raw: string) => runTurn(raw.trim(), true), [runTurn]);
+
+  const retry = useCallback(
+    async (turnId: string) => {
+      const turn = state.turns.find((t) => t.id === turnId);
+      if (!turn || turn.role !== 'assistant' || !('error' in turn)) return;
+      dispatch({ type: 'remove', turnId });
+      await runTurn(turn.retryText, false);
+    },
+    [state.turns, runTurn]
+  );
 
   const clear = useCallback(() => {
     history.current = [];
@@ -178,5 +195,5 @@ export function useAssistant(): AssistantApi {
     dispatch({ type: 'settle', turnId, status, message });
   }, []);
 
-  return { ...state, ask, clear, settle, onSpeak, onOpen, onOpenTarget };
+  return { ...state, ask, clear, settle, retry, onSpeak, onOpen, onOpenTarget };
 }

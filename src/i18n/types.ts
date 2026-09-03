@@ -761,4 +761,7 @@ export interface TranslationKeys {
   aiClearChat: string;
   aiClearChatConfirm: string;
   aiShowAll: string;
+  aiRetry: string;
+  aiCopy: string;
+  aiCopied: string;
 }

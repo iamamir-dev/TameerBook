@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Circle,
   CircleCheck,
+  Copy,
   CircleDot,
   Download,
   Eye,
@@ -54,6 +55,7 @@ import {
   Receipt,
   ReceiptText,
   Repeat,
+  RotateCcw,
   ScrollText,
   Search,
   SendHorizontal,
@@ -166,6 +168,8 @@ export const ICONS = {
   reorder: ArrowDownUp,
   mic: Mic,
   send: SendHorizontal,
+  copy: Copy,
+  retry: RotateCcw,
   assistant: Sparkles,
 } satisfies Record<string, LucideIcon>;
 
