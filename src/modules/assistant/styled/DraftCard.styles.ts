@@ -6,8 +6,8 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /**
      * The inline approval card: a soft tinted surface (no shadow, no outline)
-     * with a header (icon · title · amount), a white details panel of
-     * hairline-ruled rows, and a compact Reject / Accept footer.
+     * with a header (icon · title · amount), hairline-ruled detail rows on the
+     * same surface (one colour, nothing inset), and a compact Reject / Accept footer.
      */
     card: {
       alignSelf: 'stretch',
@@ -28,11 +28,11 @@ export const makeStyles = (theme: Theme) =>
       width: 36,
       height: 36,
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.card,
+      backgroundColor: 'transparent',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    iconChipDone: { backgroundColor: theme.colors.successSoft },
+    iconChipDone: { backgroundColor: 'transparent' },
     iconChipMuted: { backgroundColor: theme.colors.track },
     headText: { flex: 1, minWidth: 0, gap: 1 },
     headAmount: { maxWidth: '45%', textAlign: 'right' },
@@ -42,20 +42,20 @@ export const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      paddingHorizontal: theme.spacing.sm,
       height: 20,
       borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.card,
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
       marginTop: 2,
     },
-    statusPillMuted: { backgroundColor: theme.colors.track },
-    /** White panel holding the detail rows. */
+    statusPillMuted: {},
+    /** White panel holding the detail rows while the card awaits a decision. */
     panel: {
       marginHorizontal: theme.spacing.sm,
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.md,
-      overflow: 'hidden',
+      backgroundColor: 'transparent',
     },
+    /** Settled: the rows sit directly on the message-coloured card, nothing raised. */
+    panelDone: { backgroundColor: 'transparent' },
     /** Field rows: label left, value right, hairline between rows. */
     row: {
       flexDirection: 'row',
@@ -105,7 +105,7 @@ export const makeStyles = (theme: Theme) =>
     },
     btnAccept: { backgroundColor: theme.colors.accent, paddingHorizontal: theme.spacing.lg },
     btnAcceptDisabled: { backgroundColor: theme.colors.track, paddingHorizontal: theme.spacing.lg },
-    btnReject: { backgroundColor: theme.colors.card },
+    btnReject: { backgroundColor: 'transparent' },
     pressed: { opacity: 0.8 },
     editLink: { alignItems: 'center', paddingBottom: theme.spacing.sm },
     /** Footer after saving: "Saved · View ›" */

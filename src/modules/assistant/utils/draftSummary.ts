@@ -129,7 +129,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       named(t('category'), r.category, d.category);
       partyOrNew(t('party'));
       named(t('projectLabel'), r.project, d.project);
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       if (d.note) f.push({ label: t('note'), value: d.note });
       date(d.date);
       break;
@@ -139,7 +139,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       if (d.rate) f.push({ label: t('rateLabel'), value: formatRupees(d.rate), money: true });
       partyOrNew(t('supplier'));
       named(t('projectLabel'), r.project, d.project);
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'attendance':
@@ -150,7 +150,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       break;
     case 'payWorker':
       named(t('laborTitle'), r.worker, d.worker);
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       if (d.note) f.push({ label: t('note'), value: d.note });
       date(d.date);
       break;
@@ -158,7 +158,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     case 'udhaarReturn':
       f.push({ label: t('party'), value: r.party?.name ?? d.person });
       f.push({ label: t('udhaar'), value: d.kind === 'udhaarGive' ? t('receivable') : t('fromUdhaarReturn') });
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'transfer':
@@ -183,7 +183,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       break;
     case 'createAccount':
       if (d.name) f.push({ label: t('name'), value: d.name });
-      f.push({ label: t('accountsTitle'), value: d.accountType });
+      f.push({ label: t('accountLabel'), value: d.accountType });
       break;
     case 'createPlot':
       if (d.name) f.push({ label: t('name'), value: d.name });
@@ -206,19 +206,19 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       break;
     case 'payPurchaseOrder':
       if (d.po) f.push({ label: t('poLabelShort'), value: d.po });
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'plotPayment':
       named(t('plotLabel'), r.plot, d.plot);
       if (d.payType) f.push({ label: t('paymentType'), value: payTypeLabel(t, d.payType) });
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'plotExpense':
       named(t('plotLabel'), r.plot, d.plot);
       named(t('category'), r.category, d.category);
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       if (d.note) f.push({ label: t('note'), value: d.note });
       date(d.date);
       break;
@@ -229,19 +229,19 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
     case 'saleReceipt':
       named(t('projectLabel'), r.project, d.project);
       if (d.payType) f.push({ label: t('paymentType'), value: payTypeLabel(t, d.payType) });
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'saleCost':
       named(t('projectLabel'), r.project, d.project);
       if (d.note) f.push({ label: t('note'), value: d.note });
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'investorPayment':
       named(t('investor'), r.investor, d.investor);
       named(t('projectLabel'), r.project, d.project);
-      named(t('accountsTitle'), r.account, d.account);
+      named(t('accountLabel'), r.account, d.account);
       date(d.date);
       break;
     case 'markTransferred':

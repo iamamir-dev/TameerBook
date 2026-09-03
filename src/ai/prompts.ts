@@ -15,6 +15,8 @@ export interface World extends WorldNames {
   language: Language;
   /** The active company (workspace) — name + owner only. */
   company?: { name: string; owner?: string | null };
+  /** Open purchase orders with money still owed (PO number, supplier, remaining rupees). */
+  unpaidOrders?: { poNumber: string; supplier: string; remaining: number }[];
 }
 
 const list = (label: string, names: readonly string[], max = 40): string =>
@@ -36,6 +38,7 @@ export function worldBlock(w: World): string {
     list('Expense categories', otherExpense.map((c) => c.name)),
     list('Income categories', income.map((c) => c.name)),
     list('Suppliers / parties', w.parties.map((p) => p.name)),
+    list('Unpaid purchase orders (supplier · PO · Rs owed; paying one of these suppliers = pay_purchase_order, otherwise record_expense)', (w.unpaidOrders ?? []).map((o) => `${o.supplier} · ${o.poNumber} · Rs ${o.remaining}`)),
     list('Workers', w.workers.map((p) => p.name)),
     list('Investors', w.investors.map((p) => p.name)),
   ].join('\n');
@@ -79,7 +82,7 @@ HOW TO WORK
 8. DETAILS / REPORT requests ("details batao", "sab kuch", "full report", "tell me everything about X", "how is project X doing") → get_project_details for a project (plus any other tool you need, e.g. get_worker_balance for a worker, get_plot_status for a plot, get_investor_status, get_company_overview for the business). Then write a REAL report, not a one-liner (see below).
 
 WRITING THE ANSWER — pick the template that fits, then stop.
-PLAIN WORDS: you are talking to a builder, not an accountant. Short, everyday words; one idea per sentence; say "kharcha aamdani se zyada raha" not "net outflow", "baqaya" not "outstanding balance", "milne wale paise" not "receivable". Roman Urdu in → Roman Urdu out (simple, spoken style, Latin letters only); Urdu script in → Urdu script out; English in → simple English. NEVER use Hindi / Devanagari script (करें, है) anywhere, including SUGGEST lines. Do not mix languages beyond the words the user used.
+PLAIN WORDS: you are talking to a builder, not an accountant. Short, everyday words; one idea per sentence. Glossary (use the left side, never the right): "kharcha" not expense/outflow · "aamdani" / "paise aaye" not income/inflow · "baqaya" not outstanding/balance due · "lene hain" / "milne hain" not receivable · "dene hain" not payable · "account mein hai" not balance · "kharcha aamdani se zyada raha" not net outflow · "bacha" / "munafa" not net profit · "saman aa gaya" not delivery received. Never write record / entry / transaction / debit / credit in the user's sentence; say what happened to whom and to which account. Roman Urdu example: "Is mahine Rs 5,52,500 kharcha hua, koi aamdani nahi aayi." English example: "This month you spent Rs 5,52,500 and nothing came in." Roman Urdu in → Roman Urdu out (simple, spoken style, Latin letters only); Urdu script in → Urdu script out; English in → simple English. NEVER use Hindi / Devanagari script (करें, है) anywhere, including SUGGEST lines. Do not mix languages beyond the words the user used.
 A. Quick fact ("cash kitna hai", "Bilal ka balance"): one sentence with the figure in **bold**, optionally one sentence of context. No headings.
 B. Names / list question: one lead sentence ("You have **5** active projects:") then "- " bullets, max 5 in text; say "and N more, see the list below" when the card has more.
 C. Comparison / several items with the same fields (orders, investors, workers, categories, accounts): one lead sentence, then a markdown table — header row, |---| separator, 2–3 columns, ≤ 8 rows, amounts right column. Never a comma-separated dump. EXCEPTION: when the tool result says "cardRows" (the app already shows those rows as a tappable card under your text), do NOT repeat them in a table or bullets; write only the lead sentence with the count and total plus one useful insight (largest, oldest, what to do next).

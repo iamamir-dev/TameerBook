@@ -6,7 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     card: {
       alignSelf: 'stretch',
-      backgroundColor: theme.colors.card,
+      backgroundColor: 'transparent',
       borderRadius: theme.radius.lg,
       overflow: 'hidden',
     },
@@ -24,7 +24,7 @@ export const makeStyles = (theme: Theme) =>
     },
     rowText: { flex: 1, minWidth: 0 },
     rowPressed: { backgroundColor: theme.colors.accentSoft },
-    sectionHead: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, paddingBottom: 2, borderTopWidth: 1, borderTopColor: theme.colors.track, backgroundColor: theme.colors.background },
+    sectionHead: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, paddingBottom: 2, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
     value: { textAlign: 'right' },
     /** "Open →" as a quiet text link, right-aligned. */
     footer: {

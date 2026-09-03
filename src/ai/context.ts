@@ -6,6 +6,7 @@ import {
   listParties,
   listPlots,
   listProjects,
+  listPurchaseOrders,
 } from '@/db';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -20,7 +21,7 @@ import type { World } from './prompts';
  * phones, CNICs, bank details and balances — names only.
  */
 export async function buildWorld(): Promise<World> {
-  const [projects, plots, accounts, categories, parties, workers, investors] = await Promise.all([
+  const [projects, plots, accounts, categories, parties, workers, investors, pos] = await Promise.all([
     listProjects(),
     listPlots(),
     listAccounts(),
@@ -28,6 +29,7 @@ export async function buildWorld(): Promise<World> {
     listParties(),
     listLaborers(),
     listInvestors(),
+    listPurchaseOrders(),
   ]);
   const cats: CategoryNamed[] = categories.map((c) => ({
     id: c.id,
@@ -50,5 +52,10 @@ export async function buildWorld(): Promise<World> {
     parties: parties.map((p) => ({ id: p.id, name: p.name })),
     workers: workers.map((w) => ({ id: w.id, name: w.name })),
     investors: investors.map((i) => ({ id: i.id, name: i.name })),
+    // Open orders that still owe the supplier: lets the model tell "pay the order" from "plain expense".
+    unpaidOrders: pos
+      .filter((p) => p.status === 'OPEN' && p.payRemaining >= 1)
+      .slice(0, 30)
+      .map((p) => ({ poNumber: p.poNumber, supplier: p.supplierName ?? '', remaining: Math.round(p.payRemaining) })),
   };
 }

@@ -200,8 +200,16 @@ async function confirmationLine(transport: AiTransport, messages: AiChatMessage[
     role: 'user',
     content:
       `[app] You proposed this action and the app is showing it as a card with Accept and Reject buttons: ${JSON.stringify(facts)}. ` +
-      'Write 1 to 2 short sentences in the same language the user wrote in (Roman Urdu stays Roman Urdu), restating in plain words exactly what will be saved: who, how much, from which account, for which project or plot, and the date if not today. ' +
-      'Mention only details that are present; never say what is missing or not used. End by telling them to tap Accept if this is right or Reject if not. No lists, no headings, no tool calls, no markdown except **bold** for the amount.',
+      'Write 1 to 2 short sentences for a builder who knows nothing about accounting, in the SAME language and script the user wrote in (Roman Urdu → Roman Urdu, Urdu script → Urdu, English → English). ' +
+      'Say what is happening in everyday words: who, how much (always "Rs 1,500" style), what it is for, and which account the money leaves or enters and by how much. ' +
+      'Patterns to copy: paying someone → "Aap Rafiq Traders ko bricks ke baqaye ke **Rs 1,500** cash de rahe hain. Cash in Hand se Rs 1,500 kam ho jayenge." / "You are paying Rafiq Traders **Rs 1,500** in cash for the bricks balance. Cash in Hand goes down by Rs 1,500." · ' +
+      'money received → "Buyer ne Gulberg Greens G-508 ke **Rs 20,00,000** diye, yeh Meezan 1 mein aa jayenge." · ' +
+      'attendance → "Aaj Ustad Liaqat Malik 12 ki Wapda Town H-101 House par poori hazri lag rahi hai." · ' +
+      'new item → "Naya project Park View Villa ban raha hai, plot Park View B-506 par, investors Umar Rs 5,00,000 aur Bilal Rs 3,00,000." · ' +
+      'delivery → "Rafiq Traders se PO-0016 ka saara saman aa gaya, yeh delivered mark ho jayega." · ' +
+      'expense → "Gulberg Greens G-508 par generator ke diesel ka **Rs 3,000** kharcha, Cash in Hand se." ' +
+      'Banned words: record, entry, transaction, payment record, "record hogi", "save hogi", debit, credit. Mention only details that are present; never say what is missing. ' +
+      'Finish with exactly one closing line in the same language: "Theek hai to Accept, warna Reject." / "If this is right tap Accept, otherwise Reject." No lists, no headings, no tool calls, no markdown except **bold** for the amount.',
   };
   try {
     // Tool-call turns cannot be replayed without the tools list, so restate

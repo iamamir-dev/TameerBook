@@ -247,7 +247,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
         ) : null}
       </View>
 
-      <View style={styles.panel}>
+      <View style={[styles.panel, done && styles.panelDone]}>
         {fields.map((f, i) => (
           <View key={`${f.label}-${i}`} style={[styles.row, i > 0 && styles.rowRuled]}>
             <AppText size="xs" color="textSecondary" style={styles.label} numberOfLines={1}>
@@ -261,7 +261,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
         ))}
         {!done ? (
           <>
-            {needs.account ? pickRow(t('accountsTitle'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account') : null}
+            {needs.account ? pickRow(t('accountLabel'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account') : null}
             {needs.project ? pickRow(t('projectLabel'), project?.name, 'project') : null}
             {needs.participation ? pickRow(t('aiChooseParticipation'), part ? `${part.projectName} · ${formatRupees(part.balance.balance)}` : undefined, 'participation') : null}
             {needs.plot || blocked ? pickRow(t('plotLabel'), plot?.name, 'plot', !blocked) : null}
@@ -329,7 +329,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
                 onSettled?.('rejected');
               }}
               disabled={saving} accessibilityRole="button" style={({ pressed }) => [styles.btn, styles.btnReject, pressed && styles.pressed]}>
-              <AppText size="xs" weight="bold">
+              <AppText size="xs" weight="bold" color="textSecondary">
                 {t('aiReject')}
               </AppText>
             </Pressable>

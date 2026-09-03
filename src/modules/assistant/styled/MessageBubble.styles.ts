@@ -5,7 +5,8 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /** User turn: right-aligned brand bubble with a small tail. */
-    userWrap: { alignItems: 'flex-end', paddingLeft: theme.spacing.xxxl, marginTop: theme.spacing.sm, gap: 2 },
+    /** Extra room above a question (ends the previous exchange) and below it (before the answer). */
+    userWrap: { alignItems: 'flex-end', paddingLeft: theme.spacing.xxxl, marginTop: theme.spacing.md, marginBottom: theme.spacing.xs, gap: 2 },
     userCopy: { padding: 4, marginRight: 2 },
     userImages: { flexDirection: 'row', gap: theme.spacing.xs, justifyContent: 'flex-end', flexWrap: 'wrap' },
     userImage: { width: 120, height: 120, borderRadius: theme.radius.lg, backgroundColor: theme.colors.track },
@@ -29,10 +30,11 @@ export const makeStyles = (theme: Theme) =>
       marginBottom: 2,
     },
     assistantBody: { flex: 1, minWidth: 0 },
+    /** Answers carry no fill: only things the user acts on (choices, confirmations) are tinted. */
     assistant: {
       alignSelf: 'flex-start',
       maxWidth: '100%',
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: 'transparent',
       borderRadius: theme.radius.lg,
       borderBottomLeftRadius: theme.radius.sm,
       paddingHorizontal: theme.spacing.md,
@@ -45,7 +47,7 @@ export const makeStyles = (theme: Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: 'transparent',
       borderRadius: theme.radius.lg,
       borderBottomLeftRadius: theme.radius.sm,
       paddingHorizontal: theme.spacing.md,
