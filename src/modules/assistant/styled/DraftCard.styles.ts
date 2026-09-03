@@ -7,11 +7,11 @@ export const makeStyles = (theme: Theme) =>
     card: {
       alignSelf: 'stretch',
       backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.card,
+      borderRadius: theme.radius.lg,
       borderWidth: 1,
       borderColor: theme.colors.accent,
-      padding: theme.spacing.lg,
-      gap: theme.spacing.md,
+      padding: theme.spacing.md,
+      gap: theme.spacing.sm,
     },
     head: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     warn: {

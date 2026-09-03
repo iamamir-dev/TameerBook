@@ -1,7 +1,7 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton, AppHeader, AppIcon, AppText, Toast } from '@/components/ui';
@@ -14,10 +14,11 @@ import { useTheme } from '@/theme';
 import { AnswerCard } from '../components/AnswerCard';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
-import { AssistantBubble, AssistantRow, ErrorBubble, UserBubble } from '../components/MessageBubble';
+import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
+import { openScreen } from '../utils/openScreen';
 import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
 
@@ -45,7 +46,7 @@ export function AssistantScreen(): React.JSX.Element {
   const hasProvider = useSettingsStore((s) => !!s.aiProxyUrl || !!s.aiGroqKey);
   const ready = aiEnabled && hasProvider;
 
-  const { turns, busy, ask, onSpeak } = useAssistant();
+  const { turns, busy, ask, onSpeak, onOpen } = useAssistant();
   const { toast, showToast } = useToast();
   const [input, setInput] = useState(params?.seed ?? '');
   const scroll = useRef<ScrollView>(null);
@@ -58,6 +59,28 @@ export function AssistantScreen(): React.JSX.Element {
       stopSpeaking();
     };
   }, [aiSpeak, language, onSpeak]);
+
+  // "Add a new project" → open that screen right away (navigation only).
+  useEffect(() => {
+    onOpen.current = (screen) => openScreen(navigation, screen);
+    return () => {
+      onOpen.current = null;
+    };
+  }, [navigation, onOpen]);
+
+  // Android (edge-to-edge) does not resize the window for the keyboard and
+  // KeyboardAvoidingView leaves a stale gap after it closes — so pad by the
+  // keyboard's own height and drop it to zero the moment the keyboard hides.
+  const [kb, setKb] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   // Hold-to-talk: the transcript goes straight through the router.
   const voice = useVoiceInput((text) => void ask(text));
@@ -94,7 +117,7 @@ export function AssistantScreen(): React.JSX.Element {
         onBack={() => navigation.goBack()}
         rightAction={{ icon: 'settings', onPress: () => navigation.navigate('Settings'), accessibilityLabel: t('settings') }}
       />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={[styles.flex, kb > 0 && { paddingBottom: kb }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           ref={scroll}
           style={styles.flex}
@@ -108,7 +131,7 @@ export function AssistantScreen(): React.JSX.Element {
                 <View style={styles.introIcon}>
                   <AppIcon name="assistant" size={22} color="accent" />
                 </View>
-                <AppText size="sm" color="textSecondary" style={styles.flex}>
+                <AppText size="xs" color="textSecondary" style={styles.flex}>
                   {t('assistantHint')}
                 </AppText>
               </View>
@@ -121,8 +144,7 @@ export function AssistantScreen(): React.JSX.Element {
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
                     >
-                      <AppIcon name="search" size={14} color="textSecondary" />
-                      <AppText size="sm" weight="semibold">
+                      <AppText size="xs" weight="semibold">
                         {t(k)}
                       </AppText>
                     </Pressable>
@@ -144,6 +166,9 @@ export function AssistantScreen(): React.JSX.Element {
                 break;
               case 'draft':
                 body = <DraftCard resolved={turn.resolved} onDone={showToast} />;
+                break;
+              case 'open':
+                body = <OpenBubble screen={turn.screen} />;
                 break;
               case 'error':
                 body = <ErrorBubble code={turn.code} />;
@@ -173,7 +198,7 @@ export function AssistantScreen(): React.JSX.Element {
             voiceStatus={voice.status}
             onMicPressIn={() => void voice.start()}
             onMicPressOut={() => void voice.stop()}
-            bottomInset={insets.bottom}
+            bottomInset={kb > 0 ? 0 : insets.bottom}
           />
         ) : (
           <View style={[styles.setup, { marginBottom: insets.bottom + theme.spacing.sm }]}>

@@ -710,4 +710,8 @@ export interface TranslationKeys {
   aiSummaryLabel: string;
   aiTooShort: string;
   aiNoSpeech: string;
+  aiOpening: string;
+  aiMore: string;
+  statusActive: string;
+  statusCompleted: string;
 }

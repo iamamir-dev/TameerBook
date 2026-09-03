@@ -61,6 +61,10 @@ describe('coerceIntent', () => {
   it('rejects unknown types', () => {
     expect(coerceIntent({ type: 'drop_tables' })).toBeNull();
   });
+  it('lists entities by kind and rejects unknown kinds', () => {
+    expect(coerceIntent({ type: 'list_entities', entity: 'workers' })).toEqual({ type: 'list_entities', entity: 'workers' });
+    expect(coerceIntent({ type: 'list_entities', entity: 'aliens' })).toBeNull();
+  });
   it('accepts the company overview', () => {
     expect(coerceIntent({ type: 'company_overview' })).toEqual({ type: 'company_overview' });
   });
@@ -74,6 +78,10 @@ describe('parseRouterOutput', () => {
     expect(parseRouterOutput({ kind: 'chat', reply: 'Salam' })).toEqual({ kind: 'chat', reply: 'Salam' });
     expect(parseRouterOutput({ kind: 'question', intent: { type: 'pnl' } })).toEqual({ kind: 'question', intent: { type: 'pnl' } });
     expect(parseRouterOutput({ kind: 'draft', draft: { kind: 'expense', amount: 500 } })?.kind).toBe('draft');
+  });
+  it('reads an open-screen action and rejects unknown screens', () => {
+    expect(parseRouterOutput({ kind: 'open', screen: 'NewProject' })).toEqual({ kind: 'open', screen: 'NewProject' });
+    expect(parseRouterOutput({ kind: 'open', screen: 'DevTools' })).toBeNull();
   });
   it('accepts a bare intent or draft', () => {
     expect(parseRouterOutput({ type: 'insights' })?.kind).toBe('question');

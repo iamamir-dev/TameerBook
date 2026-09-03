@@ -672,4 +672,8 @@ export const ur: TranslationKeys = {
   aiSummaryLabel: 'آج کا خلاصہ',
   aiTooShort: 'بولتے وقت مائیک دبائے رکھیں، پھر چھوڑیں۔',
   aiNoSpeech: 'سنائی نہیں دیا۔ تھوڑا اونچا دوبارہ بولیں۔',
+  aiOpening: 'کھول رہا ہے',
+  aiMore: 'مزید',
+  statusActive: 'جاری',
+  statusCompleted: 'مکمل',
 };

@@ -10,6 +10,7 @@ import {
   type AiChatMessage,
   type AiErrorCode,
   type Answer,
+  type OpenScreen,
   type ResolvedDraft,
 } from '@/ai';
 import { reportError } from '@/utils/log';
@@ -20,6 +21,7 @@ export type Turn =
   | { id: string; role: 'assistant'; kind: 'text'; text: string }
   | { id: string; role: 'assistant'; kind: 'answer'; answer: Answer }
   | { id: string; role: 'assistant'; kind: 'draft'; resolved: ResolvedDraft }
+  | { id: string; role: 'assistant'; kind: 'open'; screen: OpenScreen }
   | { id: string; role: 'assistant'; kind: 'error'; code: AiErrorCode };
 
 interface State {
@@ -49,6 +51,8 @@ const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}
 export interface AssistantApi extends State {
   /** Send one utterance (typed or transcribed) through the router. */
   ask: (text: string) => Promise<void>;
+  /** Fires when the user asked to open a screen ("add a new project"). */
+  onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
   clear: () => void;
   /** Fires with the sentence to read aloud after an assistant turn lands. */
   onSpeak: React.MutableRefObject<((text: string) => void) | null>;
@@ -62,6 +66,7 @@ export interface AssistantApi extends State {
 export function useAssistant(): AssistantApi {
   const [state, dispatch] = useReducer(reducer, { turns: [], busy: false });
   const onSpeak = useRef<((text: string) => void) | null>(null);
+  const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
   const inFlight = useRef(false);
   // Short conversational memory for the router (last few turns, compact text).
   const history = useRef<AiChatMessage[]>([]);
@@ -91,6 +96,10 @@ export function useAssistant(): AssistantApi {
         const resolved = pre ?? resolveDraft(routed.draft, world);
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'draft', resolved } });
         remember('assistant', `[draft ${routed.draft.kind}] ${JSON.stringify(routed.draft)}`);
+      } else if (routed.kind === 'open') {
+        dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'open', screen: routed.screen } });
+        remember('assistant', `[opened ${routed.screen}]`);
+        onOpen.current?.(routed.screen);
       } else {
         dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', kind: 'text', text: routed.reply } });
         remember('assistant', routed.reply);
@@ -111,5 +120,5 @@ export function useAssistant(): AssistantApi {
     dispatch({ type: 'clear' });
   }, []);
 
-  return { ...state, ask, clear, onSpeak };
+  return { ...state, ask, clear, onSpeak, onOpen };
 }

@@ -1,16 +1,17 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import type { AiErrorCode } from '@/ai';
-import { AppButton, AppIcon, AppText } from '@/components/ui';
-import { useTranslation } from '@/i18n';
+import type { AiErrorCode, OpenScreen } from '@/ai';
+import { AppIcon, AppText } from '@/components/ui';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
+import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -21,7 +22,7 @@ export function UserBubble({ text }: { text: string }): React.JSX.Element {
   return (
     <View style={styles.userWrap}>
       <View style={styles.user}>
-        <AppText size="md" color="onPrimary">
+        <AppText size="sm" color="onPrimary">
           {text}
         </AppText>
       </View>
@@ -36,7 +37,7 @@ export function AssistantRow({ children }: { children: React.ReactNode }): React
   return (
     <View style={styles.assistantRow}>
       <View style={styles.avatar}>
-        <AppIcon name="assistant" size={15} color="accent" />
+        <AppIcon name="assistant" size={12} color="accent" />
       </View>
       <View style={styles.assistantBody}>{children}</View>
     </View>
@@ -49,27 +50,51 @@ export function AssistantBubble({ text }: { text: string }): React.JSX.Element {
   const styles = makeStyles(theme);
   return (
     <View style={styles.assistant}>
-      <AppText size="md">{text}</AppText>
+      <AppText size="sm">{text}</AppText>
     </View>
   );
 }
 
-/** A failure, in one sentence, with a Settings shortcut when that is the fix. */
+/** "Opening New Project" — a quiet receipt with a re-open link. */
+export function OpenBubble({ screen }: { screen: OpenScreen }): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  const navigation = useNavigation<Nav>();
+  const styles = makeStyles(theme);
+  const label: TranslationKey = OPEN_SCREEN_LABEL[screen];
+  return (
+    <View style={styles.notice}>
+      <AppIcon name="forward" size={16} color="accent" />
+      <AppText size="sm" style={styles.noticeText} numberOfLines={1}>
+        {`${t('aiOpening')} · ${t(label)}`}
+      </AppText>
+      <Pressable onPress={() => openScreen(navigation, screen)} accessibilityRole="button" style={styles.link}>
+        <AppText size="sm" weight="bold" color="accent">
+          {t('aiOpen')}
+        </AppText>
+      </Pressable>
+    </View>
+  );
+}
+
+/** A failure, in one sentence, with a Settings link when that is the fix. */
 export function ErrorBubble({ code }: { code: AiErrorCode }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const styles = makeStyles(theme);
   return (
-    <View style={styles.assistant}>
-      <View style={styles.errorRow}>
-        <AppIcon name="alert" size={20} color="danger" />
-        <AppText size="sm" weight="semibold" style={styles.errorText}>
-          {t(AI_ERROR_KEY[code])}
-        </AppText>
-      </View>
+    <View style={styles.notice}>
+      <AppIcon name="alert" size={16} color="danger" />
+      <AppText size="sm" style={styles.noticeText}>
+        {t(AI_ERROR_KEY[code])}
+      </AppText>
       {SETTINGS_FIXABLE.has(code) ? (
-        <AppButton label={t('settings')} icon="settings" variant="secondary" fullWidth={false} onPress={() => navigation.navigate('Settings')} />
+        <Pressable onPress={() => navigation.navigate('Settings')} accessibilityRole="button" style={styles.link}>
+          <AppText size="sm" weight="bold" color="accent">
+            {t('settings')}
+          </AppText>
+        </Pressable>
       ) : null}
     </View>
   );

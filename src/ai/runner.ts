@@ -56,6 +56,13 @@ export type AnswerTarget =
   | { screen: 'InvestorProfile'; investorId: string }
   | { screen: 'UdhaarDetail'; udhaarId: string };
 
+/** A names-only line (no money): "Wapda Town B-103 · Active". */
+export interface AnswerListItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+}
+
 export interface Answer {
   title: string;
   /** The one big number. */
@@ -63,6 +70,8 @@ export interface Answer {
   /** Small line under the headline. */
   sub?: string;
   rows: AnswerRow[];
+  /** Compact names-only list (used instead of `rows` for list questions). */
+  list?: AnswerListItem[];
   /** One plain sentence — the bubble text and what gets read aloud. */
   speak: string;
   /** Where "Open" goes. */
@@ -385,6 +394,63 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         headline: list.length ? String(list.length) : undefined,
         rows: list.map((i) => ({ id: i.id, title: describeInsight(i, labels, money), date: '', subtitle: '', amount: i.amount ?? 0, direction: 'out' as const })),
         speak: list.length ? list.slice(0, 3).map((i) => describeInsight(i, labels, money)).join('. ') : t('insightsAllGood'),
+      };
+    }
+
+    case 'list_entities': {
+      const e = intent.entity;
+      let list: AnswerListItem[] = [];
+      let title = '';
+      let target: AnswerTarget | undefined;
+      switch (e) {
+        case 'projects': {
+          const all = await listProjectSummaries();
+          title = t('projects');
+          list = all.map((s) => ({ id: s.project.id, title: s.project.name, subtitle: s.project.status === 'ACTIVE' ? t('statusActive') : t('statusCompleted') }));
+          target = { screen: 'ProjectDetail', projectId: all[0]?.project.id ?? '' };
+          if (all.length !== 1) target = undefined;
+          break;
+        }
+        case 'plots': {
+          const all = await listPlotSummaries();
+          title = t('plotsTitle');
+          list = all.map((s) => ({ id: s.plot.id, title: s.plot.name, subtitle: s.projectName ?? (s.plot.status === 'SOLD' ? t('aiSoldLabel') : undefined) }));
+          target = { screen: 'Plots' };
+          break;
+        }
+        case 'workers': {
+          const all = await listLaborersWithTotals();
+          title = t('laborTitle');
+          list = all.map((x) => ({ id: x.id, title: x.name, subtitle: `${x.projects} ${t('projects').toLowerCase()}` }));
+          target = { screen: 'Labor' };
+          break;
+        }
+        case 'suppliers':
+          title = t('supplier');
+          list = w.parties.map((p) => ({ id: p.id, title: p.name }));
+          break;
+        case 'investors':
+          title = t('investors');
+          list = w.investors.map((p) => ({ id: p.id, title: p.name }));
+          target = { screen: 'Investors' };
+          break;
+        case 'accounts':
+          title = t('accountsTitle');
+          list = w.accounts.map((a) => ({ id: a.id, title: a.name }));
+          target = { screen: 'Accounts' };
+          break;
+        case 'materials':
+          title = t('material');
+          list = w.categories.filter((c) => c.type === 'EXPENSE' && c.parentId).map((c) => ({ id: c.id, title: catLabel(c, w), subtitle: c.unit ?? undefined }));
+          break;
+      }
+      if (list.length === 0) return none(title);
+      return {
+        title: `${title} · ${list.length}`,
+        rows: [],
+        list,
+        speak: `${list.length} ${title}: ${list.slice(0, 5).map((i) => i.title).join(', ')}${list.length > 5 ? '…' : ''}`,
+        target,
       };
     }
 

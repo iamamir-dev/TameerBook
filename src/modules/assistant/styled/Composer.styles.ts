@@ -56,5 +56,6 @@ export const makeStyles = (theme: Theme) =>
     mic: { backgroundColor: 'transparent' },
     micRecording: { backgroundColor: theme.colors.danger },
     pressed: { opacity: 0.8 },
-    hint: { marginTop: theme.spacing.xs, textAlign: 'center' },
+    /** Paper-plane tilt: nose 30° above the horizon. */
+    sendIcon: { transform: [{ rotate: '-30deg' }], marginLeft: -1, marginTop: -1 },
   });

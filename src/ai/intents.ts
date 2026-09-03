@@ -65,6 +65,7 @@ export const INTENT_TYPES = [
   'purchase_orders',
   'insights',
   'company_overview',
+  'list_entities',
   'recent_entries',
   'top_suppliers',
   'pnl',
@@ -85,11 +86,37 @@ export type Intent =
   | { type: 'purchase_orders'; openOnly: boolean }
   | { type: 'insights' }
   | { type: 'company_overview' }
+  | { type: 'list_entities'; entity: EntityKind }
   | { type: 'recent_entries'; period: Period }
   | { type: 'top_suppliers' }
   | { type: 'pnl' };
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+
+/** Things the user can ask to be LISTED by name (no money attached). */
+export const ENTITY_KINDS = ['projects', 'plots', 'workers', 'suppliers', 'investors', 'accounts', 'materials'] as const;
+export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/** Screens the assistant may OPEN on request ("add a new project"). */
+export const OPEN_SCREENS = [
+  'NewProject',
+  'NewPlot',
+  'NewPurchaseOrder',
+  'QuickEntry',
+  'Transfer',
+  'Labor',
+  'Udhaar',
+  'Bookings',
+  'Cash',
+  'Accounts',
+  'Reports',
+  'Categories',
+  'Settings',
+  'Projects',
+  'Plots',
+  'Investors',
+] as const;
+export type OpenScreen = (typeof OPEN_SCREENS)[number];
 
 /** Validate + coerce a raw model object into an `Intent` (null = not usable). */
 export function coerceIntent(raw: unknown): Intent | null {
@@ -129,6 +156,11 @@ export function coerceIntent(raw: unknown): Intent | null {
       return { type, openOnly: o.openOnly !== false };
     case 'recent_entries':
       return { type, period: coercePeriod(o.period, 'week') };
+    case 'list_entities': {
+      const entity = str(o.entity);
+      if (!entity || !(ENTITY_KINDS as readonly string[]).includes(entity)) return null;
+      return { type, entity: entity as EntityKind };
+    }
     case 'insights':
     case 'company_overview':
     case 'top_suppliers':
@@ -141,6 +173,7 @@ export function coerceIntent(raw: unknown): Intent | null {
 export type RouterResult =
   | { kind: 'question'; intent: Intent }
   | { kind: 'draft'; draft: Draft }
+  | { kind: 'open'; screen: OpenScreen }
   | { kind: 'chat'; reply: string };
 
 /** Parse the router's JSON into a `RouterResult` (null = unusable shape). */
@@ -154,6 +187,9 @@ export function parseRouterOutput(raw: unknown): RouterResult | null {
   if (o.kind === 'draft') {
     const draft = coerceDraft(o.draft);
     return draft ? { kind: 'draft', draft } : null;
+  }
+  if (o.kind === 'open' && typeof o.screen === 'string' && (OPEN_SCREENS as readonly string[]).includes(o.screen)) {
+    return { kind: 'open', screen: o.screen as OpenScreen };
   }
   if (o.kind === 'chat' && typeof o.reply === 'string' && o.reply.trim()) return { kind: 'chat', reply: o.reply.trim() };
   // Lenient: a bare intent or draft object without the wrapper.

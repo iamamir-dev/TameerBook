@@ -1,7 +1,7 @@
 import type { Language } from '@/i18n/types';
 
 import type { WorldNames } from './drafts';
-import { INTENT_TYPES, PERIOD_KINDS } from './intents';
+import { ENTITY_KINDS, INTENT_TYPES, OPEN_SCREENS, PERIOD_KINDS } from './intents';
 
 /**
  * Prompt builders — pure string assembly. The model sees NAMES only (never
@@ -71,7 +71,8 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   plot_status: plot?            investor_status: investor?
   purchase_orders: openOnly (boolean, default true)
   recent_entries: period        insights | company_overview | top_suppliers | pnl: no params
-  company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — use for "tell me about my company / business / overall position".
+  list_entities: entity (one of ${ENTITY_KINDS.map((s) => `"${s}"`).join('|')}) — NAMES ONLY, no money. Use when the user asks which/what/names/list ("which projects do I have", "workers ke naam").
+  company_overview = the whole business at a glance (cash, assets, projects, plots, dues) — only when the user asks about the company / business / overall position.
   period = {"kind":<one of ${PERIOD_KINDS.map((s) => `"${s}"`).join('|')}>} or {"kind":"custom","start":"YYYY-MM-DD","end":"YYYY-MM-DD"}. "is mahine" = month, "pichle mahine" = lastMonth, "aaj" = today, "kal" (past) = yesterday, "is hafte" = week.
 
 2) An entry the user wants to record (never save it yourself; the app shows a form to confirm):
@@ -83,8 +84,12 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 {"kind":"draft","draft":{"kind":"transfer","from":string,"to":string,"amount":number}}
   Buying a material with a quantity ("50 bori cement 1200 wala") is a "material" draft (qty=50, rate=1200). Any other spend is "expense". Money received that is not a loan repayment or investor money is "income". "sab aaye" / "all present" → attendance with allPresent=true. Omit fields the user did not say. Dates only if the user gave one.
 
-3) Anything else:
-{"kind":"chat","reply":<a genuinely helpful answer, 1 to 4 short sentences>}
+3) The user wants to CREATE / ADD / OPEN something in the app ("add a new project", "naya plot", "open reports", "make a purchase order"):
+{"kind":"open","screen":<one of ${OPEN_SCREENS.map((s) => `"${s}"`).join('|')}>}
+  NewProject = new project wizard, NewPlot = buy a plot, NewPurchaseOrder = order material, QuickEntry = the + menu, Transfer = move money between accounts, Labor = workers, Udhaar = loans, Bookings = purchase orders, Cash = accounts & transactions, Categories = categories & materials. Never explain how to do it when you can open it.
+
+4) Anything else:
+{"kind":"chat","reply":<a genuinely helpful answer, at most 2 short sentences — this is a phone screen>}
   Be a knowledgeable assistant, not a gatekeeper. Answer general questions (construction materials, rough Pakistani market rates with a caveat, Musharakah / profit-sharing basics, how to plan a build, how taxes and transfer fees usually work) and how-to questions about the app using this guide:
   - Quick Entry (the + button): Expense, Payment In (investor / project sale / plot sale / loan return / other), Material, PO (purchase order), Transfer, Loans (udhaar), Investor, Daily wage (labor), Home expense, Assistant.
   - Projects tab: create a project (needs a plot + investors), Construction page (expenses, workers, attendance), Sale page (buyer receipts), Settle Up (profit split), Photo diary, PDF report.
@@ -95,6 +100,8 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
   Never say you cannot help with the ledger — every ledger question maps to an intent above. Only when a request is truly outside the app AND outside general knowledge, say so in one sentence.
 
 Rules for precision:
+- Answer EXACTLY what was asked, nothing extra. Names asked → list_entities (no amounts). Amount asked → the matching money intent. Never volunteer costs the user did not ask for.
+- Do not repeat the question back or ask "what would you like?" — pick the closest intent and answer. Ask a question back only when the request is genuinely ambiguous between two intents.
 - Numbers: "50 bori" → qty 50; "1200 wala" / "1200 ka" / "@1200" → rate 1200; "12 hazar" → 12000; "2 lakh 50 hazar" → 250000; "dhai lakh" → 250000; "sawa lakh" → 125000; "aadha" → HALF.
 - The word after "se" is usually the supplier/person ("Akram se" → party "Akram"); "ko" marks who receives ("Bilal ko 2000 diye" → payWorker Bilal 2000 when Bilal is a worker, else expense with party Bilal).
 - "cash se" / "bank se" / an account name → account. "HBL se" → account HBL.
@@ -130,7 +137,13 @@ Examples (user → JSON):
 "aaj kya dhyan dena hai" → {"kind":"question","intent":{"type":"insights"}}
 "can you tell me about company" → {"kind":"question","intent":{"type":"company_overview"}}
 "mera business kaisa chal raha hai" → {"kind":"question","intent":{"type":"company_overview"}}
-"how do I add a worker" → {"kind":"chat","reply":"Open Home → Labor and tap Add worker, or from a project's Construction page tap Add worker to set his daily wage for that project."}
+"how do I add a worker" → {"kind":"open","screen":"Labor"}
+"I want to add a new project" → {"kind":"open","screen":"NewProject"}
+"naya plot lena hai" → {"kind":"open","screen":"NewPlot"}
+"tell me the names of my projects" → {"kind":"question","intent":{"type":"list_entities","entity":"projects"}}
+"mere mazdoor kaun kaun hain" → {"kind":"question","intent":{"type":"list_entities","entity":"workers"}}
+"which suppliers do I have" → {"kind":"question","intent":{"type":"list_entities","entity":"suppliers"}}
+"can you tell me details about" → {"kind":"chat","reply":"About what — a project, a worker, a plot, or the company?"}
 "cement ka rate kya chal raha hai" → {"kind":"chat","reply":"Market rates change weekly; in 2026 a 50 kg bag has mostly been in the Rs 1,300–1,500 range in Punjab. Your own last rate is shown on the Material entry form."}
 "total profit" → {"kind":"question","intent":{"type":"pnl"}}
 "salam" → {"kind":"chat","reply":"Wa alaikum assalam! Kya poochna hai?"}`;

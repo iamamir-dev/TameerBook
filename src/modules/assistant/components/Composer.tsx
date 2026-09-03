@@ -108,14 +108,9 @@ export function Composer({
           accessibilityLabel={t('askAssistant')}
           style={({ pressed }) => [styles.round, canSend ? styles.send : styles.sendDisabled, pressed && styles.pressed]}
         >
-          <AppIcon name="send" size={20} color={canSend ? 'onAccent' : 'textSecondary'} />
+          <AppIcon name="send" size={20} color={canSend ? 'onAccent' : 'textSecondary'} style={styles.sendIcon} />
         </Pressable>
       </View>
-      {!recording && !transcribing && value.length === 0 ? (
-        <AppText size="xs" color="textSecondary" style={styles.hint}>
-          {t('aiHoldToTalk')}
-        </AppText>
-      ) : null}
     </View>
   );
 }

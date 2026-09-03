@@ -669,4 +669,8 @@ export const en: TranslationKeys = {
   aiSummaryLabel: 'Today\'s summary',
   aiTooShort: 'Hold the mic while you speak, then release.',
   aiNoSpeech: 'Didn\'t catch that. Try again a little louder.',
+  aiOpening: 'Opening',
+  aiMore: 'more',
+  statusActive: 'Active',
+  statusCompleted: 'Completed',
 };

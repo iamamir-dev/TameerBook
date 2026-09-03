@@ -130,12 +130,12 @@ export function DraftCard({ resolved, onDone }: DraftCardProps): React.JSX.Eleme
   return (
     <View style={styles.card}>
       <View style={styles.head}>
-        <AppIcon name="edit" size={18} color="accent" />
-        <AppText size="sm" weight="bold" color="accent">
+        <AppIcon name="edit" size={14} color="accent" />
+        <AppText size="xs" weight="bold" color="accent">
           {title}
         </AppText>
       </View>
-      <AppText size="md" weight="semibold">
+      <AppText size="sm" weight="semibold">
         {line}
       </AppText>
       {resolved.unresolved.length > 0 ? (
