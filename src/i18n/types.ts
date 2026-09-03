@@ -764,4 +764,7 @@ export interface TranslationKeys {
   aiRetry: string;
   aiCopy: string;
   aiCopied: string;
+  aiSpeakThis: string;
+  aiChecking: string;
+  aiTapToChoose: string;
 }

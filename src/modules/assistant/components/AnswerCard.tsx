@@ -25,7 +25,7 @@ const INLINE_ROWS = 5;
  * a one-line sub, then up to five dense rows and a quiet "Open" link. Money
  * rows carry a sign and direction color; list rows are names only.
  */
-export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
+export function AnswerCard({ answer, onPick }: { answer: Answer; onPick?: (title: string) => void }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
@@ -78,7 +78,13 @@ export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
       {answer.chart ? <AnswerChart chart={answer.chart} /> : null}
 
       {list.map((item) => (
-        <View key={item.id} style={styles.row}>
+        <Pressable
+          key={item.id}
+          onPress={onPick ? () => onPick(item.title) : undefined}
+          disabled={!onPick}
+          accessibilityRole={onPick ? 'button' : undefined}
+          style={({ pressed }) => [styles.row, onPick && pressed && styles.rowPressed]}
+        >
           <View style={styles.rowText}>
             <AppText size="sm" weight="semibold" numberOfLines={1}>
               {item.title}
@@ -89,7 +95,8 @@ export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
               </AppText>
             ) : null}
           </View>
-        </View>
+          {onPick ? <AppIcon name="forward" size={14} color="accent" /> : null}
+        </Pressable>
       ))}
 
       {rows.map(renderRow)}

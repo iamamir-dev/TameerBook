@@ -23,6 +23,8 @@ export interface AgentResult {
   open?: OpenScreen;
   /** Tappable follow-ups the model offered ("you can also…"). */
   suggestions: string[];
+  /** Choices the model asked the user to pick from (rendered as a selectable list). */
+  options: string[];
   /** Compact memory of this turn for the next one. */
   memory: string;
   /** How many model calls it took. */
@@ -36,20 +38,38 @@ export interface AgentDeps {
   /** Prior turns (oldest first), already compact. */
   history?: AiChatMessage[];
   maxCalls?: number;
+  /** Progress hook: which tools are running right now (for the thinking bubble). */
+  onProgress?: (toolNames: string[]) => void;
 }
 
-/** Split "…\nSUGGEST: a | b | c" into the answer and up to three follow-ups. */
-export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[] } {
-  const src = (raw ?? '').trim();
-  if (!src) return { text: '', suggestions: [] };
-  const m = src.match(/(?:^|\n)\s*SUGGEST\s*:\s*(.+)\s*$/i);
-  if (!m) return { text: src, suggestions: [] };
-  const suggestions = m[1]
+const splitPipes = (raw: string, max: number): string[] =>
+  raw
     .split('|')
     .map((x) => x.trim().replace(/^["'“”]+|["'“”.]+$/g, ''))
     .filter((x) => x.length > 0 && x.length <= 60)
-    .slice(0, 3);
-  return { text: src.slice(0, m.index).trim(), suggestions };
+    .slice(0, max);
+
+/**
+ * Peel the marker lines off an answer:
+ *   "…\nOPTIONS: a | b | c"  → choices the user should pick from (≤ 8)
+ *   "…\nSUGGEST: a | b | c"  → follow-ups the user can tap (≤ 3)
+ */
+export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[]; options: string[] } {
+  let text = (raw ?? '').trim();
+  if (!text) return { text: '', suggestions: [], options: [] };
+  let suggestions: string[] = [];
+  let options: string[] = [];
+  const sug = text.match(/(?:^|\n)\s*SUGGEST\s*:\s*(.+)\s*$/i);
+  if (sug) {
+    suggestions = splitPipes(sug[1], 3);
+    text = text.slice(0, sug.index).trim();
+  }
+  const opt = text.match(/(?:^|\n)\s*OPTIONS\s*:\s*(.+)\s*$/i);
+  if (opt) {
+    options = splitPipes(opt[1], 8);
+    text = text.slice(0, opt.index).trim();
+  }
+  return { text, suggestions, options };
 }
 
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
@@ -64,7 +84,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     const res = await transport.chatTools(messages, TOOLS);
 
     if (res.toolCalls.length === 0) {
-      const { text: answer, suggestions } = splitSuggestions(res.content);
+      const { text: answer, suggestions, options } = splitSuggestions(res.content);
       if (!answer && cards.length === 0) {
         // An empty turn (reasoning-only output, truncated completion): nudge once.
         if (!nudged && call < maxCalls) {
@@ -78,9 +98,9 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       if (!answer) {
         // Tools ran but the model added nothing: use the cards' own sentences.
         const fallback = cards.map((c) => c.speak).join(' ');
-        return { text: fallback, cards, suggestions, memory: memoryBits.join('\n'), calls: call };
+        return { text: fallback, cards, suggestions, options, memory: memoryBits.join('\n'), calls: call };
       }
-      return { text: answer, cards, suggestions, memory: [...memoryBits, `assistant: ${answer}`].join('\n'), calls: call };
+      return { text: answer, cards, suggestions, options, memory: [...memoryBits, `assistant: ${answer}`].join('\n'), calls: call };
     }
 
     // Writes and opens end the turn: the user decides next.
@@ -93,16 +113,18 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
           cards,
           draft,
           suggestions: [],
+          options: [],
           memory: [...memoryBits, `assistant proposed ${tc.name}: ${JSON.stringify(action.draft)} (awaiting user confirmation)`].join('\n'),
           calls: call,
         };
       }
       if (action.kind === 'open') {
-        return { text: splitSuggestions(res.content).text, cards, open: action.screen, suggestions: [], memory: [...memoryBits, `assistant opened ${action.screen}`].join('\n'), calls: call };
+        return { text: splitSuggestions(res.content).text, cards, open: action.screen, suggestions: [], options: [], memory: [...memoryBits, `assistant opened ${action.screen}`].join('\n'), calls: call };
       }
     }
 
     // Read tools: run them all, feed results back, let the model answer.
+    deps.onProgress?.(res.toolCalls.map((c) => c.name));
     messages.push({ role: 'assistant', content: res.content, toolCalls: res.toolCalls });
     for (const tc of res.toolCalls) {
       const action = interpretToolCall(tc);
@@ -128,5 +150,5 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   // Out of calls: fall back to the cards' own sentences.
   const fallback = cards.map((c) => c.speak).join(' ');
   if (!fallback) throw new AiError('unparseable', 'agent loop exhausted');
-  return { text: fallback, cards, suggestions: [], memory: memoryBits.join('\n'), calls: maxCalls };
+  return { text: fallback, cards, suggestions: [], options: [], memory: memoryBits.join('\n'), calls: maxCalls };
 }

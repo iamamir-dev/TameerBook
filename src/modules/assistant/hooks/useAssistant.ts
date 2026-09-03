@@ -32,14 +32,20 @@ export type Turn =
       open?: OpenScreen;
       /** Tappable follow-ups. */
       suggestions: string[];
+      /** Choices the assistant asked the user to pick from. */
+      options: string[];
+      /** Which option the user tapped (kept so the list shows the choice). */
+      picked?: string;
       /** Set once the user accepted or rejected the draft (survives restarts). */
       settled?: { status: 'accepted' | 'rejected'; message?: string };
     }
-  | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText: string };
+  | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText?: string };
 
 interface State {
   turns: Turn[];
   busy: boolean;
+  /** What the agent is doing right now (tool names), for the thinking bubble. */
+  working: string[];
   /** True once the saved conversation has been read back. */
   hydrated: boolean;
 }
@@ -50,6 +56,8 @@ type Action =
   | { type: 'clear' }
   | { type: 'hydrate'; turns: Turn[] }
   | { type: 'remove'; turnId: string }
+  | { type: 'working'; tools: string[] }
+  | { type: 'pick'; turnId: string; option: string }
   | { type: 'settle'; turnId: string; status: 'accepted' | 'rejected'; message?: string };
 
 function reducer(s: State, a: Action): State {
@@ -57,19 +65,51 @@ function reducer(s: State, a: Action): State {
     case 'push':
       return { ...s, turns: [...s.turns, a.turn] };
     case 'busy':
-      return { ...s, busy: a.busy };
+      return { ...s, busy: a.busy, working: a.busy ? s.working : [] };
     case 'clear':
       return { ...s, turns: [], busy: false };
     case 'hydrate':
       return { ...s, turns: a.turns, hydrated: true };
     case 'remove':
       return { ...s, turns: s.turns.filter((t) => t.id !== a.turnId) };
+    case 'working':
+      return { ...s, working: a.tools };
+    case 'pick':
+      return { ...s, turns: s.turns.map((t) => (t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, picked: a.option } : t)) };
     case 'settle':
       return {
         ...s,
         turns: s.turns.map((t) => (t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { status: a.status, message: a.message } } : t)),
       };
   }
+}
+
+/** Bring a turn saved by an older build up to the current shape (or drop it). */
+function normalizeTurn(raw: unknown): Turn | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.id !== 'string') return null;
+  if (t.role === 'user') return typeof t.text === 'string' ? { id: t.id, role: 'user', text: t.text } : null;
+  if (t.role !== 'assistant') return null;
+  if (typeof t.error === 'string') {
+    return { id: t.id, role: 'assistant', error: t.error as AiErrorCode, detail: typeof t.detail === 'string' ? t.detail : undefined, retryText: typeof t.retryText === 'string' ? t.retryText : undefined };
+  }
+  // Pre-agent shapes ({kind:'text'|'answer'|'draft'|'open'}) → the unified shape.
+  const legacyKind = typeof t.kind === 'string' ? t.kind : null;
+  const cards = Array.isArray(t.cards) ? (t.cards as Answer[]) : legacyKind === 'answer' && t.answer ? [t.answer as Answer] : [];
+  const draft = (t.draft ?? (legacyKind === 'draft' ? t.resolved : undefined)) as ResolvedDraft | undefined;
+  return {
+    id: t.id,
+    role: 'assistant',
+    text: typeof t.text === 'string' ? t.text : '',
+    cards,
+    draft: draft && typeof draft === 'object' && 'draft' in draft ? { ...draft, issues: draft.issues ?? [], investors: draft.investors ?? [], marks: draft.marks ?? [], unresolved: draft.unresolved ?? [] } : undefined,
+    open: typeof t.open === 'string' ? (t.open as OpenScreen) : legacyKind === 'open' && typeof t.screen === 'string' ? (t.screen as OpenScreen) : undefined,
+    suggestions: Array.isArray(t.suggestions) ? (t.suggestions as string[]) : [],
+    options: Array.isArray(t.options) ? (t.options as string[]) : [],
+    picked: typeof t.picked === 'string' ? t.picked : undefined,
+    settled: t.settled && typeof t.settled === 'object' ? (t.settled as Turn extends { settled?: infer S } ? S : never) : undefined,
+  };
 }
 
 /** Persisted conversation: the visible turns + the model's compact memory. */
@@ -101,6 +141,8 @@ export interface AssistantApi extends State {
   settle: (turnId: string, status: 'accepted' | 'rejected', message?: string) => void;
   /** Re-run the prompt behind a failed reply (replaces the error bubble). */
   retry: (turnId: string) => Promise<void>;
+  /** The user tapped one of the offered choices: remember it and send it. */
+  pick: (turnId: string, option: string) => Promise<void>;
 }
 
 /**
@@ -109,7 +151,10 @@ export interface AssistantApi extends State {
  * a screen to open. The model never touches the database.
  */
 export function useAssistant(): AssistantApi {
-  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, hydrated: false });
+  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, working: [], hydrated: false });
+  // Always-fresh view of the turns for callbacks (avoids stale closures).
+  const turnsRef = useRef<Turn[]>([]);
+  turnsRef.current = state.turns;
   const onSpeak = useRef<((text: string) => void) | null>(null);
   const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
   const onOpenTarget = useRef<((target: AnswerTarget) => void) | null>(null);
@@ -133,7 +178,7 @@ export function useAssistant(): AssistantApi {
         try {
           const saved = JSON.parse(s[CHAT_KEY]) as SavedChat;
           history.current = Array.isArray(saved.history) ? saved.history : [];
-          dispatch({ type: 'hydrate', turns: Array.isArray(saved.turns) ? saved.turns : [] });
+          dispatch({ type: 'hydrate', turns: (Array.isArray(saved.turns) ? saved.turns : []).map(normalizeTurn).filter((x): x is Turn => x !== null) });
         } catch {
           dispatch({ type: 'hydrate', turns: [] });
         }
@@ -155,10 +200,16 @@ export function useAssistant(): AssistantApi {
     try {
       const transport = getAiTransport();
       const world = await buildWorld();
-      const r = await runAgent(text, { transport, world, runIntent, history: history.current });
+      const r = await runAgent(text, {
+        transport,
+        world,
+        runIntent,
+        history: history.current,
+        onProgress: (tools) => dispatch({ type: 'working', tools }),
+      });
       remember('user', text);
       remember('assistant', r.memory);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open, suggestions: r.suggestions } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open, suggestions: r.suggestions, options: r.options } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);
@@ -177,12 +228,34 @@ export function useAssistant(): AssistantApi {
 
   const retry = useCallback(
     async (turnId: string) => {
-      const turn = state.turns.find((t) => t.id === turnId);
+      const turns = turnsRef.current;
+      const idx = turns.findIndex((t) => t.id === turnId);
+      const turn = turns[idx];
       if (!turn || turn.role !== 'assistant' || !('error' in turn)) return;
+      // Older saved errors carry no retryText: fall back to the user message just above.
+      let text = turn.retryText ?? '';
+      if (!text) {
+        for (let i = idx - 1; i >= 0; i--) {
+          const prev = turns[i];
+          if (prev.role === 'user') {
+            text = prev.text;
+            break;
+          }
+        }
+      }
+      if (!text) return;
       dispatch({ type: 'remove', turnId });
-      await runTurn(turn.retryText, false);
+      await runTurn(text, false);
     },
-    [state.turns, runTurn]
+    [runTurn]
+  );
+
+  const pick = useCallback(
+    async (turnId: string, option: string) => {
+      dispatch({ type: 'pick', turnId, option });
+      await runTurn(option, true);
+    },
+    [runTurn]
   );
 
   const clear = useCallback(() => {
@@ -195,5 +268,5 @@ export function useAssistant(): AssistantApi {
     dispatch({ type: 'settle', turnId, status, message });
   }, []);
 
-  return { ...state, ask, clear, settle, retry, onSpeak, onOpen, onOpenTarget };
+  return { ...state, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget };
 }

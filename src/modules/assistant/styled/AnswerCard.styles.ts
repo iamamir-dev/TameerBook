@@ -25,6 +25,7 @@ export const makeStyles = (theme: Theme) =>
       borderTopColor: theme.colors.track,
     },
     rowText: { flex: 1, minWidth: 0 },
+    rowPressed: { backgroundColor: theme.colors.accentSoft },
     sectionHead: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, paddingBottom: 2, borderTopWidth: 1, borderTopColor: theme.colors.track, backgroundColor: theme.colors.background },
     value: { textAlign: 'right' },
     /** "Open →" as a quiet text link, right-aligned. */

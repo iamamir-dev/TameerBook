@@ -726,4 +726,7 @@ export const ur: TranslationKeys = {
   aiRetry: 'دوبارہ',
   aiCopy: 'کاپی',
   aiCopied: 'کاپی ہو گیا',
+  aiSpeakThis: 'سنائیں',
+  aiChecking: 'دیکھ رہا ہے',
+  aiTapToChoose: 'چننے کے لیے دبائیں',
 };

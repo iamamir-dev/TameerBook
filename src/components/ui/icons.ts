@@ -70,6 +70,7 @@ import {
   TriangleAlert,
   Truck,
   Users,
+  Volume2,
   Wallet,
   Wrench,
   X,
@@ -170,6 +171,7 @@ export const ICONS = {
   send: SendHorizontal,
   copy: Copy,
   retry: RotateCcw,
+  speaker: Volume2,
   assistant: Sparkles,
 } satisfies Record<string, LucideIcon>;
 

@@ -112,12 +112,17 @@ describe('splitSuggestions', () => {
     expect(splitSuggestions('Cash: Rs 1,00,000.\nSUGGEST: Is mahine ka kharcha | Akram ko kitna dena hai | Pending orders')).toEqual({
       text: 'Cash: Rs 1,00,000.',
       suggestions: ['Is mahine ka kharcha', 'Akram ko kitna dena hai', 'Pending orders'],
+      options: [],
     });
   });
   it('leaves plain answers alone and caps at three', () => {
-    expect(splitSuggestions('Salam!')).toEqual({ text: 'Salam!', suggestions: [] });
+    expect(splitSuggestions('Salam!')).toEqual({ text: 'Salam!', suggestions: [], options: [] });
     expect(splitSuggestions('x\nSUGGEST: a | b | c | d').suggestions).toHaveLength(3);
-    expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [] });
+    expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [], options: [] });
+  });
+  it('peels OPTIONS (choices) as well, in either order', () => {
+    const r = splitSuggestions('Kaunsa plot?\nOPTIONS: Plot A | Plot B\nSUGGEST: Cancel');
+    expect(r).toEqual({ text: 'Kaunsa plot?', options: ['Plot A', 'Plot B'], suggestions: ['Cancel'] });
   });
 });
 
@@ -128,6 +133,7 @@ describe('runAgent', () => {
       { content: '2 orders are still pending: PO-0015 Akram Traders (Rs 5,40,293) and PO-0011 Bilal Depot.\nSUGGEST: Akram ko kitna dena hai | Delivered orders', toolCalls: [] },
     ]);
     const calls: string[] = [];
+    const progress: string[][] = [];
     const r = await runAgent('which orders are not delivered yet', {
       transport: t,
       world,
@@ -135,8 +141,10 @@ describe('runAgent', () => {
         calls.push(intent.type);
         return poAnswer;
       },
+      onProgress: (names) => progress.push(names),
     });
     expect(calls).toEqual(['purchase_orders']);
+    expect(progress).toEqual([['get_purchase_orders']]);
     expect(r.cards).toHaveLength(1);
     expect(r.text).toContain('PO-0015');
     expect(r.text).not.toContain('SUGGEST');

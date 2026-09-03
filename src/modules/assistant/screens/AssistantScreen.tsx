@@ -16,6 +16,8 @@ import { AnswerCard } from '../components/AnswerCard';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
 import { InsightsCard } from '../components/InsightsCard';
+import { ChoiceList } from '../components/ChoiceList';
+import { MessageActions } from '../components/MessageActions';
 import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
 import { useInsights } from '../hooks/useInsights';
@@ -23,6 +25,7 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
 import { navigateToTarget } from '../utils/navigateTarget';
 import { openScreen } from '../utils/openScreen';
+import { turnToText } from '../utils/turnText';
 import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
 
@@ -56,7 +59,7 @@ export function AssistantScreen(): React.JSX.Element {
   });
   const ready = aiEnabled && configured;
 
-  const { turns, busy, ask, clear, settle, retry, onSpeak, onOpen, onOpenTarget } = useAssistant();
+  const { turns, busy, working, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
@@ -204,21 +207,37 @@ export function AssistantScreen(): React.JSX.Element {
             if ('error' in turn) {
               return (
                 <AssistantRow key={turn.id}>
-                  <ErrorBubble code={turn.error} detail={turn.detail} onRetry={busy ? undefined : () => void retry(turn.id)} />
+                  <View style={styles.turnStack}>
+                    <ErrorBubble code={turn.error} detail={turn.detail} />
+                    <MessageActions onRetry={() => void retry(turn.id)} disabled={busy} />
+                  </View>
                 </AssistantRow>
               );
             }
+            // A pending question makes list rows tappable answers ("which plot?").
+            const isLast = turn.id === lastAssistantId;
+            const asksChoice = isLast && !turn.picked && (turn.options.length > 0 || /[?؟]\s*$/.test(turn.text));
             return (
               <AssistantRow key={turn.id}>
                 <View style={styles.turnStack}>
-                  {turn.text ? <AssistantBubble text={turn.text} onCopied={() => showToast(t('aiCopied'))} /> : null}
+                  {turn.text ? <AssistantBubble text={turn.text} /> : null}
                   {turn.cards.map((card, i) => (
-                    <AnswerCard key={`${turn.id}-c${i}`} answer={card} />
+                    <AnswerCard key={`${turn.id}-c${i}`} answer={card} onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined} />
                   ))}
+                  {turn.options.length > 0 ? (
+                    <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
+                  ) : null}
                   {turn.draft ? (
                     <DraftCard resolved={turn.draft} settled={turn.settled} onSettled={(status, message) => settle(turn.id, status, message)} onDone={showToast} />
                   ) : null}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
+                  {/* Same action row under EVERY reply — copy takes the text plus the cards. */}
+                  <MessageActions
+                    text={turnToText(turn.text, turn.cards) || undefined}
+                    onCopied={() => showToast(t('aiCopied'))}
+                    onSpeak={turn.text ? (x) => void speak(x, language) : undefined}
+                    disabled={busy}
+                  />
                   {turn.suggestions.length > 0 && turn.id === lastAssistantId ? (
                     <View style={styles.chips}>
                       {turn.suggestions.map((sug) => (
@@ -245,8 +264,8 @@ export function AssistantScreen(): React.JSX.Element {
             <AssistantRow>
               <View style={styles.thinking}>
                 <ActivityIndicator color={theme.colors.accent} />
-                <AppText size="sm" color="textSecondary">
-                  {t('aiThinking')}
+                <AppText size="sm" color="textSecondary" numberOfLines={1}>
+                  {working.length > 0 ? `${t('aiChecking')} · ${working.map((w) => w.replace(/^(get_|list_|open_|explain_)/, '').replace(/_/g, ' ')).join(', ')}…` : t('aiThinking')}
                 </AppText>
               </View>
             </AssistantRow>

@@ -723,4 +723,7 @@ export const en: TranslationKeys = {
   aiRetry: 'Retry',
   aiCopy: 'Copy',
   aiCopied: 'Copied',
+  aiSpeakThis: 'Read aloud',
+  aiChecking: 'Checking',
+  aiTapToChoose: 'Tap to choose',
 };
