@@ -39,7 +39,7 @@ server/ai-proxy/                  Cloudflare Worker (wrangler), excluded from ro
       construction spend spike (>1.5× last month). `getLastMaterialRate()`.
       Pure `utils/insights.ts` (rank + severity) with tests. Home "Assistant" card
       (top 3 insights + Ask button). MaterialEntry last-rate hint (tap to fill).
-- [ ] **2 AI layer.** Settings store keys (`aiEnabled`, `aiSpeak`, `aiProxyUrl`,
+- [x] **2 AI layer.** Settings store keys (`aiEnabled`, `aiSpeak`, `aiProxyUrl`,
       `aiGroqKey`). `client.ts` with coded errors. `context.ts`. Pure `intents.ts`
       (catalogue + validation + period resolution), `drafts.ts` (name→id fuzzy
       resolve, draft→prefill), `prompts.ts`, `narrate.ts` template fallback — all

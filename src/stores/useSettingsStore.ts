@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { loadSettings, saveSetting } from '@/db/repositories/settings';
+import { uuid } from '@/db/uuid';
 import type { Language } from '@/i18n/types';
 import { FONT_OPTIONS, FONT_SCALES, type FontKey, type FontScaleKey } from '@/theme/theme';
 import { swallow } from '@/utils/log';
@@ -84,6 +85,18 @@ interface SettingsState {
   signature: string | null;
   /** User's own remove.bg API key (on-device) for signature background removal. */
   removeBgKey: string | null;
+  /** Assistant (AI helpers). OFF by default — voice / bill reading / questions send data to the internet. */
+  aiEnabled: boolean;
+  /** Read assistant answers aloud (device text-to-speech). */
+  aiSpeak: boolean;
+  /** Base URL of the self-hosted AI proxy (Cloudflare Worker). Null = not configured. */
+  aiProxyUrl: string | null;
+  /** Shared app token the proxy expects (optional). */
+  aiProxyToken: string | null;
+  /** Developer / self-host: the user's OWN Groq API key, used directly when no proxy is set. */
+  aiGroqKey: string | null;
+  /** Stable anonymous id for per-device quotas at the proxy (generated once). */
+  aiDeviceId: string;
   hydrate: () => Promise<void>;
   setLanguage: (language: Language) => void;
   toggleLanguage: () => void;
@@ -97,6 +110,11 @@ interface SettingsState {
   setDonationPct: (pct: number) => void;
   setSignature: (signature: string | null) => void;
   setRemoveBgKey: (key: string | null) => void;
+  setAiEnabled: (on: boolean) => void;
+  setAiSpeak: (on: boolean) => void;
+  setAiProxyUrl: (url: string | null) => void;
+  setAiProxyToken: (token: string | null) => void;
+  setAiGroqKey: (key: string | null) => void;
 }
 
 const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
@@ -117,6 +135,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   donationPct: DEFAULT_DONATION_PCT,
   signature: null,
   removeBgKey: null,
+  aiEnabled: false,
+  aiSpeak: true,
+  aiProxyUrl: null,
+  aiProxyToken: null,
+  aiGroqKey: null,
+  aiDeviceId: '',
 
   hydrate: async () => {
     try {
@@ -134,6 +158,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (s.donationPct != null) patch.donationPct = clampPct(Number(s.donationPct));
       if (s.signature) patch.signature = s.signature;
       if (s.removeBgKey) patch.removeBgKey = s.removeBgKey;
+      if (s.aiEnabled != null) patch.aiEnabled = s.aiEnabled === '1';
+      if (s.aiSpeak != null) patch.aiSpeak = s.aiSpeak === '1';
+      if (s.aiProxyUrl) patch.aiProxyUrl = s.aiProxyUrl;
+      if (s.aiProxyToken) patch.aiProxyToken = s.aiProxyToken;
+      if (s.aiGroqKey) patch.aiGroqKey = s.aiGroqKey;
+      // One anonymous device id for proxy quotas, minted on first launch.
+      if (s.aiDeviceId) patch.aiDeviceId = s.aiDeviceId;
+      else {
+        patch.aiDeviceId = uuid();
+        persist('aiDeviceId', patch.aiDeviceId);
+      }
       if (s.fontFamily && s.fontFamily in FONT_OPTIONS) patch.fontFamily = s.fontFamily as FontKey;
       if (s.fontScale && s.fontScale in FONT_SCALES) patch.fontScale = s.fontScale as FontScaleKey;
       if (s.homeSections) {
@@ -212,5 +247,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setRemoveBgKey: (removeBgKey) => {
     set({ removeBgKey });
     persist('removeBgKey', removeBgKey ?? '');
+  },
+  setAiEnabled: (aiEnabled) => {
+    set({ aiEnabled });
+    persist('aiEnabled', aiEnabled ? '1' : '0');
+  },
+  setAiSpeak: (aiSpeak) => {
+    set({ aiSpeak });
+    persist('aiSpeak', aiSpeak ? '1' : '0');
+  },
+  setAiProxyUrl: (url) => {
+    const aiProxyUrl = url?.trim().replace(/\/+$/, '') || null;
+    set({ aiProxyUrl });
+    persist('aiProxyUrl', aiProxyUrl ?? '');
+  },
+  setAiProxyToken: (token) => {
+    const aiProxyToken = token?.trim() || null;
+    set({ aiProxyToken });
+    persist('aiProxyToken', aiProxyToken ?? '');
+  },
+  setAiGroqKey: (key) => {
+    const aiGroqKey = key?.trim() || null;
+    set({ aiGroqKey });
+    persist('aiGroqKey', aiGroqKey ?? '');
   },
 }));

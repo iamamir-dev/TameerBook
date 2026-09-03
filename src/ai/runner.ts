@@ -1,0 +1,424 @@
+import {
+  getInvestorSummary,
+  getLaborerKhata,
+  getSaleSummary,
+  listAccountsWithBalance,
+  listAllCompanyTransactions,
+  listInsights,
+  listInvestorsWithCapital,
+  listLaborersWithTotals,
+  listPlotSummaries,
+  listProjectSummaries,
+  listPurchaseOrders,
+  listUdhaar,
+  getPnl,
+  getTopSuppliers,
+  type TransactionRow,
+} from '@/db';
+import { t, type TranslationKey } from '@/i18n';
+import { formatDisplayDate } from '@/utils/date';
+import { describeInsight } from '@/utils/insights';
+import { insightLabels } from '@/utils/insightLabels';
+import { formatQty, formatRupees } from '@/utils/money';
+import { inRange, type DateRange } from '@/utils/period';
+
+import type { CategoryNamed } from './drafts';
+import { matchName, type Named } from './match';
+import { periodToRange, type Intent, type Period } from './intents';
+import type { World } from './prompts';
+
+/**
+ * Answers an `Intent` with EXISTING repository queries. This is the whole
+ * reason the model never writes SQL: every number here comes from the same
+ * functions the screens use, so the assistant can never disagree with the
+ * app. Returns display-ready data plus one sentence to speak.
+ */
+
+export interface AnswerRow {
+  id: string;
+  title: string;
+  /** ISO day shown under the title unless `subtitle` overrides it. */
+  date: string;
+  subtitle?: string;
+  amount: number;
+  direction: 'in' | 'out';
+  typeLabel?: string;
+}
+
+export type AnswerTarget =
+  | { screen: 'Cash' | 'Labor' | 'Udhaar' | 'Bookings' | 'Accounts' | 'Reports' | 'Investors' | 'Plots' }
+  | { screen: 'ProjectDetail'; projectId: string }
+  | { screen: 'SaleDetail'; projectId: string }
+  | { screen: 'LaborerDetail'; laborerId: string }
+  | { screen: 'PlotDetail'; plotId: string }
+  | { screen: 'InvestorProfile'; investorId: string }
+  | { screen: 'UdhaarDetail'; udhaarId: string };
+
+export interface Answer {
+  title: string;
+  /** The one big number. */
+  headline?: string;
+  /** Small line under the headline. */
+  sub?: string;
+  rows: AnswerRow[];
+  /** One plain sentence — the bubble text and what gets read aloud. */
+  speak: string;
+  /** Where "Open" goes. */
+  target?: AnswerTarget;
+}
+
+const MAX_ROWS = 25;
+const money = formatRupees;
+
+const PERIOD_KEY: Record<Exclude<Period['kind'], 'custom'>, TranslationKey> = {
+  today: 'today',
+  yesterday: 'yesterday',
+  week: 'thisWeek',
+  month: 'thisMonth',
+  lastMonth: 'lastMonthLabel',
+  quarter: 'thisQuarter',
+  year: 'thisYear',
+  all: 'allTime',
+};
+
+export function periodLabel(p: Period): string {
+  return p.kind === 'custom' ? `${formatDisplayDate(p.start)} – ${formatDisplayDate(p.end)}` : t(PERIOD_KEY[p.kind]);
+}
+
+const catLabel = (c: CategoryNamed | undefined, w: World): string =>
+  c ? (w.language === 'ur' && c.alt?.[0] ? c.alt[0] : c.name) : '';
+
+const pick = <T extends Named>(q: string | undefined, list: readonly T[]): T | undefined =>
+  q ? matchName(q, list)?.item : undefined;
+
+/** Category + all its children (asking for "Materials" sums every material). */
+function categoryFamily(c: CategoryNamed, w: World): Set<string> {
+  const ids = new Set<string>([c.id]);
+  for (const k of w.categories) if (k.parentId === c.id) ids.add(k.id);
+  return ids;
+}
+
+function txnRow(x: TransactionRow, w: World): AnswerRow {
+  const cat = w.categories.find((c) => c.id === x.category_id);
+  const party = w.parties.find((p) => p.id === x.party_id)?.name ?? x.counterparty_name ?? '';
+  return {
+    id: x.id,
+    title: x.description || catLabel(cat, w) || party || t('noCategory'),
+    date: x.date,
+    amount: x.amount,
+    direction: x.direction === 'IN' ? 'in' : 'out',
+    typeLabel: party || catLabel(cat, w) || undefined,
+  };
+}
+
+async function liveTxns(range: DateRange): Promise<TransactionRow[]> {
+  const all = await listAllCompanyTransactions();
+  return all.filter((x) => x.transfer_id === null && inRange(x.date, range));
+}
+
+const none = (title: string): Answer => ({ title, rows: [], speak: t('noResultsLabel') });
+
+/** Run one intent → one answer. */
+export async function runIntent(intent: Intent, w: World): Promise<Answer> {
+  switch (intent.type) {
+    case 'spend_by_category': {
+      const cat = pick(intent.category, w.categories.filter((c) => c.type === 'EXPENSE'));
+      if (!cat) return none(intent.category);
+      const ids = categoryFamily(cat, w);
+      const project = pick(intent.project, w.projects);
+      const range = periodToRange(intent.period, w.today);
+      const rows = (await liveTxns(range)).filter(
+        (x) => x.direction === 'OUT' && x.category_id && ids.has(x.category_id) && (!project || x.project_id === project.id)
+      );
+      const total = rows.reduce((s, x) => s + x.amount, 0);
+      const qty = rows.reduce((s, x) => s + (x.qty ?? 0), 0);
+      const title = `${catLabel(cat, w)} · ${periodLabel(intent.period)}${project ? ` · ${project.name}` : ''}`;
+      const qtyText = qty > 0 ? `${formatQty(qty)} ${cat.unit ?? ''}`.trim() : '';
+      return {
+        title,
+        headline: money(total),
+        sub: [qtyText, `${rows.length} ${t('transactions').toLowerCase()}`].filter(Boolean).join(' · '),
+        rows: rows.slice(0, MAX_ROWS).map((x) => txnRow(x, w)),
+        speak: `${title}: ${money(total)}${qtyText ? ` · ${qtyText}` : ''}`,
+        target: project ? { screen: 'ProjectDetail', projectId: project.id } : { screen: 'Cash' },
+      };
+    }
+
+    case 'spend_summary': {
+      const project = pick(intent.project, w.projects);
+      const range = periodToRange(intent.period, w.today);
+      const rows = (await liveTxns(range)).filter((x) => !project || x.project_id === project.id);
+      const inSum = rows.filter((x) => x.direction === 'IN').reduce((s, x) => s + x.amount, 0);
+      const outSum = rows.filter((x) => x.direction === 'OUT').reduce((s, x) => s + x.amount, 0);
+      const title = `${periodLabel(intent.period)}${project ? ` · ${project.name}` : ''}`;
+      return {
+        title,
+        headline: money(inSum - outSum),
+        sub: `${t('moneyIn')} ${money(inSum)} · ${t('moneyOut')} ${money(outSum)}`,
+        rows: rows.slice(0, MAX_ROWS).map((x) => txnRow(x, w)),
+        speak: `${title}: ${t('moneyIn')} ${money(inSum)}, ${t('moneyOut')} ${money(outSum)}, ${t('netFlow')} ${money(inSum - outSum)}`,
+        target: project ? { screen: 'ProjectDetail', projectId: project.id } : { screen: 'Cash' },
+      };
+    }
+
+    case 'project_status': {
+      const summaries = await listProjectSummaries();
+      const project = pick(intent.project, w.projects);
+      const chosen = project ? summaries.filter((s) => s.project.id === project.id) : summaries.filter((s) => s.project.status === 'ACTIVE');
+      if (chosen.length === 0) return none(t('projects'));
+      if (chosen.length === 1) {
+        const s = chosen[0];
+        const profit = s.saleReceived - s.cost.totalCost;
+        return {
+          title: s.project.name,
+          headline: money(s.cost.totalCost),
+          sub: `${t('aiCostLabel')} · ${t('aiSoldLabel')} ${money(s.saleDeal)} · ${t('aiReceivedLabel')} ${money(s.saleReceived)}`,
+          rows: [
+            { id: 'plot', title: t('assetPlots'), date: '', subtitle: '', amount: s.cost.plotCost, direction: 'out' },
+            { id: 'con', title: t('assetConstruction'), date: '', subtitle: '', amount: s.cost.constructionCost, direction: 'out' },
+            { id: 'sale', title: t('aiReceivedLabel'), date: '', subtitle: '', amount: s.saleReceived, direction: 'in' },
+          ],
+          speak: `${s.project.name}: ${t('aiCostLabel')} ${money(s.cost.totalCost)}${s.saleDeal > 0 ? `, ${t('aiSoldLabel')} ${money(s.saleDeal)}, ${t('aiReceivedLabel')} ${money(s.saleReceived)}, ${t('netSoFar')} ${money(profit)}` : ''}`,
+          target: { screen: 'ProjectDetail', projectId: s.project.id },
+        };
+      }
+      const total = chosen.reduce((s, x) => s + x.cost.totalCost, 0);
+      return {
+        title: t('projects'),
+        headline: money(total),
+        sub: `${chosen.length} · ${t('aiCostLabel')}`,
+        rows: chosen.map((s) => ({ id: s.project.id, title: s.project.name, date: '', subtitle: t('aiCostLabel'), amount: s.cost.totalCost, direction: 'out' as const })),
+        speak: `${chosen.length} ${t('projects')}: ${t('aiCostLabel')} ${money(total)}`,
+      };
+    }
+
+    case 'worker_balance': {
+      const worker = pick(intent.worker, w.workers);
+      if (worker) {
+        const k = await getLaborerKhata(worker.id);
+        return {
+          title: k.laborer.name,
+          headline: money(k.totals.balance),
+          sub: `${t('outstanding')} · ${t('insightOwed')}`,
+          rows: k.history.slice(0, MAX_ROWS).map((h, i) => ({
+            id: `${h.projectLaborerId}:${h.ts}:${i}`,
+            title: h.kind === 'PAYMENT' ? t('payWorker') : h.projectName,
+            date: h.date,
+            amount: h.amount,
+            direction: h.kind === 'PAYMENT' ? 'out' : 'in',
+            typeLabel: h.kind === 'PAYMENT' ? undefined : (h.attendanceStatus ?? undefined),
+          })),
+          speak: `${k.laborer.name}: ${t('outstanding')} ${money(k.totals.balance)}`,
+          target: { screen: 'LaborerDetail', laborerId: worker.id },
+        };
+      }
+      const all = (await listLaborersWithTotals()).filter((x) => x.balance !== 0);
+      const total = all.reduce((s, x) => s + x.balance, 0);
+      return {
+        title: t('laborTitle'),
+        headline: money(total),
+        sub: `${all.length} ${t('aiWorkersLabel')} · ${t('outstanding')}`,
+        rows: all.map((x) => ({ id: x.id, title: x.name, date: '', subtitle: `${x.projects} ${t('projects').toLowerCase()}`, amount: x.balance, direction: 'out' as const })),
+        speak: `${t('laborTitle')}: ${t('outstanding')} ${money(total)} · ${all.length} ${t('aiWorkersLabel')}`,
+        target: { screen: 'Labor' },
+      };
+    }
+
+    case 'party_history': {
+      const party = pick(intent.party, w.parties);
+      if (!party) return none(intent.party);
+      const range = periodToRange(intent.period, w.today);
+      const rows = (await liveTxns(range)).filter((x) => x.party_id === party.id);
+      const paid = rows.filter((x) => x.direction === 'OUT').reduce((s, x) => s + x.amount, 0);
+      const title = `${party.name} · ${periodLabel(intent.period)}`;
+      return {
+        title,
+        headline: money(paid),
+        sub: `${rows.length} ${t('transactions').toLowerCase()}`,
+        rows: rows.slice(0, MAX_ROWS).map((x) => txnRow(x, w)),
+        speak: `${title}: ${money(paid)}`,
+        target: { screen: 'Cash' },
+      };
+    }
+
+    case 'udhaar_balance': {
+      const open = await listUdhaar('OPEN');
+      const one = intent.person ? matchName(intent.person, open.map((u) => ({ id: u.id, name: u.person_name })))?.item : undefined;
+      const list = one ? open.filter((u) => u.id === one.id) : open.filter((u) => u.balance > 0);
+      if (list.length === 0) return none(t('udhaar'));
+      const receivable = list.filter((u) => u.direction === 'GIVEN').reduce((s, u) => s + u.balance, 0);
+      const payable = list.filter((u) => u.direction === 'TAKEN').reduce((s, u) => s + u.balance, 0);
+      return {
+        title: one ? one.name : t('udhaar'),
+        headline: money(one ? list[0].balance : receivable),
+        sub: one ? (list[0].direction === 'GIVEN' ? t('receivable') : t('payable')) : `${t('receivable')} ${money(receivable)} · ${t('payable')} ${money(payable)}`,
+        rows: list.map((u) => ({ id: u.id, title: u.person_name, date: '', subtitle: u.direction === 'GIVEN' ? t('receivable') : t('payable'), amount: u.balance, direction: u.direction === 'GIVEN' ? ('in' as const) : ('out' as const) })),
+        speak: one
+          ? `${one.name}: ${list[0].direction === 'GIVEN' ? t('receivable') : t('payable')} ${money(list[0].balance)}`
+          : `${t('udhaar')}: ${t('receivable')} ${money(receivable)}, ${t('payable')} ${money(payable)}`,
+        target: one ? { screen: 'UdhaarDetail', udhaarId: one.id } : { screen: 'Udhaar' },
+      };
+    }
+
+    case 'account_balance': {
+      const accounts = await listAccountsWithBalance();
+      const one = pick(intent.account, accounts);
+      const list = one ? accounts.filter((a) => a.id === one.id) : accounts;
+      const total = list.reduce((s, a) => s + a.balance, 0);
+      return {
+        title: one ? one.name : t('accountsTitle'),
+        headline: money(total),
+        sub: one ? undefined : `${list.length} · ${t('totalBalance')}`,
+        rows: list.map((a) => ({ id: a.id, title: a.name, date: '', subtitle: '', amount: a.balance, direction: 'in' as const })),
+        speak: `${one ? one.name : t('totalBalance')}: ${money(total)}`,
+        target: { screen: 'Accounts' },
+      };
+    }
+
+    case 'plot_status': {
+      const summaries = await listPlotSummaries();
+      const one = pick(intent.plot, w.plots);
+      const list = one ? summaries.filter((s) => s.plot.id === one.id) : summaries.filter((s) => s.plot.status !== 'SOLD');
+      if (list.length === 0) return none(t('plotsTitle'));
+      if (list.length === 1) {
+        const s = list[0];
+        return {
+          title: s.plot.name,
+          headline: money(s.totalCost),
+          sub: `${t('aiCostLabel')} · ${t('remaining')} ${money(s.remaining)}`,
+          rows: [
+            { id: 'deal', title: t('agreedPrice'), date: '', subtitle: '', amount: s.dealPrice, direction: 'out' },
+            { id: 'paid', title: t('seller'), date: '', subtitle: '', amount: s.paidToSeller, direction: 'out' },
+            { id: 'exp', title: t('kharcha'), date: '', subtitle: '', amount: s.expenses, direction: 'out' },
+            ...(s.salePrice > 0 ? [{ id: 'sale', title: t('aiReceivedLabel'), date: '', subtitle: '', amount: s.saleReceived, direction: 'in' as const }] : []),
+          ],
+          speak: `${s.plot.name}: ${t('aiCostLabel')} ${money(s.totalCost)}, ${t('remaining')} ${money(s.remaining)}`,
+          target: { screen: 'PlotDetail', plotId: s.plot.id },
+        };
+      }
+      const total = list.reduce((s, x) => s + x.totalCost, 0);
+      return {
+        title: t('plotsTitle'),
+        headline: money(total),
+        sub: `${list.length} · ${t('aiCostLabel')}`,
+        rows: list.map((s) => ({ id: s.plot.id, title: s.plot.name, date: '', subtitle: `${t('remaining')} ${money(s.remaining)}`, amount: s.totalCost, direction: 'out' as const })),
+        speak: `${list.length} ${t('plotsTitle')}: ${t('aiCostLabel')} ${money(total)}`,
+        target: { screen: 'Plots' },
+      };
+    }
+
+    case 'investor_status': {
+      const one = pick(intent.investor, w.investors);
+      if (one) {
+        const s = await getInvestorSummary(one.id);
+        if (!s) return none(one.name);
+        return {
+          title: s.investor.name,
+          headline: money(s.total),
+          sub: `${t('invested')} ${money(s.invested)} · ${t('netSoFar')} ${money(s.profit)}`,
+          rows: [
+            { id: 'inv', title: t('invested'), date: '', subtitle: '', amount: s.invested, direction: 'in' },
+            { id: 'profit', title: t('netSoFar'), date: '', subtitle: '', amount: s.profit, direction: 'in' },
+            { id: 'out', title: t('paidOut'), date: '', subtitle: '', amount: s.paidOut, direction: 'out' },
+          ],
+          speak: `${s.investor.name}: ${t('invested')} ${money(s.invested)}, ${t('netSoFar')} ${money(s.profit)}, ${t('totalLabel')} ${money(s.total)}`,
+          target: { screen: 'InvestorProfile', investorId: one.id },
+        };
+      }
+      const all = await listInvestorsWithCapital();
+      const total = all.reduce((s, x) => s + x.total, 0);
+      return {
+        title: t('investors'),
+        headline: money(total),
+        sub: `${all.length}`,
+        rows: all.map((x) => ({ id: x.id, title: x.name, date: '', subtitle: `${t('netSoFar')} ${money(x.profit)}`, amount: x.total, direction: 'in' as const })),
+        speak: `${all.length} ${t('investors')}: ${money(total)}`,
+        target: { screen: 'Investors' },
+      };
+    }
+
+    case 'sale_status': {
+      const project = pick(intent.project, w.projects) ?? (w.projects.length === 1 ? w.projects[0] : undefined);
+      if (!project) return none(t('projects'));
+      const s = await getSaleSummary(project.id);
+      const agreed = s.sale?.agreed_price ?? 0;
+      return {
+        title: `${project.name} · ${t('aiSoldLabel')}`,
+        headline: money(s.outstanding),
+        sub: `${t('remaining')} · ${t('aiSoldLabel')} ${money(agreed)} · ${t('aiReceivedLabel')} ${money(s.receiptsTotal)}`,
+        rows: s.receipts.filter((r) => !r.is_void).slice(0, MAX_ROWS).map((r) => ({ id: r.id, title: t('aiReceivedLabel'), date: r.date, amount: r.amount, direction: 'in' as const, typeLabel: r.pay_type ?? undefined })),
+        speak: agreed > 0
+          ? `${project.name}: ${t('aiSoldLabel')} ${money(agreed)}, ${t('aiReceivedLabel')} ${money(s.receiptsTotal)}, ${t('remaining')} ${money(s.outstanding)}`
+          : `${project.name}: ${t('noResultsLabel')}`,
+        target: { screen: 'SaleDetail', projectId: project.id },
+      };
+    }
+
+    case 'purchase_orders': {
+      const pos = (await listPurchaseOrders()).filter((p) => !intent.openOnly || p.status === 'OPEN');
+      if (pos.length === 0) return none(t('bookingsTitle'));
+      const owed = pos.reduce((s, p) => s + p.payRemaining, 0);
+      return {
+        title: t('bookingsTitle'),
+        headline: money(owed),
+        sub: `${pos.length} · ${t('owedToSuppliers')}`,
+        rows: pos.slice(0, MAX_ROWS).map((p) => ({
+          id: p.poId,
+          title: [p.poNumber, p.supplierName].filter(Boolean).join(' · '),
+          date: p.createdAt.slice(0, 10),
+          amount: p.payRemaining,
+          direction: 'out' as const,
+          typeLabel: p.fullyReceived ? undefined : t('openBookings'),
+        })),
+        speak: `${pos.length} ${t('bookingsTitle')}: ${t('owedToSuppliers')} ${money(owed)}`,
+        target: { screen: 'Bookings' },
+      };
+    }
+
+    case 'insights': {
+      const list = await listInsights(w.today);
+      const labels = insightLabels(t);
+      return {
+        title: t('suggestionsTitle'),
+        headline: list.length ? String(list.length) : undefined,
+        rows: list.map((i) => ({ id: i.id, title: describeInsight(i, labels, money), date: '', subtitle: '', amount: i.amount ?? 0, direction: 'out' as const })),
+        speak: list.length ? list.slice(0, 3).map((i) => describeInsight(i, labels, money)).join('. ') : t('insightsAllGood'),
+      };
+    }
+
+    case 'recent_entries': {
+      const range = periodToRange(intent.period, w.today);
+      const rows = await liveTxns(range);
+      return {
+        title: `${t('transactions')} · ${periodLabel(intent.period)}`,
+        headline: String(rows.length),
+        rows: rows.slice(0, MAX_ROWS).map((x) => txnRow(x, w)),
+        speak: `${rows.length} ${t('transactions').toLowerCase()} · ${periodLabel(intent.period)}`,
+        target: { screen: 'Cash' },
+      };
+    }
+
+    case 'top_suppliers': {
+      const rows = await getTopSuppliers(8);
+      if (rows.length === 0) return none(t('supplier'));
+      return {
+        title: t('supplier'),
+        rows: rows.map((r, i) => ({ id: `${i}`, title: r.name, date: '', subtitle: '', amount: r.total, direction: 'out' as const })),
+        speak: `${rows[0].name}: ${money(rows[0].total)}`,
+        target: { screen: 'Reports' },
+      };
+    }
+
+    case 'pnl': {
+      const rows = await getPnl();
+      const net = rows.reduce((s, r) => s + r.net, 0);
+      return {
+        title: t('netSoFar'),
+        headline: money(net),
+        rows: rows.map((r) => ({ id: r.id, title: r.name, date: '', subtitle: `${t('moneyIn')} ${money(r.revenue)} · ${t('moneyOut')} ${money(r.expenses)}`, amount: r.net, direction: r.net >= 0 ? ('in' as const) : ('out' as const) })),
+        speak: `${t('netSoFar')}: ${money(net)}`,
+        target: { screen: 'Reports' },
+      };
+    }
+  }
+}

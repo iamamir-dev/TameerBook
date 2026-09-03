@@ -657,4 +657,11 @@ export interface TranslationKeys {
   insightSpendUp: string;
   lastRateLabel: string;
   useLastRate: string;
+  lastMonthLabel: string;
+  noResultsLabel: string;
+  aiCostLabel: string;
+  aiSoldLabel: string;
+  aiReceivedLabel: string;
+  aiWorkersLabel: string;
+  paidOut: string;
 }

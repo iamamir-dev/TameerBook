@@ -619,4 +619,11 @@ export const ur: TranslationKeys = {
   insightSpendUp: 'پچھلے مہینے سے زیادہ خرچ',
   lastRateLabel: 'پچھلا ریٹ',
   useLastRate: 'استعمال کریں',
+  lastMonthLabel: 'پچھلا مہینہ',
+  noResultsLabel: 'اس کے لیے کچھ نہیں ملا۔',
+  aiCostLabel: 'اب تک لاگت',
+  aiSoldLabel: 'فروخت قیمت',
+  aiReceivedLabel: 'وصول',
+  aiWorkersLabel: 'مزدور',
+  paidOut: 'ادا شدہ',
 };

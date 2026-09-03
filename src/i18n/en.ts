@@ -616,4 +616,11 @@ export const en: TranslationKeys = {
   insightSpendUp: 'spending up vs last month',
   lastRateLabel: 'Last rate',
   useLastRate: 'Use',
+  lastMonthLabel: 'Last month',
+  noResultsLabel: 'Nothing found for that.',
+  aiCostLabel: 'Cost so far',
+  aiSoldLabel: 'Sold for',
+  aiReceivedLabel: 'Received',
+  aiWorkersLabel: 'workers',
+  paidOut: 'Paid out',
 };
