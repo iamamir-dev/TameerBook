@@ -719,4 +719,5 @@ export const en: TranslationKeys = {
   aiPlotTaken: 'This plot is already in a project. Pick a free plot.',
   aiClearChat: 'Clear chat',
   aiClearChatConfirm: 'Delete this conversation? The saved entries stay.',
+  aiShowAll: 'Show all',
 };

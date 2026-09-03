@@ -760,4 +760,5 @@ export interface TranslationKeys {
   aiPlotTaken: string;
   aiClearChat: string;
   aiClearChatConfirm: string;
+  aiShowAll: string;
 }

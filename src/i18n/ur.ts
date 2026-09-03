@@ -722,4 +722,5 @@ export const ur: TranslationKeys = {
   aiPlotTaken: 'یہ پلاٹ پہلے ہی کسی پروجیکٹ میں ہے۔ خالی پلاٹ چنیں۔',
   aiClearChat: 'چیٹ صاف کریں',
   aiClearChatConfirm: 'یہ گفتگو حذف کریں؟ محفوظ اندراجات رہیں گے۔',
+  aiShowAll: 'سب دکھائیں',
 };

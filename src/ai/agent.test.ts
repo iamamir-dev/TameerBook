@@ -73,6 +73,10 @@ describe('interpretToolCall', () => {
     });
     expect(interpretToolCall({ id: '1', name: 'record_material', args: { item: 'cement', qty: 50, rate: 1200 } }).kind).toBe('write');
   });
+  it('maps the composite project details tool', () => {
+    expect(interpretToolCall({ id: '1', name: 'get_project_details', args: { project: 'Gulberg' } })).toEqual({ kind: 'read', intent: { type: 'project_details', project: 'Gulberg' } });
+    expect(interpretToolCall({ id: '1', name: 'get_project_details', args: {} }).kind).toBe('invalid');
+  });
   it('accepts add_project with no details (the sheet asks)', () => {
     expect(interpretToolCall({ id: '1', name: 'add_project', args: {} })).toEqual({ kind: 'write', draft: { kind: 'createProject', name: undefined, plot: undefined, investors: undefined } });
   });

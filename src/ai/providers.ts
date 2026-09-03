@@ -4,7 +4,7 @@
  * model is renamed. Free-tier facts as of Sept 2026; re-check the linked
  * consoles when something 404s.
  */
-export const AI_PROVIDERS = ['groq', 'gemini', 'openrouter', 'proxy', 'custom'] as const;
+export const AI_PROVIDERS = ['groq', 'gemini', 'openai', 'openrouter', 'proxy', 'custom'] as const;
 export type AiProviderId = (typeof AI_PROVIDERS)[number];
 
 export interface ModelPreset {
@@ -73,6 +73,25 @@ export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
     needsKey: true,
     needsUrl: false,
     trainsOnData: true,
+  },
+  openai: {
+    id: 'openai',
+    label: 'OpenAI (paid)',
+    hint: 'GPT-5 family · most precise · pay per use · voice + vision',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+    baseUrl: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-5-mini',
+    models: [
+      { id: 'gpt-5-mini', note: 'best value' },
+      { id: 'gpt-5', note: 'most capable' },
+      { id: 'gpt-5-nano', note: 'cheapest' },
+      { id: 'gpt-4o-mini', note: 'older · fast' },
+    ],
+    voice: true,
+    vision: true,
+    needsKey: true,
+    needsUrl: false,
+    trainsOnData: false,
   },
   openrouter: {
     id: 'openrouter',

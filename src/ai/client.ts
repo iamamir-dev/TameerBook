@@ -72,6 +72,10 @@ export function getAiTransport(): AiTransport {
     case 'custom':
       if (!s.aiCustomBaseUrl) throw new AiError('noProvider');
       return new OpenAiCompatTransport('custom', s.aiCustomBaseUrl.replace(/\/+$/, ''), key || null, model, {}, { voiceViaGroqKey: groqKey || null });
+    case 'openai':
+      if (!key) throw new AiError('noProvider');
+      // GPT-5 / o-series reject `max_tokens` and non-default temperature.
+      return new OpenAiCompatTransport('openai', info.baseUrl!, key, model, {}, { voiceModel: 'gpt-4o-mini-transcribe', tokensParam: 'max_completion_tokens', fixedTemperature: true });
     case 'openrouter':
       if (!key) throw new AiError('noProvider');
       return new OpenAiCompatTransport(
@@ -165,6 +169,10 @@ interface CompatOptions {
   voiceModel?: string;
   /** No audio endpoint here: use Groq's with this key when present. */
   voiceViaGroqKey?: string | null;
+  /** OpenAI's newer models want `max_completion_tokens`. */
+  tokensParam?: 'max_tokens' | 'max_completion_tokens';
+  /** Reasoning models only accept the default temperature. */
+  fixedTemperature?: boolean;
 }
 
 class OpenAiCompatTransport implements AiTransport {
@@ -185,7 +193,14 @@ class OpenAiCompatTransport implements AiTransport {
   }
 
   private async completion(body: Record<string, unknown>): Promise<OaResponse> {
-    const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body) });
+    // Normalise the two params providers disagree on.
+    const b: Record<string, unknown> = { ...body };
+    if (this.o.tokensParam === 'max_completion_tokens' && 'max_tokens' in b) {
+      b.max_completion_tokens = b.max_tokens;
+      delete b.max_tokens;
+    }
+    if (this.o.fixedTemperature) delete b.temperature;
+    const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(b) });
     return (await res.json()) as OaResponse;
   }
 

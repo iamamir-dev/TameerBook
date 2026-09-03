@@ -1,7 +1,10 @@
 import {
   getCashFlow,
   getCompanyAssets,
+  getConstructionSummary,
   getInvestorSummary,
+  getProjectCapitalSummary,
+  getProjectSummary,
   getLaborerKhata,
   getSaleSummary,
   listAccountsWithBalance,
@@ -10,6 +13,7 @@ import {
   listInvestorsWithCapital,
   listLaborersWithTotals,
   listPlotSummaries,
+  listProjectLaborers,
   listProjectSummaries,
   listPurchaseOrders,
   listUdhaar,
@@ -82,6 +86,8 @@ export interface Answer {
   list?: AnswerListItem[];
   /** Optional chart above the rows. */
   chart?: AnswerChart;
+  /** Grouped rows for detail reports (rendered as titled groups). */
+  sections?: { title: string; rows: AnswerRow[] }[];
   /** Open `target` immediately (the user asked for the thing itself, e.g. a PDF). */
   autoOpen?: boolean;
   /** One plain sentence — the bubble text and what gets read aloud. */
@@ -212,6 +218,79 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         sub: `${chosen.length} · ${t('aiCostLabel')}`,
         rows: chosen.map((s) => ({ id: s.project.id, title: s.project.name, date: '', subtitle: t('aiCostLabel'), amount: s.cost.totalCost, direction: 'out' as const })),
         speak: `${chosen.length} ${t('projects')}: ${t('aiCostLabel')} ${money(total)}`,
+      };
+    }
+
+    case 'project_details': {
+      const project = pick(intent.project, w.projects);
+      if (!project) return none(intent.project);
+      const monthPrefix = w.today.slice(0, 7);
+      const [summary, sale, capital, workers, pos, construction, insights] = await Promise.all([
+        getProjectSummary(project.id),
+        getSaleSummary(project.id),
+        getProjectCapitalSummary(project.id),
+        listProjectLaborers(project.id),
+        listPurchaseOrders(),
+        getConstructionSummary(project.id, monthPrefix),
+        listInsights(w.today),
+      ]);
+      if (!summary) return none(project.name);
+      const cost = summary.cost;
+      const agreed = sale.sale?.agreed_price ?? 0;
+      const profitSoFar = summary.saleReceived - cost.totalCost;
+      const projectPos = pos.filter((p) => p.projectId === project.id && p.status !== 'CANCELLED');
+      const owedWorkers = workers.filter((x) => x.balance.balance > 0);
+      const attention = insights.filter((i) => 'projectId' in i.target && i.target.projectId === project.id);
+      const labels = insightLabels(t);
+      const sections: { title: string; rows: AnswerRow[] }[] = [
+        {
+          title: t('aiCostLabel'),
+          rows: [
+            { id: 'plot', title: t('assetPlots'), date: '', subtitle: '', amount: cost.plotCost, direction: 'out' as const },
+            { id: 'con', title: t('assetConstruction'), date: '', subtitle: `${t('laborTitle')} ${money(construction.laborAccrued)}`, amount: cost.constructionCost, direction: 'out' as const },
+            { id: 'salec', title: t('kharcha'), date: '', subtitle: t('aiSoldLabel'), amount: cost.saleCost, direction: 'out' as const },
+          ].filter((r) => r.amount > 0),
+        },
+        {
+          title: `${t('material')} · ${t('thisMonth')}`,
+          rows: construction.byCategory.slice(0, 6).map((c) => ({ id: c.categoryId, title: w.language === 'ur' ? c.nameUr : c.nameEn, date: '', subtitle: c.qty > 0 ? `${formatQty(c.qty)} ${c.unit ?? ''}`.trim() : '', amount: c.total, direction: 'out' as const })),
+        },
+        {
+          title: t('aiSoldLabel'),
+          rows: agreed > 0
+            ? [
+                { id: 'agreed', title: t('agreedPrice'), date: '', subtitle: sale.sale?.buyer_name ?? '', amount: agreed, direction: 'in' as const },
+                { id: 'recv', title: t('aiReceivedLabel'), date: '', subtitle: `${sale.receipts.filter((r) => !r.is_void).length} ${t('transactions').toLowerCase()}`, amount: sale.receiptsTotal, direction: 'in' as const },
+                { id: 'out', title: t('remaining'), date: '', subtitle: t('insightBuyerOwes'), amount: sale.outstanding, direction: 'out' as const },
+              ]
+            : [],
+        },
+        {
+          title: `${t('investors')} · ${money(capital.totalCapital)}`,
+          rows: capital.shares.map((sh) => ({ id: sh.projectInvestorId, title: sh.name, date: '', subtitle: `${Math.round(sh.ownershipPct)}%`, amount: sh.capital, direction: 'in' as const })),
+        },
+        {
+          title: `${t('laborTitle')} · ${workers.length} ${t('aiWorkersLabel')}`,
+          rows: workers.map((x) => ({ id: x.projectLaborer.id, title: x.laborer.name, date: '', subtitle: `${t('aiWage')} ${money(x.projectLaborer.daily_wage)} · ${x.balance.daysFull + x.balance.daysHalf} ${t('daysLabel')}`, amount: x.balance.balance, direction: 'out' as const })),
+        },
+        {
+          title: `${t('bookingsTitle')} · ${projectPos.length}`,
+          rows: projectPos.map((p) => ({ id: p.poId, title: [p.poNumber, p.supplierName].filter(Boolean).join(' · '), date: '', subtitle: p.fullyReceived ? t('poDelivered') : t('poPending'), amount: p.payRemaining, direction: 'out' as const })),
+        },
+        {
+          title: t('suggestionsTitle'),
+          rows: attention.map((i) => ({ id: i.id, title: describeInsight(i, labels, money), date: '', subtitle: '', amount: i.amount ?? 0, direction: 'out' as const })),
+        },
+      ].filter((sec) => sec.rows.length > 0);
+      const owed = owedWorkers.reduce((s, x) => s + x.balance.balance, 0);
+      return {
+        title: `${project.name} · ${summary.project.status === 'ACTIVE' ? t('statusActive') : t('statusCompleted')}`,
+        headline: money(cost.totalCost),
+        sub: `${t('aiCostLabel')} · ${agreed > 0 ? `${t('aiSoldLabel')} ${money(agreed)} · ${t('netSoFar')} ${money(profitSoFar)}` : `${capital.shares.length} ${t('investors').toLowerCase()} · ${workers.length} ${t('aiWorkersLabel')}`}`,
+        rows: [],
+        sections,
+        speak: `${project.name}: ${t('aiCostLabel')} ${money(cost.totalCost)}${agreed > 0 ? `, ${t('aiSoldLabel')} ${money(agreed)}, ${t('aiReceivedLabel')} ${money(sale.receiptsTotal)}` : ''}${owed > 0 ? `, ${t('laborTitle')} ${t('outstanding')} ${money(owed)}` : ''}`,
+        target: { screen: 'ProjectDetail', projectId: project.id },
       };
     }
 

@@ -54,6 +54,7 @@ export const INTENT_TYPES = [
   'spend_by_category',
   'spend_summary',
   'project_status',
+  'project_details',
   'worker_balance',
   'party_history',
   'udhaar_balance',
@@ -78,6 +79,8 @@ export type Intent =
   | { type: 'spend_by_category'; category: string; project?: string; period: Period }
   | { type: 'spend_summary'; project?: string; period: Period }
   | { type: 'project_status'; project?: string }
+  /** Everything about one project: cost, sale, investors, workers, orders, attention. */
+  | { type: 'project_details'; project: string }
   | { type: 'worker_balance'; worker?: string }
   | { type: 'party_history'; party: string; period: Period }
   | { type: 'udhaar_balance'; person?: string }
@@ -155,6 +158,11 @@ export function coerceIntent(raw: unknown): Intent | null {
       return { type, project: str(o.project), period: coercePeriod(o.period) };
     case 'project_status':
       return { type, project: str(o.project) };
+    case 'project_details': {
+      const project = str(o.project);
+      if (!project) return null;
+      return { type, project };
+    }
     case 'worker_balance':
       return { type, worker: str(o.worker) };
     case 'party_history': {

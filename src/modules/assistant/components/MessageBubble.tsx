@@ -11,6 +11,7 @@ import { useTheme } from '@/theme';
 
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
+import { RichText } from './RichText';
 import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -50,7 +51,7 @@ export function AssistantBubble({ text }: { text: string }): React.JSX.Element {
   const styles = makeStyles(theme);
   return (
     <View style={styles.assistant}>
-      <AppText size="sm">{text}</AppText>
+      <RichText text={text} />
     </View>
   );
 }

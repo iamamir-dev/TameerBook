@@ -62,6 +62,13 @@ const READ_TOOLS: { name: string; intent: Intent['type']; description: string; p
     parameters: obj({ project: str('Project name') }),
   },
   {
+    name: 'get_project_details',
+    intent: 'project_details',
+    description:
+      'FULL REPORT on one project in one call: cost split (plot / construction / sale), top expense categories this month, sale + buyer outstanding, investors with ownership %, workers with wages owed, purchase orders, and what needs attention. Use for "details / sab kuch batao / full report / tell me about project X".',
+    parameters: obj({ project: str('Project name') }, ['project']),
+  },
+  {
     name: 'get_sale_status',
     intent: 'sale_status',
     description: 'Buyer side of a project: agreed price, received, outstanding.',
@@ -278,5 +285,9 @@ export function summarizeAnswerForModel(a: Answer): string {
     ? a.list.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle }))
     : a.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction }));
   const total = (a.list ?? a.rows).length;
-  return JSON.stringify({ title: a.title, headline: a.headline, sub: a.sub, count: total, rows, more: Math.max(0, total - rows.length) });
+  const sections = a.sections?.map((sec) => ({
+    title: sec.title,
+    rows: sec.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
+  }));
+  return JSON.stringify({ title: a.title, headline: a.headline, sub: a.sub, count: total, rows, more: Math.max(0, total - rows.length), ...(sections ? { sections } : {}) });
 }

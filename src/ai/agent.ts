@@ -54,7 +54,7 @@ export function splitSuggestions(raw: string | null | undefined): { text: string
 
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
   const { transport, world, runIntent } = deps;
-  const maxCalls = deps.maxCalls ?? 4;
+  const maxCalls = deps.maxCalls ?? 6;
   const messages: AiChatMessage[] = [{ role: 'system', content: agentSystemPrompt(world) }, ...(deps.history ?? []), { role: 'user', content: text }];
   const cards: Answer[] = [];
   const memoryBits: string[] = [];

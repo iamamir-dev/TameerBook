@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { Answer } from '@/ai';
@@ -31,10 +31,31 @@ export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const styles = makeStyles(theme);
 
-  const list = answer.list?.slice(0, INLINE_ROWS) ?? [];
-  const rows = answer.list ? [] : answer.rows.slice(0, INLINE_ROWS);
+  const [expanded, setExpanded] = useState(false);
+  const cap = expanded ? Number.MAX_SAFE_INTEGER : INLINE_ROWS;
+  const list = answer.list?.slice(0, cap) ?? [];
+  const rows = answer.list ? [] : answer.rows.slice(0, cap);
   const total = answer.list ? answer.list.length : answer.rows.length;
-  const hidden = Math.max(0, total - INLINE_ROWS);
+  const hidden = Math.max(0, total - cap);
+  const sections = answer.sections ?? [];
+
+  const renderRow = (r: (typeof answer.rows)[number]) => (
+    <View key={r.id} style={styles.row}>
+      <View style={styles.rowText}>
+        <AppText size="sm" weight="semibold" numberOfLines={1}>
+          {r.title}
+        </AppText>
+        {r.subtitle || r.date ? (
+          <AppText size="xs" color="textSecondary" numberOfLines={1}>
+            {r.subtitle || formatDisplayDate(r.date)}
+          </AppText>
+        ) : null}
+      </View>
+      <AppText size="sm" weight="bold" tabular color={r.direction === 'in' ? 'success' : 'danger'} style={styles.value}>
+        {`${r.direction === 'in' ? '+' : '−'} ${formatRupees(r.amount)}`}
+      </AppText>
+    </View>
+  );
 
   return (
     <View style={styles.card}>
@@ -71,34 +92,41 @@ export function AnswerCard({ answer }: { answer: Answer }): React.JSX.Element {
         </View>
       ))}
 
-      {rows.map((r) => (
-        <View key={r.id} style={styles.row}>
-          <View style={styles.rowText}>
-            <AppText size="sm" weight="semibold" numberOfLines={1}>
-              {r.title}
+      {rows.map(renderRow)}
+
+      {sections.map((sec) => (
+        <View key={sec.title}>
+          <View style={styles.sectionHead}>
+            <AppText size="xs" weight="bold" color="textSecondary" uppercase numberOfLines={1}>
+              {sec.title}
             </AppText>
-            {r.subtitle || r.date ? (
-              <AppText size="xs" color="textSecondary" numberOfLines={1}>
-                {r.subtitle || formatDisplayDate(r.date)}
-              </AppText>
-            ) : null}
           </View>
-          <AppText size="sm" weight="bold" tabular color={r.direction === 'in' ? 'success' : 'danger'} style={styles.value}>
-            {`${r.direction === 'in' ? '+' : '−'} ${formatRupees(r.amount)}`}
-          </AppText>
+          {(expanded ? sec.rows : sec.rows.slice(0, INLINE_ROWS)).map(renderRow)}
+          {!expanded && sec.rows.length > INLINE_ROWS ? (
+            <View style={styles.row}>
+              <AppText size="xs" color="textSecondary">{`+${sec.rows.length - INLINE_ROWS} ${t('aiMore')}`}</AppText>
+            </View>
+          ) : null}
         </View>
       ))}
 
-      {hidden > 0 || answer.target ? (
+      {hidden > 0 || answer.target || (sections.some((sec) => sec.rows.length > INLINE_ROWS) && !expanded) ? (
         <Pressable
           onPress={() => answer.target && navigateToTarget(navigation, answer.target)}
           disabled={!answer.target}
           accessibilityRole="button"
           style={({ pressed }) => [styles.footer, pressed && styles.pressed]}
         >
-          <AppText size="xs" color="textSecondary" style={styles.footerLeft}>
-            {hidden > 0 ? `+${hidden} ${t('aiMore')}` : ''}
-          </AppText>
+          {/* "+N more" expands in place; "Open" goes to the owning screen. */}
+          {hidden > 0 || (!expanded && sections.some((sec) => sec.rows.length > INLINE_ROWS)) ? (
+            <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" hitSlop={theme.touch.hitSlop} style={styles.footerLeft}>
+              <AppText size="xs" weight="bold" color="accent">
+                {hidden > 0 ? `+${hidden} ${t('aiMore')}` : t('aiShowAll')}
+              </AppText>
+            </Pressable>
+          ) : (
+            <View style={styles.footerLeft} />
+          )}
           {answer.target ? (
             <>
               <AppText size="sm" weight="bold" color="accent">
