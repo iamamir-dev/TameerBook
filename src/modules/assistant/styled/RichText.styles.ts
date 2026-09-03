@@ -25,7 +25,9 @@ export const makeStyles = (theme: Theme) =>
     trRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
     cell: { flex: 1, minWidth: 0, paddingVertical: 4, paddingRight: theme.spacing.xs },
     cellFirst: { flex: 1.6 },
-    cellNum: { textAlign: 'right', paddingRight: 0 },
+    cellNum: { flex: 0, flexShrink: 0, textAlign: 'right', paddingRight: 0, paddingLeft: theme.spacing.sm },
+    /** Header over a numeric column: right-aligned, but allowed to shrink. */
+    cellNumHead: { minWidth: 72 },
     /** Fixed widths inside a horizontally scrolling table. */
     cellWide: { flex: 0, width: 104 },
     cellWideFirst: { flex: 0, width: 150 },

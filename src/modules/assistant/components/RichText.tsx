@@ -107,14 +107,15 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
   });
   // Wide tables (4+ columns, or long text) scroll sideways with fixed column
   // widths instead of squeezing every cell into two-character wraps.
-  const longest = Math.max(...rows.flatMap((r) => r.map((c) => c.length)));
-  const wide = cols >= 4 || (cols === 3 && longest > 18);
-  const cellStyle = (c: number) => [styles.cell, c === 0 ? styles.cellFirst : undefined, numeric[c] ? styles.cellNum : undefined, wide && (c === 0 ? styles.cellWideFirst : styles.cellWide)];
+  const wide = cols >= 4;
+  // Numeric cells size to their content and never wrap ("Rs 18,07,500" stays
+  // whole); text cells take whatever width is left.
+  const cellStyle = (c: number) => [styles.cell, c === 0 ? styles.cellFirst : undefined, numeric[c] ? styles.cellNum : undefined, wide && !numeric[c] && (c === 0 ? styles.cellWideFirst : styles.cellWide)];
   const table = (
     <View style={styles.table}>
       <View style={[styles.tr, styles.trHead]}>
         {Array.from({ length: cols }, (_, c) => (
-          <AppText key={c} size="xs" weight="bold" color="textSecondary" uppercase numberOfLines={1} style={cellStyle(c)}>
+          <AppText key={c} size="xs" weight="bold" color="textSecondary" uppercase numberOfLines={1} style={[cellStyle(c), numeric[c] && styles.cellNumHead]}>
             {header[c] ?? ''}
           </AppText>
         ))}
@@ -122,7 +123,7 @@ function Table({ rows }: { rows: string[][] }): React.JSX.Element {
       {body.map((r, ri) => (
         <View key={ri} style={[styles.tr, ri > 0 && styles.trRuled]}>
           {Array.from({ length: cols }, (_, c) => (
-            <AppText key={c} size="sm" weight={numeric[c] ? 'bold' : 'regular'} tabular={numeric[c]} numberOfLines={2} selectable style={cellStyle(c)}>
+            <AppText key={c} size="sm" weight={numeric[c] ? 'bold' : 'regular'} tabular={numeric[c]} numberOfLines={numeric[c] ? 1 : 2} selectable style={cellStyle(c)}>
               {renderInline(noBreakRupees(r[c] ?? ''))}
             </AppText>
           ))}
