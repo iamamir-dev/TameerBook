@@ -279,8 +279,8 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
                 onSettled?.('rejected');
               }}
               disabled={saving} accessibilityRole="button" style={({ pressed }) => [styles.btn, styles.btnReject, pressed && styles.pressed]}>
-              <AppIcon name="close" size={16} color="textPrimary" />
-              <AppText size="sm" weight="bold">
+              <AppIcon name="close" size={14} color="textPrimary" />
+              <AppText size="xs" weight="bold">
                 {t('aiReject')}
               </AppText>
             </Pressable>
@@ -291,11 +291,11 @@ export function DraftCard({ resolved, settled, onSettled, onDone }: DraftCardPro
               style={({ pressed }) => [styles.btn, ready ? styles.btnAccept : styles.btnAcceptDisabled, pressed && styles.pressed]}
             >
               {saving ? (
-                <ActivityIndicator color={theme.colors.onAccent} />
+                <ActivityIndicator size="small" color={theme.colors.onAccent} />
               ) : (
                 <>
-                  <AppIcon name="check" size={16} color={ready ? 'onAccent' : 'textSecondary'} />
-                  <AppText size="sm" weight="bold" color={ready ? 'onAccent' : 'textSecondary'}>
+                  <AppIcon name="check" size={14} color={ready ? 'onAccent' : 'textSecondary'} />
+                  <AppText size="xs" weight="bold" color={ready ? 'onAccent' : 'textSecondary'}>
                     {isCreate ? t('aiAddLabel') : t('aiAccept')}
                   </AppText>
                 </>
