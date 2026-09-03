@@ -533,7 +533,13 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
       return {
         title: `${statusTitle[intent.status]} · ${filtered.length}`,
         headline: owed > 0 ? money(owed) : undefined,
-        sub: `${delivered} ${t('poDelivered').toLowerCase()} · ${pending} ${t('poPending').toLowerCase()}${owed > 0 ? ` · ${t('owedToSuppliers').toLowerCase()}` : ''}`,
+        sub: [
+          intent.status === 'pending' ? undefined : `${delivered} ${t('poDelivered').toLowerCase()}`,
+          intent.status === 'delivered' ? undefined : `${pending} ${t('poPending').toLowerCase()}`,
+          owed > 0 ? `${t('owedToSuppliers').toLowerCase()} ${money(owed)}` : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         rows: sorted.slice(0, MAX_ROWS).map((p) => ({
           id: p.poId,
           title: [p.poNumber, p.supplierName].filter(Boolean).join(' · '),
