@@ -66,7 +66,7 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
           return (
             <View key={i} style={[styles.headingWrap, !first && styles.headingRule]}>
               <AppText size="sm" weight="bold">
-                {line.replace(/^#{1,3}\s+/, '').replace(/[:：]$/, '')}
+                {line.replace(/^#{1,3}\s+/, '').replace(/[:：]$/, '').replace(/\*\*/g, '')}
               </AppText>
             </View>
           );
