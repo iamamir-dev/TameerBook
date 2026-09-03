@@ -664,4 +664,48 @@ export interface TranslationKeys {
   aiReceivedLabel: string;
   aiWorkersLabel: string;
   paidOut: string;
+
+  // Assistant screen / settings
+  assistantHint: string;
+  assistantPlaceholder: string;
+  askAssistant: string;
+  aiOpen: string;
+  aiSectionTitle: string;
+  aiEnabledLabel: string;
+  aiEnabledHint: string;
+  aiSpeakLabel: string;
+  aiProxyUrlLabel: string;
+  aiProxyUrlHint: string;
+  aiProxyTokenLabel: string;
+  aiGroqKeyLabel: string;
+  aiGroqKeyHint: string;
+  aiSetupTitle: string;
+  aiSetupBody: string;
+  aiErrDisabled: string;
+  aiErrOffline: string;
+  aiErrNoProvider: string;
+  aiErrQuota: string;
+  aiErrBadKey: string;
+  aiErrFailed: string;
+  aiErrUnparseable: string;
+  aiUnresolved: string;
+  aiDraftTitle: string;
+  aiOpenForm: string;
+  aiMarkAttendance: string;
+  aiAttendanceDone: string;
+  aiAllPresent: string;
+  aiThinking: string;
+  aiChip1: string;
+  aiChip2: string;
+  aiChip3: string;
+  aiChip4: string;
+  aiHoldToTalk: string;
+  aiListening: string;
+  aiMicDenied: string;
+  aiReadBill: string;
+  aiReadingBill: string;
+  aiBillItems: string;
+  aiBillOpenPo: string;
+  aiBillNothing: string;
+  aiSummaryLabel: string;
 }

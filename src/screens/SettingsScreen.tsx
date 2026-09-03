@@ -61,6 +61,35 @@ export function SettingsScreen(): React.JSX.Element {
   const setSignature = useSettingsStore((s) => s.setSignature);
   const removeBgKey = useSettingsStore((s) => s.removeBgKey);
   const setRemoveBgKey = useSettingsStore((s) => s.setRemoveBgKey);
+  const aiEnabled = useSettingsStore((s) => s.aiEnabled);
+  const setAiEnabled = useSettingsStore((s) => s.setAiEnabled);
+  const aiSpeak = useSettingsStore((s) => s.aiSpeak);
+  const setAiSpeak = useSettingsStore((s) => s.setAiSpeak);
+  const aiProxyUrl = useSettingsStore((s) => s.aiProxyUrl);
+  const setAiProxyUrl = useSettingsStore((s) => s.setAiProxyUrl);
+  const aiProxyToken = useSettingsStore((s) => s.aiProxyToken);
+  const setAiProxyToken = useSettingsStore((s) => s.setAiProxyToken);
+  const aiGroqKey = useSettingsStore((s) => s.aiGroqKey);
+  const setAiGroqKey = useSettingsStore((s) => s.setAiGroqKey);
+  // Which assistant text setting the sheet is editing (null = closed).
+  const [aiEdit, setAiEdit] = useState<'proxyUrl' | 'proxyToken' | 'groqKey' | null>(null);
+  const [aiDraft, setAiDraft] = useState('');
+  const AI_EDIT_LABEL: Record<'proxyUrl' | 'proxyToken' | 'groqKey', TranslationKey> = {
+    proxyUrl: 'aiProxyUrlLabel',
+    proxyToken: 'aiProxyTokenLabel',
+    groqKey: 'aiGroqKeyLabel',
+  };
+  const openAiEdit = (which: 'proxyUrl' | 'proxyToken' | 'groqKey') => {
+    setAiDraft((which === 'proxyUrl' ? aiProxyUrl : which === 'proxyToken' ? aiProxyToken : aiGroqKey) ?? '');
+    setAiEdit(which);
+  };
+  const saveAiEdit = () => {
+    const v = aiDraft.trim() || null;
+    if (aiEdit === 'proxyUrl') setAiProxyUrl(v);
+    else if (aiEdit === 'proxyToken') setAiProxyToken(v);
+    else if (aiEdit === 'groqKey') setAiGroqKey(v);
+    setAiEdit(null);
+  };
   const [keyOpen, setKeyOpen] = useState(false);
   const [draftKey, setDraftKey] = useState('');
 
@@ -255,6 +284,49 @@ export function SettingsScreen(): React.JSX.Element {
             }}
           />
         </AppCard>
+
+        {/* Assistant (AI) — opt-in. Keys/URL are the user's own; nothing is
+            bundled. Off by default so no data leaves the phone unasked. */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('aiSectionTitle')}
+        </AppText>
+        <AppCard compact>
+          <SettingRow
+            icon="activity"
+            label={t('aiEnabledLabel')}
+            trailing={<AppToggle value={aiEnabled} onValueChange={setAiEnabled} accessibilityLabel={t('aiEnabledLabel')} />}
+          />
+          <Divider />
+          <SettingRow
+            icon="bell"
+            label={t('aiSpeakLabel')}
+            trailing={<AppToggle value={aiSpeak} onValueChange={setAiSpeak} accessibilityLabel={t('aiSpeakLabel')} />}
+          />
+          <Divider />
+          <SettingRow
+            icon="key"
+            label={t('aiProxyUrlLabel')}
+            trailing={aiProxyUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+            onPress={() => openAiEdit('proxyUrl')}
+          />
+          <Divider />
+          <SettingRow
+            icon="lock"
+            label={t('aiProxyTokenLabel')}
+            trailing={aiProxyToken ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+            onPress={() => openAiEdit('proxyToken')}
+          />
+          <Divider />
+          <SettingRow
+            icon="key"
+            label={t('aiGroqKeyLabel')}
+            trailing={aiGroqKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+            onPress={() => openAiEdit('groqKey')}
+          />
+        </AppCard>
+        <AppText size="xs" color="textSecondary" style={styles.sectionTitle}>
+          {t('aiEnabledHint')}
+        </AppText>
 
         {/* Preferences — language, theme, type, version. */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
@@ -463,6 +535,20 @@ export function SettingsScreen(): React.JSX.Element {
         }
       >
         <FloatingLabelInput label={t('removeBgKeyLabel')} value={draftKey} onChangeText={setDraftKey} hint={t('removeBgKeyHint')} />
+      </AppSheet>
+
+      <AppSheet
+        visible={aiEdit !== null}
+        onClose={() => setAiEdit(null)}
+        title={aiEdit ? t(AI_EDIT_LABEL[aiEdit]) : ''}
+        footer={<AppButton label={t('save')} icon="check" onPress={saveAiEdit} />}
+      >
+        <FloatingLabelInput
+          label={aiEdit ? t(AI_EDIT_LABEL[aiEdit]) : ''}
+          value={aiDraft}
+          onChangeText={setAiDraft}
+          hint={aiEdit === 'proxyUrl' ? t('aiProxyUrlHint') : aiEdit === 'groqKey' ? t('aiGroqKeyHint') : undefined}
+        />
       </AppSheet>
     </View>
   );

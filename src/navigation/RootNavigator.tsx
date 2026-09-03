@@ -19,6 +19,7 @@ import {
   InvestorProfileScreen,
   InvestorsScreen,
 } from '@/modules/investors';
+import { AssistantScreen } from '@/modules/assistant';
 import { LaborerDetailScreen, LaborScreen } from '@/modules/labor';
 import { NewCompanyScreen } from '@/screens/NewCompanyScreen';
 import { EditPlotScreen, NewPlotScreen, PlotDetailScreen, PlotsScreen } from '@/modules/plots';
@@ -153,6 +154,7 @@ export function RootNavigator(): React.JSX.Element {
       {/* Investors / reports / misc */}
       <Stack.Screen name="InvestorProfile" component={InvestorProfileScreen} />
       <Stack.Screen name="ExitWizard" component={ExitWizardScreen} />
+      <Stack.Screen name="Assistant" component={AssistantScreen} />
       <Stack.Screen name="Report" component={ReportScreen} />
       <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
     </Stack.Navigator>

@@ -279,7 +279,7 @@ export function HomeScreen(): React.JSX.Element {
         {/* Assistant suggestions — offline ledger rules (worker owed, deadline,
             duplicate, odd rate…). Always on: it is quiet when nothing needs
             attention, so it never shouts for the sake of it. */}
-        <SectionHeader title={t('suggestionsTitle')} />
+        <SectionHeader title={t('suggestionsTitle')} action={t('askAssistant')} onAction={() => navigation.navigate('Assistant')} />
         <InsightsCard insights={insightsData.insights} loaded={insightsLoaded} limit={3} />
 
         {/* Udhaar position (optional, off by default) */}

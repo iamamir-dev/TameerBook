@@ -44,7 +44,7 @@ server/ai-proxy/                  Cloudflare Worker (wrangler), excluded from ro
       (catalogue + validation + period resolution), `drafts.ts` (name→id fuzzy
       resolve, draft→prefill), `prompts.ts`, `narrate.ts` template fallback — all
       unit-tested. `runner.ts` over existing repos.
-- [ ] **3 Assistant screen.** Route `Assistant`. Turns list, suggestion chips,
+- [x] **3 Assistant screen.** Route `Assistant`. Turns list, suggestion chips,
       composer. Answer card (LedgerTable + stat), Draft card (Open form), text turn.
       Settings → Assistant section. Quick Entry tile. Home card "Ask".
 - [ ] **4 Voice.** `expo-audio` recording → Groq Whisper (via proxy) → same

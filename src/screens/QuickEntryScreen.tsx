@@ -34,6 +34,7 @@ interface Tile {
 
 /** The quick-entry actions, keyed by labelKey (order comes from settings). */
 const TILES: Record<string, Tile> = {
+  assistant: { labelKey: 'assistantTitle', icon: 'activity', tone: 'accent' },
   kharcha: { labelKey: 'kharcha', icon: 'kharcha', tone: 'danger' },
   // Keyed 'aamdani' so saved orders keep working; the tile is the Payment In
   // hub — it asks WHERE the money is from and routes to the right flow.
@@ -114,7 +115,8 @@ export function QuickEntryScreen(): React.JSX.Element {
 
   const openKey = useCallback(
     (key: string) => {
-      if (key === 'kharcha') navigation.navigate('Entry', { direction: 'OUT' });
+      if (key === 'assistant') navigation.navigate('Assistant');
+      else if (key === 'kharcha') navigation.navigate('Entry', { direction: 'OUT' });
       else if (key === 'aamdani') setPayInOpen(true);
       else if (key === 'material') navigation.navigate('MaterialEntry');
       else if (key === 'booking') navigation.navigate('Bookings');

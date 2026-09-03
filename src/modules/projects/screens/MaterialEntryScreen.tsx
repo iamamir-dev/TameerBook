@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -24,6 +24,7 @@ import {
 import {
   addDocument,
   addTransaction,
+  getCategory,
   getLastMaterialRate,
   listAccountsWithBalance,
   listParties,
@@ -45,6 +46,7 @@ import { captureReceipt } from '@/utils/photo';
 import type { UnitDef } from '@/utils/units';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type MaterialRoute = RouteProp<RootStackParamList, 'MaterialEntry'>;
 
 const ADD_PARTY_ID = '__add__';
 const EMPTY_MATERIAL: MaterialSelection = { categoryId: null, name: '', unit: { primary: null, secondary: null, factor: null } };
@@ -53,6 +55,9 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  // Optional prefill (from the assistant's voice / bill drafts) — every field
+  // is still shown and editable; nothing saves without the Save tap.
+  const prefill = useRoute<MaterialRoute>().params?.prefill;
   const styles = makeStyles(theme);
 
   const projects = useProjectsStore((s) => s.items);
@@ -64,15 +69,34 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
   const [parties, setParties] = useState<PartyRow[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
-  const [projectChoice, setProjectChoice] = useState<string | undefined>(undefined);
-  const [material, setMaterial] = useState<MaterialSelection>(EMPTY_MATERIAL);
-  const [qty, setQty] = useState(0); // primary unit
-  const [rate, setRate] = useState('');
-  const [accountChoice, setAccountChoice] = useState<string | undefined>(undefined);
-  const [partyId, setPartyId] = useState<string | null>(null);
-  const [date, setDate] = useState(todayISO().slice(0, 10));
+  const [projectChoice, setProjectChoice] = useState<string | undefined>(prefill?.projectId);
+  const [material, setMaterial] = useState<MaterialSelection>(
+    prefill?.itemName ? { ...EMPTY_MATERIAL, name: prefill.itemName } : EMPTY_MATERIAL
+  );
+  const [qty, setQty] = useState(prefill?.qty ?? 0); // primary unit
+  const [rate, setRate] = useState(prefill?.rate ? String(prefill.rate) : '');
+  const [accountChoice, setAccountChoice] = useState<string | undefined>(prefill?.accountId);
+  const [partyId, setPartyId] = useState<string | null>(prefill?.partyId ?? null);
+  const [date, setDate] = useState(prefill?.date ?? todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
-  const [totalOverride, setTotalOverride] = useState(0);
+  // A prefilled total only when qty × rate can't produce it.
+  const [totalOverride, setTotalOverride] = useState(prefill?.amount && !(prefill.qty && prefill.rate) ? prefill.amount : 0);
+
+  // Resolve a prefilled material category into the picker's selection shape.
+  useEffect(() => {
+    const catId = prefill?.categoryId;
+    if (!catId) return;
+    getCategory(catId)
+      .then((c) => {
+        if (!c) return;
+        setMaterial({
+          categoryId: c.id,
+          name: c.name_en,
+          unit: { primary: c.default_unit, secondary: c.secondary_unit, factor: c.secondary_factor },
+        });
+      })
+      .catch(swallow('material:prefill'));
+  }, [prefill?.categoryId]);
   // Bumped after each save to reset the QtyUnitRow field (rapid-log).
   const [formNonce, setFormNonce] = useState(0);
   // Smart default: the last rate paid for this material (same supplier first).
@@ -220,7 +244,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
 
           <MaterialItemPicker value={material} onChange={setMaterial} />
 
-          <QtyUnitRow unit={unit} resetToken={formNonce} onQty={(v) => { setQty(v); setTotalOverride(0); }} />
+          <QtyUnitRow unit={unit} resetToken={formNonce} initialPrimary={formNonce === 0 ? prefill?.qty : undefined} onQty={(v) => { setQty(v); setTotalOverride(0); }} />
 
           <FloatingLabelInput
             label={t('rateLabel')}

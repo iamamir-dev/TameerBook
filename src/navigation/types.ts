@@ -1,5 +1,6 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
+import type { MaterialPrefill } from '@/ai/drafts';
 import type { TxnDirection } from '@/db';
 
 /** Pre-filled values when opening the entry screen to correct a mistake. */
@@ -55,7 +56,7 @@ export type RootStackParamList = {
   Settlement: { projectId: string };
   // Money entry
   Entry: { direction: TxnDirection; prefill?: EntryPrefill };
-  MaterialEntry: undefined;
+  MaterialEntry: { prefill?: MaterialPrefill } | undefined;
   // Material bookings
   Bookings: undefined;
   NewPurchaseOrder: { poId?: string } | undefined;
@@ -71,6 +72,8 @@ export type RootStackParamList = {
   InvestorProfile: { investorId: string; focusTxnId?: string };
   ExitWizard: { investorId: string };
   // Reports / misc
+  /** The AI assistant; `seed` pre-fills the composer (e.g. a suggestion chip). */
+  Assistant: { seed?: string } | undefined;
   Report: { type: 'summary' | 'pnl' | 'cashflow' | 'expense' | 'investment' | 'roi' | 'accounts' };
   ComingSoon: { titleKey: string };
 };

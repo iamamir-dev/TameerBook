@@ -55,6 +55,7 @@ export const DEFAULT_HOME_SECTIONS: HomeSectionPrefs = {
  * newly-added tiles still appear (appended) and removed ones are dropped.
  */
 export const DEFAULT_QUICK_ORDER = [
+  'assistant',
   'kharcha',
   'aamdani',
   'material',
