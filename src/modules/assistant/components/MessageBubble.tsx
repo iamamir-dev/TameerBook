@@ -2,7 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import type { AiErrorCode, OpenScreen } from '@/ai';
 import { AppIcon, AppText } from '@/components/ui';
@@ -19,30 +19,41 @@ import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** What the user said — right-aligned, on the brand color, with its own copy action. */
-export function UserBubble({ text, onCopied }: { text: string; onCopied?: () => void }): React.JSX.Element {
+export function UserBubble({ text, imageUris, onCopied }: { text: string; imageUris?: string[]; onCopied?: () => void }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   return (
     <View style={styles.userWrap}>
-      <View style={styles.user}>
-        <AppText size="sm" color="onPrimary" selectable>
-          {text}
-        </AppText>
-      </View>
-      <Pressable
-        onPress={() => {
-          Clipboard.setStringAsync(text)
-            .then(() => onCopied?.())
-            .catch(swallow('assistant:copy'));
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={t('aiCopy')}
-        hitSlop={theme.touch.hitSlop}
-        style={({ pressed }) => [styles.userCopy, pressed && styles.pressed]}
-      >
-        <AppIcon name="copy" size={12} color="textSecondary" />
-      </Pressable>
+      {imageUris?.length ? (
+        <View style={styles.userImages}>
+          {imageUris.map((u) => (
+            <Image key={u} source={{ uri: u }} style={styles.userImage} />
+          ))}
+        </View>
+      ) : null}
+      {text ? (
+        <View style={styles.user}>
+          <AppText size="sm" color="onPrimary" selectable>
+            {text}
+          </AppText>
+        </View>
+      ) : null}
+      {text ? (
+        <Pressable
+          onPress={() => {
+            Clipboard.setStringAsync(text)
+              .then(() => onCopied?.())
+              .catch(swallow('assistant:copy'));
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t('aiCopy')}
+          hitSlop={theme.touch.hitSlop}
+          style={({ pressed }) => [styles.userCopy, pressed && styles.pressed]}
+        >
+          <AppIcon name="copy" size={12} color="textSecondary" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

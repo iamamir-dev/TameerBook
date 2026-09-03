@@ -54,7 +54,8 @@ export interface ToolCall {
 /** Conversation message. Tool results reference the call they answer. */
 export type AiChatMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  /** `images` = base64 JPEGs attached to this message (bills, lists, screenshots). */
+  | { role: 'user'; content: string; images?: string[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCall[] }
   | { role: 'tool'; toolCallId: string; name: string; content: string };
 

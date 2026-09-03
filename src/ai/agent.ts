@@ -1,4 +1,4 @@
-import { resolveDraft, type ResolvedDraft } from './drafts';
+import { resolveDraft, type Draft, type ResolvedDraft } from './drafts';
 import type { Intent, OpenScreen } from './intents';
 import { agentSystemPrompt, type World } from './prompts';
 import type { Answer } from './runner';
@@ -17,8 +17,8 @@ export interface AgentResult {
   text: string;
   /** Data cards from read tools, in call order. */
   cards: Answer[];
-  /** A write the user still has to confirm. */
-  draft?: ResolvedDraft;
+  /** Writes the user still has to confirm (an image can yield several). */
+  drafts: ResolvedDraft[];
   /** A screen the user asked to open. */
   open?: OpenScreen;
   /** Tappable follow-ups the model offered ("you can also…"). */
@@ -40,12 +40,19 @@ export interface AgentDeps {
   maxCalls?: number;
   /** Progress hook for the thinking bubble: 'tools' while tools run (with their names), 'writing' while the model composes from results. */
   onProgress?: (phase: 'tools' | 'writing', toolNames: string[]) => void;
+  /** Base64 JPEGs attached to the user's message. */
+  images?: string[];
+}
+
+/** The UI never shows em/en dashes: " — " reads as a comma, a bare "—" as a hyphen. */
+export function cleanDashes(s: string): string {
+  return s.replace(/\s+[—–]\s+/g, ', ').replace(/[—–]/g, '-');
 }
 
 const splitPipes = (raw: string, max: number): string[] =>
   raw
     .split('|')
-    .map((x) => x.trim().replace(/^["'“”]+|["'“”.]+$/g, ''))
+    .map((x) => cleanDashes(x.trim().replace(/^["'“”]+|["'“”.]+$/g, '')))
     .filter((x) => x.length > 0 && x.length <= 60)
     .slice(0, max);
 
@@ -55,7 +62,7 @@ const splitPipes = (raw: string, max: number): string[] =>
  *   "…\nSUGGEST: a | b | c"  → follow-ups the user can tap (≤ 3)
  */
 export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[]; options: string[] } {
-  let text = (raw ?? '').trim();
+  let text = cleanDashes((raw ?? '').trim());
   if (!text) return { text: '', suggestions: [], options: [] };
   let suggestions: string[] = [];
   let options: string[] = [];
@@ -75,7 +82,11 @@ export function splitSuggestions(raw: string | null | undefined): { text: string
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
   const { transport, world, runIntent } = deps;
   const maxCalls = deps.maxCalls ?? 6;
-  const messages: AiChatMessage[] = [{ role: 'system', content: agentSystemPrompt(world) }, ...(deps.history ?? []), { role: 'user', content: text }];
+  const messages: AiChatMessage[] = [
+    { role: 'system', content: agentSystemPrompt(world) },
+    ...(deps.history ?? []),
+    { role: 'user', content: text, ...(deps.images?.length ? { images: deps.images } : {}) },
+  ];
   const cards: Answer[] = [];
   const memoryBits: string[] = [];
   let nudged = false;
@@ -98,29 +109,30 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       if (!answer) {
         // Tools ran but the model added nothing: use the cards' own sentences.
         const fallback = cards.map((c) => c.speak).join(' ');
-        return { text: fallback, cards, suggestions, options, memory: memoryBits.join('\n'), calls: call };
+        return { text: fallback, cards, drafts: [], suggestions, options, memory: memoryBits.join('\n'), calls: call };
       }
-      return { text: answer, cards, suggestions, options, memory: [...memoryBits, `assistant: ${answer}`].join('\n'), calls: call };
+      return { text: answer, cards, drafts: [], suggestions, options, memory: [...memoryBits, `assistant: ${answer}`].join('\n'), calls: call };
     }
 
-    // Writes and opens end the turn: the user decides next.
-    for (const tc of res.toolCalls) {
-      const action = interpretToolCall(tc);
-      if (action.kind === 'write') {
-        const draft = resolveDraft(action.draft, world);
-        return {
-          text: splitSuggestions(res.content).text,
-          cards,
-          draft,
-          suggestions: [],
-          options: [],
-          memory: [...memoryBits, `assistant proposed ${tc.name}: ${JSON.stringify(action.draft)} (awaiting user confirmation)`].join('\n'),
-          calls: call,
-        };
-      }
-      if (action.kind === 'open') {
-        return { text: splitSuggestions(res.content).text, cards, open: action.screen, suggestions: [], options: [], memory: [...memoryBits, `assistant opened ${action.screen}`].join('\n'), calls: call };
-      }
+    // Writes and opens end the turn: the user decides next. Several writes in
+    // one reply (a bill with three lines, a list of workers) all become cards.
+    const actions = res.toolCalls.map((tc) => ({ tc, action: interpretToolCall(tc) }));
+    const writes = actions.filter((a) => a.action.kind === 'write');
+    if (writes.length > 0) {
+      const drafts = writes.map((a) => resolveDraft((a.action as { kind: 'write'; draft: Draft }).draft, world));
+      return {
+        text: splitSuggestions(res.content).text,
+        cards,
+        drafts,
+        suggestions: [],
+        options: [],
+        memory: [...memoryBits, ...writes.map((a) => `assistant proposed ${a.tc.name}: ${JSON.stringify((a.action as { kind: 'write'; draft: Draft }).draft)} (awaiting user confirmation)`)].join('\n'),
+        calls: call,
+      };
+    }
+    const open = actions.find((a) => a.action.kind === 'open');
+    if (open && open.action.kind === 'open') {
+      return { text: splitSuggestions(res.content).text, cards, drafts: [], open: open.action.screen, suggestions: [], options: [], memory: [...memoryBits, `assistant opened ${open.action.screen}`].join('\n'), calls: call };
     }
 
     // Read tools: run them all, feed results back, let the model answer.
@@ -151,5 +163,5 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   // Out of calls: fall back to the cards' own sentences.
   const fallback = cards.map((c) => c.speak).join(' ');
   if (!fallback) throw new AiError('unparseable', 'agent loop exhausted');
-  return { text: fallback, cards, suggestions: [], options: [], memory: memoryBits.join('\n'), calls: maxCalls };
+  return { text: fallback, cards, drafts: [], suggestions: [], options: [], memory: memoryBits.join('\n'), calls: maxCalls };
 }

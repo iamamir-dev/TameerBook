@@ -768,4 +768,8 @@ export interface TranslationKeys {
   aiChecking: string;
   aiTapToChoose: string;
   aiWriting: string;
+  aiAttach: string;
+  aiFromCamera: string;
+  aiFromGallery: string;
+  aiPhotoPlaceholder: string;
 }

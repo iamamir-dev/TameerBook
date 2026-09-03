@@ -4,12 +4,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppHeader, AppIcon, AppText, Toast } from '@/components/ui';
+import * as FileSystem from 'expo-file-system/legacy';
+
+import { AppButton, AppHeader, AppIcon, AppText, SelectSheet, Toast, type IconKey } from '@/components/ui';
 import { PROVIDERS } from '@/ai';
 import { useToast } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { swallow } from '@/utils/log';
+import { captureReceipt, pickDocumentImage } from '@/utils/photo';
 import { useTheme } from '@/theme';
 
 import { AnswerCard } from '../components/AnswerCard';
@@ -65,6 +69,17 @@ export function AssistantScreen(): React.JSX.Element {
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
   const scroll = useRef<ScrollView>(null);
+
+  // Photos queued for the next message (compressed by the shared photo utils).
+  const [attachments, setAttachments] = useState<{ uri: string }[]>([]);
+  const [attachSheet, setAttachSheet] = useState(false);
+  const addPhoto = (source: 'camera' | 'gallery') => {
+    (source === 'camera' ? captureReceipt() : pickDocumentImage())
+      .then((uri) => {
+        if (uri) setAttachments((cur) => (cur.length >= 3 ? cur : [...cur, { uri }]));
+      })
+      .catch(swallow('assistant:attach'));
+  };
 
   // Read answers aloud when enabled; stop talking when the screen closes.
   useEffect(() => {
@@ -126,8 +141,17 @@ export function AssistantScreen(): React.JSX.Element {
 
   const send = () => {
     const text = input;
+    const photos = attachments;
     setInput('');
-    void ask(text);
+    setAttachments([]);
+    if (photos.length === 0) {
+      void ask(text);
+      return;
+    }
+    // Read the compressed JPEGs as base64 for the model; keep the URIs for the bubble.
+    Promise.all(photos.map(async (p) => ({ uri: p.uri, base64: await FileSystem.readAsStringAsync(p.uri, { encoding: 'base64' }) })))
+      .then((images) => ask(text, images))
+      .catch(swallow('assistant:attachRead'));
   };
 
   return (
@@ -204,7 +228,7 @@ export function AssistantScreen(): React.JSX.Element {
           ) : null}
 
           {turns.map((turn) => {
-            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} onCopied={() => showToast(t('aiCopied'))} />;
+            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} imageUris={turn.imageUris} onCopied={() => showToast(t('aiCopied'))} />;
             if ('error' in turn) {
               return (
                 <AssistantRow key={turn.id}>
@@ -234,9 +258,9 @@ export function AssistantScreen(): React.JSX.Element {
                   {turn.options.length > 0 ? (
                     <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
                   ) : null}
-                  {turn.draft ? (
-                    <DraftCard resolved={turn.draft} settled={turn.settled} onSettled={(status, message) => settle(turn.id, status, message)} onDone={showToast} />
-                  ) : null}
+                  {turn.drafts.map((d, di) => (
+                    <DraftCard key={`${turn.id}-d${di}`} resolved={d} settled={turn.settled?.[di]} onSettled={(status, message) => settle(turn.id, di, status, message)} onDone={showToast} />
+                  ))}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
                   {/* Same action row under EVERY reply — copy takes the text plus the cards. */}
                   <MessageActions
@@ -292,6 +316,9 @@ export function AssistantScreen(): React.JSX.Element {
             onMicPressIn={() => void voice.start()}
             onMicPressOut={() => void voice.stop()}
             bottomInset={kb > 0 ? 0 : insets.bottom}
+            attachments={attachments}
+            onAttach={() => setAttachSheet(true)}
+            onRemoveAttachment={(uri) => setAttachments((cur) => cur.filter((a) => a.uri !== uri))}
           />
         ) : (
           <View style={[styles.setup, { marginBottom: insets.bottom + theme.spacing.sm }]}>
@@ -305,6 +332,20 @@ export function AssistantScreen(): React.JSX.Element {
           </View>
         )}
       </KeyboardAvoidingView>
+      <SelectSheet
+        visible={attachSheet}
+        onClose={() => setAttachSheet(false)}
+        title={t('aiAttach')}
+        searchable={false}
+        options={[
+          { id: 'camera', label: t('aiFromCamera'), icon: 'camera' as IconKey },
+          { id: 'gallery', label: t('aiFromGallery'), icon: 'image' as IconKey },
+        ]}
+        onSelect={(o) => {
+          setAttachSheet(false);
+          addPhoto(o.id as 'camera' | 'gallery');
+        }}
+      />
       <Toast message={toast} />
     </View>
   );

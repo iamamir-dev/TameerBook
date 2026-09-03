@@ -18,7 +18,7 @@ import { reportError, swallow } from '@/utils/log';
 
 /** One message in the conversation. */
 export type Turn =
-  | { id: string; role: 'user'; text: string }
+  | { id: string; role: 'user'; text: string; /** Attached photos (file URIs) for the bubble. */ imageUris?: string[] }
   | {
       id: string;
       role: 'assistant';
@@ -26,8 +26,8 @@ export type Turn =
       text: string;
       /** Data cards from the read tools it used. */
       cards: Answer[];
-      /** A write awaiting the user's confirmation. */
-      draft?: ResolvedDraft;
+      /** Writes awaiting the user's confirmation (an image can produce several). */
+      drafts: ResolvedDraft[];
       /** A screen it opened. */
       open?: OpenScreen;
       /** Tappable follow-ups. */
@@ -36,8 +36,8 @@ export type Turn =
       options: string[];
       /** Which option the user tapped (kept so the list shows the choice). */
       picked?: string;
-      /** Set once the user accepted or rejected the draft (survives restarts). */
-      settled?: { status: 'accepted' | 'rejected'; message?: string };
+      /** Per-draft outcome, by index (survives restarts). */
+      settled?: Record<number, { status: 'accepted' | 'rejected'; message?: string }>;
     }
   | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText?: string };
 
@@ -58,7 +58,7 @@ type Action =
   | { type: 'remove'; turnId: string }
   | { type: 'working'; phase: 'thinking' | 'tools' | 'writing'; tools: string[] }
   | { type: 'pick'; turnId: string; option: string }
-  | { type: 'settle'; turnId: string; status: 'accepted' | 'rejected'; message?: string };
+  | { type: 'settle'; turnId: string; index: number; status: 'accepted' | 'rejected'; message?: string };
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
@@ -79,7 +79,9 @@ function reducer(s: State, a: Action): State {
     case 'settle':
       return {
         ...s,
-        turns: s.turns.map((t) => (t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { status: a.status, message: a.message } } : t)),
+        turns: s.turns.map((t) =>
+          t.id === a.turnId && t.role === 'assistant' && 'cards' in t ? { ...t, settled: { ...(t.settled ?? {}), [a.index]: { status: a.status, message: a.message } } } : t
+        ),
       };
   }
 }
@@ -89,7 +91,7 @@ function normalizeTurn(raw: unknown): Turn | null {
   if (!raw || typeof raw !== 'object') return null;
   const t = raw as Record<string, unknown>;
   if (typeof t.id !== 'string') return null;
-  if (t.role === 'user') return typeof t.text === 'string' ? { id: t.id, role: 'user', text: t.text } : null;
+  if (t.role === 'user') return typeof t.text === 'string' ? { id: t.id, role: 'user', text: t.text, imageUris: Array.isArray(t.imageUris) ? (t.imageUris as string[]) : undefined } : null;
   if (t.role !== 'assistant') return null;
   if (typeof t.error === 'string') {
     return { id: t.id, role: 'assistant', error: t.error as AiErrorCode, detail: typeof t.detail === 'string' ? t.detail : undefined, retryText: typeof t.retryText === 'string' ? t.retryText : undefined };
@@ -97,18 +99,27 @@ function normalizeTurn(raw: unknown): Turn | null {
   // Pre-agent shapes ({kind:'text'|'answer'|'draft'|'open'}) → the unified shape.
   const legacyKind = typeof t.kind === 'string' ? t.kind : null;
   const cards = Array.isArray(t.cards) ? (t.cards as Answer[]) : legacyKind === 'answer' && t.answer ? [t.answer as Answer] : [];
-  const draft = (t.draft ?? (legacyKind === 'draft' ? t.resolved : undefined)) as ResolvedDraft | undefined;
+  const fixDraft = (d: unknown): ResolvedDraft | null => {
+    if (!d || typeof d !== 'object' || !('draft' in (d as object))) return null;
+    const r = d as ResolvedDraft;
+    return { ...r, issues: r.issues ?? [], investors: r.investors ?? [], marks: r.marks ?? [], unresolved: r.unresolved ?? [] };
+  };
+  const rawDrafts: unknown[] = Array.isArray(t.drafts) ? (t.drafts as unknown[]) : t.draft ? [t.draft] : legacyKind === 'draft' && t.resolved ? [t.resolved] : [];
+  const drafts = rawDrafts.map(fixDraft).filter((x): x is ResolvedDraft => x !== null);
+  // Old single `settled` object → index 0.
+  const settledRaw = t.settled && typeof t.settled === 'object' ? (t.settled as Record<string, unknown>) : undefined;
+  const settled = settledRaw ? ('status' in settledRaw ? { 0: settledRaw as { status: 'accepted' | 'rejected'; message?: string } } : (settledRaw as Record<number, { status: 'accepted' | 'rejected'; message?: string }>)) : undefined;
   return {
     id: t.id,
     role: 'assistant',
     text: typeof t.text === 'string' ? t.text : '',
     cards,
-    draft: draft && typeof draft === 'object' && 'draft' in draft ? { ...draft, issues: draft.issues ?? [], investors: draft.investors ?? [], marks: draft.marks ?? [], unresolved: draft.unresolved ?? [] } : undefined,
+    drafts,
     open: typeof t.open === 'string' ? (t.open as OpenScreen) : legacyKind === 'open' && typeof t.screen === 'string' ? (t.screen as OpenScreen) : undefined,
     suggestions: Array.isArray(t.suggestions) ? (t.suggestions as string[]) : [],
     options: Array.isArray(t.options) ? (t.options as string[]) : [],
     picked: typeof t.picked === 'string' ? t.picked : undefined,
-    settled: t.settled && typeof t.settled === 'object' ? (t.settled as Turn extends { settled?: infer S } ? S : never) : undefined,
+    settled,
   };
 }
 
@@ -128,8 +139,8 @@ let seq = 0;
 const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 export interface AssistantApi extends State {
-  /** Send one utterance (typed or transcribed) through the agent. */
-  ask: (text: string) => Promise<void>;
+  /** Send one utterance (typed or transcribed) through the agent, with optional photos. */
+  ask: (text: string, images?: { uri: string; base64: string }[]) => Promise<void>;
   clear: () => void;
   /** Fires with the sentence to read aloud after an answer lands. */
   onSpeak: React.MutableRefObject<((text: string) => void) | null>;
@@ -138,7 +149,7 @@ export interface AssistantApi extends State {
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
   /** Record that a draft card was accepted or rejected. */
-  settle: (turnId: string, status: 'accepted' | 'rejected', message?: string) => void;
+  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string) => void;
   /** Re-run the prompt behind a failed reply (replaces the error bubble). */
   retry: (turnId: string) => Promise<void>;
   /** The user tapped one of the offered choices: remember it and send it. */
@@ -192,10 +203,10 @@ export function useAssistant(): AssistantApi {
   }, [state.turns, state.hydrated]);
 
   /** One agent run. `echoUser` false = a retry, the user bubble is already there. */
-  const runTurn = useCallback(async (text: string, echoUser: boolean) => {
-    if (!text || inFlight.current) return;
+  const runTurn = useCallback(async (text: string, echoUser: boolean, images?: { uri: string; base64: string }[]) => {
+    if ((!text && !images?.length) || inFlight.current) return;
     inFlight.current = true;
-    if (echoUser) dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text } });
+    if (echoUser) dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text, imageUris: images?.map((i) => i.uri) } });
     dispatch({ type: 'busy', busy: true });
     try {
       const transport = getAiTransport();
@@ -206,14 +217,15 @@ export function useAssistant(): AssistantApi {
         runIntent,
         history: history.current,
         onProgress: (phase, tools) => dispatch({ type: 'working', phase, tools }),
+        images: images?.map((i) => i.base64),
       });
-      remember('user', text);
+      remember('user', images?.length ? `${text} [sent ${images.length} photo(s)]` : text);
       remember('assistant', r.memory);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, draft: r.draft, open: r.open, suggestions: r.suggestions, options: r.options } });
+      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);
-      else if (r.text && !r.draft) onSpeak.current?.(r.text);
+      else if (r.text && r.drafts.length === 0) onSpeak.current?.(r.text);
     } catch (e) {
       const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
       if (code === 'failed') reportError('assistant:ask', e);
@@ -224,7 +236,7 @@ export function useAssistant(): AssistantApi {
     }
   }, []);
 
-  const ask = useCallback((raw: string) => runTurn(raw.trim(), true), [runTurn]);
+  const ask = useCallback((raw: string, images?: { uri: string; base64: string }[]) => runTurn(raw.trim(), true, images), [runTurn]);
 
   const retry = useCallback(
     async (turnId: string) => {
@@ -264,8 +276,8 @@ export function useAssistant(): AssistantApi {
     void saveSetting(CHAT_KEY, '').catch(swallow('assistant:clear'));
   }, []);
 
-  const settle = useCallback((turnId: string, status: 'accepted' | 'rejected', message?: string) => {
-    dispatch({ type: 'settle', turnId, status, message });
+  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string) => {
+    dispatch({ type: 'settle', turnId, index, status, message });
   }, []);
 
   return { ...state, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget };

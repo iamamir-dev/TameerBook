@@ -158,11 +158,21 @@ function toOaMessages(messages: AiChatMessage[]): OaMessage[] {
         };
       case 'tool':
         return { role: 'tool', tool_call_id: m.toolCallId, name: m.name, content: m.content };
+      case 'user':
+        if (m.images?.length) {
+          return {
+            role: 'user',
+            content: [{ type: 'text', text: m.content || 'See the attached image.' }, ...m.images.map((b64) => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }))],
+          };
+        }
+        return { role: 'user', content: m.content };
       default:
         return { role: m.role, content: m.content };
     }
   });
 }
+
+const hasImages = (messages: AiChatMessage[]): boolean => messages.some((m) => m.role === 'user' && !!m.images?.length);
 
 interface CompatOptions {
   /** Whisper model available at `${baseUrl}/audio/transcriptions`. */
@@ -218,7 +228,7 @@ class OpenAiCompatTransport implements AiTransport {
   }
 
   async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const model = opts.model ?? this.model;
+    const model = this.modelFor(messages, opts);
     const reasoning = this.isReasoning(model);
     const data = await this.completion({
       model,
@@ -238,8 +248,17 @@ class OpenAiCompatTransport implements AiTransport {
     return model.startsWith('openai/gpt-oss') || (this.kind === 'openai' && /^(gpt-5|o\d)/.test(model));
   }
 
+  /** The model to use for this turn: the vision-capable one when an image is attached. */
+  private modelFor(messages: AiChatMessage[], opts: ChatOptions): string {
+    const chosen = opts.model ?? this.model;
+    if (!hasImages(messages)) return chosen;
+    // Groq (and the proxy in front of it): only the Qwen family reads images.
+    if ((this.kind === 'groq' || this.kind === 'proxy') && !chosen.startsWith('qwen/')) return 'qwen/qwen3.6-27b';
+    return chosen;
+  }
+
   async chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
-    const model = opts.model ?? this.model;
+    const model = this.modelFor(messages, opts);
     const reasoning = this.isReasoning(model);
     const data = await this.completion({
       model,
@@ -335,7 +354,11 @@ class GeminiTransport implements AiTransport {
     const contents: unknown[] = [];
     for (const m of messages) {
       if (m.role === 'system') continue;
-      if (m.role === 'user') contents.push({ role: 'user', parts: [{ text: m.content }] });
+      if (m.role === 'user') {
+        const parts: GmPart[] = [{ text: m.content || 'See the attached image.' }];
+        for (const b64 of m.images ?? []) parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
+        contents.push({ role: 'user', parts });
+      }
       else if (m.role === 'assistant') {
         const parts: GmPart[] = [];
         if (m.content) parts.push({ text: m.content });

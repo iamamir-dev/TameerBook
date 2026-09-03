@@ -730,4 +730,8 @@ export const ur: TranslationKeys = {
   aiChecking: 'دیکھ رہا ہے',
   aiTapToChoose: 'چننے کے لیے دبائیں',
   aiWriting: 'جواب لکھ رہا ہے…',
+  aiAttach: 'تصویر لگائیں',
+  aiFromCamera: 'تصویر لیں',
+  aiFromGallery: 'گیلری سے چنیں',
+  aiPhotoPlaceholder: 'اس تصویر سے کیا کرنا ہے؟',
 };

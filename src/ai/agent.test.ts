@@ -120,6 +120,13 @@ describe('splitSuggestions', () => {
     expect(splitSuggestions('x\nSUGGEST: a | b | c | d').suggestions).toHaveLength(3);
     expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [], options: [] });
   });
+  it('removes em dashes everywhere', () => {
+    expect(splitSuggestions('Cost so far — Rs 5 lakh — is high.\nSUGGEST: Pay Akram — now')).toEqual({
+      text: 'Cost so far, Rs 5 lakh, is high.',
+      suggestions: ['Pay Akram, now'],
+      options: [],
+    });
+  });
   it('peels OPTIONS (choices) as well, in either order', () => {
     const r = splitSuggestions('Kaunsa plot?\nOPTIONS: Plot A | Plot B\nSUGGEST: Cancel');
     expect(r).toEqual({ text: 'Kaunsa plot?', options: ['Plot A', 'Plot B'], suggestions: ['Cancel'] });
@@ -158,10 +165,27 @@ describe('runAgent', () => {
   it('stops at a write tool with a resolved draft', async () => {
     const t = fake([{ content: 'Adding Kamran as a worker.', toolCalls: [{ id: 'c1', name: 'add_worker', args: { name: 'Kamran', project: 'gulberg' } }] }]);
     const r = await runAgent('add worker Kamran on Gulberg', { transport: t, world, runIntent: async () => poAnswer });
-    expect(r.draft?.draft.kind).toBe('createWorker');
-    expect(r.draft?.project?.id).toBe('pr1');
+    expect(r.drafts[0]?.draft.kind).toBe('createWorker');
+    expect(r.drafts[0]?.project?.id).toBe('pr1');
     expect(r.calls).toBe(1);
     expect(r.memory).toContain('awaiting user confirmation');
+  });
+
+  it('turns several write calls (a bill with two lines) into several drafts', async () => {
+    const t = fake([
+      {
+        content: 'Read 2 lines from the bill.',
+        toolCalls: [
+          { id: 'c1', name: 'record_material', args: { item: 'Cement', qty: 50, rate: 1200, party: 'Akram Traders' } },
+          { id: 'c2', name: 'record_material', args: { item: 'Bajri', qty: 100, rate: 80, party: 'Akram Traders' } },
+        ],
+      },
+    ]);
+    const r = await runAgent('bill', { transport: t, world, runIntent: async () => poAnswer, images: ['AAAA'] });
+    expect(r.drafts).toHaveLength(2);
+    expect(r.drafts[1].party?.id).toBe('p1');
+    const user = t.seen[0].find((m) => m.role === 'user') as { images?: string[] };
+    expect(user.images).toEqual(['AAAA']);
   });
 
   it('returns an open action', async () => {

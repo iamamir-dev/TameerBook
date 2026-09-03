@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, TextInput, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { AppIcon, AppText } from '@/components/ui';
@@ -20,6 +20,10 @@ interface ComposerProps {
   onMicPressOut: () => void;
   /** Extra bottom padding (safe area). */
   bottomInset?: number;
+  /** Photos waiting to be sent with the next message. */
+  attachments: { uri: string }[];
+  onAttach: () => void;
+  onRemoveAttachment: (uri: string) => void;
 }
 
 /** A soft pulsing dot — the "I'm listening" signal while the mic is held. */
@@ -48,17 +52,42 @@ export function Composer({
   onMicPressIn,
   onMicPressOut,
   bottomInset = 0,
+  attachments,
+  onAttach,
+  onRemoveAttachment,
 }: ComposerProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const recording = voiceStatus === 'recording';
   const transcribing = voiceStatus === 'transcribing';
-  const canSend = !disabled && !recording && !transcribing && value.trim().length > 0;
+  const canSend = !disabled && !recording && !transcribing && (value.trim().length > 0 || attachments.length > 0);
 
   return (
     <View style={[styles.bar, { paddingBottom: bottomInset + theme.spacing.sm }]}>
+      {attachments.length > 0 ? (
+        <View style={styles.previews}>
+          {attachments.map((a) => (
+            <View key={a.uri} style={styles.preview}>
+              <Image source={{ uri: a.uri }} style={styles.previewImg} />
+              <Pressable onPress={() => onRemoveAttachment(a.uri)} accessibilityRole="button" accessibilityLabel={t('delete')} hitSlop={theme.touch.hitSlop} style={styles.previewRemove}>
+                <AppIcon name="close" size={12} color="onPrimary" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <View style={[styles.pill, recording && styles.pillRecording, transcribing && styles.pillBusy]}>
+        <Pressable
+          onPress={onAttach}
+          disabled={disabled || recording || transcribing}
+          accessibilityRole="button"
+          accessibilityLabel={t('aiAttach')}
+          hitSlop={theme.touch.hitSlop}
+          style={({ pressed }) => [styles.round, styles.mic, pressed && styles.pressed]}
+        >
+          <AppIcon name="image" size={20} color="textSecondary" />
+        </Pressable>
         <Pressable
           onPressIn={onMicPressIn}
           onPressOut={onMicPressOut}
@@ -89,7 +118,7 @@ export function Composer({
           <TextInput
             value={value}
             onChangeText={onChange}
-            placeholder={t('assistantPlaceholder')}
+            placeholder={attachments.length > 0 ? t('aiPhotoPlaceholder') : t('assistantPlaceholder')}
             placeholderTextColor={theme.colors.textSecondary}
             style={styles.input}
             multiline

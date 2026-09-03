@@ -7,6 +7,8 @@ export const makeStyles = (theme: Theme) =>
     /** User turn: right-aligned brand bubble with a small tail. */
     userWrap: { alignItems: 'flex-end', paddingLeft: theme.spacing.xxxl, marginTop: theme.spacing.sm, gap: 2 },
     userCopy: { padding: 4, marginRight: 2 },
+    userImages: { flexDirection: 'row', gap: theme.spacing.xs, justifyContent: 'flex-end', flexWrap: 'wrap' },
+    userImage: { width: 120, height: 120, borderRadius: theme.radius.lg, backgroundColor: theme.colors.track },
     user: {
       maxWidth: '100%',
       backgroundColor: theme.colors.primary,

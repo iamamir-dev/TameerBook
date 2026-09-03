@@ -727,4 +727,8 @@ export const en: TranslationKeys = {
   aiChecking: 'Checking',
   aiTapToChoose: 'Tap to choose',
   aiWriting: 'Writing answer…',
+  aiAttach: 'Attach photo',
+  aiFromCamera: 'Take photo',
+  aiFromGallery: 'Choose from gallery',
+  aiPhotoPlaceholder: 'What should I do with this photo?',
 };
