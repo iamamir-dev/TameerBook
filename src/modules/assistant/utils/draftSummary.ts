@@ -58,7 +58,7 @@ export function draftAmount(r: ResolvedDraft): number | null {
     case 'udhaarGive':
     case 'udhaarReturn':
     case 'transfer':
-      return d.amount;
+      return d.amount ?? null;
     case 'material':
       return d.amount ?? (d.qty && d.rate ? Math.round(d.qty * d.rate) : null);
     case 'createInvestor':

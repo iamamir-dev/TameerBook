@@ -87,6 +87,8 @@ describe('parseRouterOutput', () => {
     expect(parseRouterOutput({ kind: 'chat', reply: 'Salam' })).toEqual({ kind: 'chat', reply: 'Salam' });
     expect(parseRouterOutput({ kind: 'question', intent: { type: 'pnl' } })).toEqual({ kind: 'question', intent: { type: 'pnl' } });
     expect(parseRouterOutput({ kind: 'draft', draft: { kind: 'expense', amount: 500 } })?.kind).toBe('draft');
+    // No amount but a party → still a draft; the sheet asks for the amount.
+    expect(parseRouterOutput({ kind: 'draft', draft: { kind: 'expense', party: 'Akram', note: 'cement' } })?.kind).toBe('draft');
   });
   it('reads an open-screen action and rejects unknown screens', () => {
     expect(parseRouterOutput({ kind: 'open', screen: 'NewProject' })).toEqual({ kind: 'open', screen: 'NewProject' });
@@ -125,6 +127,11 @@ describe('coerceDraft', () => {
     expect(coerceDraft({ kind: 'expense' })).toBeNull();
     expect(coerceDraft({ kind: 'transfer', from: 'HBL', amount: 10 })).toBeNull();
     expect(coerceDraft({ kind: 'attendance', marks: [] })).toBeNull();
+  });
+  it('keeps money drafts without an amount (asked in the sheet)', () => {
+    expect(coerceDraft({ kind: 'payWorker', worker: 'Bilal' })).toEqual({ kind: 'payWorker', worker: 'Bilal', amount: undefined, account: undefined, date: undefined, note: undefined });
+    expect(coerceDraft({ kind: 'transfer', from: 'HBL', to: 'Cash' })).toMatchObject({ kind: 'transfer', amount: undefined });
+    expect(coerceDraft({ kind: 'material', item: 'Cement', qty: 50 })).toMatchObject({ kind: 'material', qty: 50, amount: undefined });
   });
 });
 

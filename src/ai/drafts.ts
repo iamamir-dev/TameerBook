@@ -16,8 +16,9 @@ export interface AttendanceMark {
 }
 
 export type Draft =
-  | { kind: 'expense'; amount: number; category?: string; project?: string; party?: string; account?: string; note?: string; date?: string }
-  | { kind: 'income'; amount: number; category?: string; project?: string; party?: string; account?: string; note?: string; date?: string }
+  // `amount` may be missing — the confirmation sheet asks for it.
+  | { kind: 'expense'; amount?: number; category?: string; project?: string; party?: string; account?: string; note?: string; date?: string }
+  | { kind: 'income'; amount?: number; category?: string; project?: string; party?: string; account?: string; note?: string; date?: string }
   | {
       kind: 'material';
       item: string;
@@ -31,10 +32,10 @@ export type Draft =
       date?: string;
     }
   | { kind: 'attendance'; project?: string; date?: string; allPresent: boolean; marks: AttendanceMark[] }
-  | { kind: 'payWorker'; worker: string; amount: number; account?: string; date?: string; note?: string }
-  | { kind: 'udhaarGive'; person: string; amount: number; account?: string; date?: string }
-  | { kind: 'udhaarReturn'; person: string; amount: number; account?: string; date?: string }
-  | { kind: 'transfer'; from: string; to: string; amount: number; date?: string }
+  | { kind: 'payWorker'; worker: string; amount?: number; account?: string; date?: string; note?: string }
+  | { kind: 'udhaarGive'; person: string; amount?: number; account?: string; date?: string }
+  | { kind: 'udhaarReturn'; person: string; amount?: number; account?: string; date?: string }
+  | { kind: 'transfer'; from: string; to: string; amount?: number; date?: string }
   // "Add …" requests — new records, created after the user confirms.
   | { kind: 'createWorker'; name: string; phone?: string; wage?: number; project?: string }
   | { kind: 'createParty'; name: string; partyType: PartyTypeDraft; phone?: string }
@@ -71,17 +72,18 @@ export function coerceDraft(raw: unknown): Draft | null {
   switch (kind) {
     case 'expense':
     case 'income': {
-      const amount = num(o.amount);
-      if (!amount) return null;
-      return { kind, amount, category: str(o.category), project: str(o.project), party: str(o.party), account: str(o.account), note: str(o.note), date: day(o.date) };
+      const amount = num(o.amount) || undefined;
+      const d = { kind, amount, category: str(o.category), project: str(o.project), party: str(o.party), account: str(o.account), note: str(o.note), date: day(o.date) };
+      // Something must identify the entry: an amount, or what/who it was for.
+      if (!amount && !d.category && !d.party && !d.note && !d.project) return null;
+      return d;
     }
     case 'material': {
       const item = str(o.item);
       if (!item) return null;
-      const qty = num(o.qty);
-      const rate = num(o.rate);
-      const amount = num(o.amount) ?? (qty && rate ? Math.round(qty * rate) : undefined);
-      if (!qty && !amount) return null;
+      const qty = num(o.qty) || undefined;
+      const rate = num(o.rate) || undefined;
+      const amount = (num(o.amount) || undefined) ?? (qty && rate ? Math.round(qty * rate) : undefined);
       return { kind, item, qty, unit: str(o.unit), rate, amount, project: str(o.project), party: str(o.party), account: str(o.account), date: day(o.date) };
     }
     case 'attendance': {
@@ -100,23 +102,20 @@ export function coerceDraft(raw: unknown): Draft | null {
     }
     case 'payWorker': {
       const worker = str(o.worker);
-      const amount = num(o.amount);
-      if (!worker || !amount) return null;
-      return { kind, worker, amount, account: str(o.account), date: day(o.date), note: str(o.note) };
+      if (!worker) return null;
+      return { kind, worker, amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date), note: str(o.note) };
     }
     case 'udhaarGive':
     case 'udhaarReturn': {
       const person = str(o.person);
-      const amount = num(o.amount);
-      if (!person || !amount) return null;
-      return { kind, person, amount, account: str(o.account), date: day(o.date) };
+      if (!person) return null;
+      return { kind, person, amount: num(o.amount) || undefined, account: str(o.account), date: day(o.date) };
     }
     case 'transfer': {
       const from = str(o.from);
       const to = str(o.to);
-      const amount = num(o.amount);
-      if (!from || !to || !amount) return null;
-      return { kind, from, to, amount, date: day(o.date) };
+      if (!from || !to) return null;
+      return { kind, from, to, amount: num(o.amount) || undefined, date: day(o.date) };
     }
     case 'createWorker': {
       const name = str(o.name);

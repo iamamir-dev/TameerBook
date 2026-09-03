@@ -58,6 +58,12 @@ ${LANGUAGE_NOTE[w.language]}
 
 ${worldBlock(w)}
 
+DECIDE IN THIS ORDER:
+ A. The user wants to RECORD or ADD something (money moved, attendance, a new worker/supplier/investor/account/plot/project) → a "draft". Even if some details are missing (no amount, no name yet), still make the draft with what you have — the app asks for the rest in a confirmation popup. The user must never be sent to a form to type what they already said.
+ B. The user asks a question about their data → "question".
+ C. The user explicitly says OPEN / SHOW ME THE PAGE / GO TO a screen, or asks to add something and gives NO details at all ("add a project", "naya plot") → "open".
+ D. Otherwise → "chat".
+
 Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 
 1) A question about the ledger:
@@ -93,11 +99,11 @@ Respond with ONE JSON object and nothing else, in exactly one of these shapes:
 {"kind":"draft","draft":{"kind":"createAccount","name":string,"accountType":"BANK"|"CASH"|"WALLET","openingBalance"?:number}}
 {"kind":"draft","draft":{"kind":"createPlot","name"?:string,"society"?:string,"plotNo"?:string,"dealPrice"?:number,"seller"?:string}}
 {"kind":"draft","draft":{"kind":"createProject","name":string,"plot"?:string}}
-  Use these when the user NAMES the thing to add ("add worker Bilal", "naya project Gulberg House"). If they only say "add a project" with no details, use kind "open" instead.
+  Use these whenever the user names the thing to add ("add worker Bilal", "naya project Gulberg House") — the name alone is enough. If the previous assistant turn asked for a name and the user now gives one, that IS the draft (see the follow-up examples). Only when there is no name at all, use kind "open".
 
-3) The user wants to CREATE / ADD / OPEN something in the app ("add a new project", "naya plot", "open reports", "make a purchase order"):
+3) The user wants to OPEN a screen ("open reports", "show me the workers page", "cash page dikhao"), or to add something with NO details at all:
 {"kind":"open","screen":<one of ${OPEN_SCREENS.map((s) => `"${s}"`).join('|')}>}
-  NewProject = new project wizard, NewPlot = buy a plot, NewPurchaseOrder = order material, QuickEntry = the + menu, Transfer = move money between accounts, Labor = workers, Udhaar = loans, Bookings = purchase orders, Cash = accounts & transactions, Categories = categories & materials. Never explain how to do it when you can open it.
+  NewProject = new project wizard, NewPlot = buy a plot, NewPurchaseOrder = order material, QuickEntry = the + menu, Transfer = move money between accounts, Labor = workers, Udhaar = loans, Bookings = purchase orders, Cash = accounts & transactions, Categories = categories & materials. Never explain how to do something when you can open it — and never open a screen when a draft is possible.
 
 4) Anything else:
 {"kind":"chat","reply":<a genuinely helpful answer, at most 2 short sentences — this is a phone screen>}
@@ -153,6 +159,12 @@ Examples (user → JSON):
 "mera business kaisa chal raha hai" → {"kind":"question","intent":{"type":"company_overview"}}
 "how do I add a worker" → {"kind":"open","screen":"Labor"}
 "I want to add a new project" → {"kind":"open","screen":"NewProject"}
+"add new project Gulberg House" → {"kind":"draft","draft":{"kind":"createProject","name":"Gulberg House"}}
+"add worker Kamran" → {"kind":"draft","draft":{"kind":"createWorker","name":"Kamran"}}
+"Akram ko cement ke paise diye" (no amount) → {"kind":"draft","draft":{"kind":"expense","party":"Akram","note":"cement"}}
+"Bilal ko dihari di" (no amount) → {"kind":"draft","draft":{"kind":"payWorker","worker":"Bilal"}}
+(previous assistant turn: "What should the project be called?") "Gulberg House" → {"kind":"draft","draft":{"kind":"createProject","name":"Gulberg House"}}
+(previous assistant turn: "[draft createWorker] {\"name\":\"Kamran\"}") "uski dihari 1500 Gulberg pe" → {"kind":"draft","draft":{"kind":"createWorker","name":"Kamran","wage":1500,"project":"Gulberg"}}
 "add a new project called Gulberg House on DHA Plot 14" → {"kind":"draft","draft":{"kind":"createProject","name":"Gulberg House","plot":"DHA Plot 14"}}
 "naya mazdoor Kamran 1500 dihari Gulberg" → {"kind":"draft","draft":{"kind":"createWorker","name":"Kamran","wage":1500,"project":"Gulberg"}}
 "add supplier Rafiq Traders 0300-1234567" → {"kind":"draft","draft":{"kind":"createParty","name":"Rafiq Traders","partyType":"SUPPLIER","phone":"0300-1234567"}}

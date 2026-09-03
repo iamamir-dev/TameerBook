@@ -30,6 +30,8 @@ import { formatRupees } from '@/utils/money';
 
 /** Choices the sheet collects when the draft did not name them. */
 export interface DraftChoices {
+  /** Typed in the sheet when the sentence had no amount. */
+  amount?: number | null;
   accountId?: string | null;
   projectId?: string | null;
   /** payWorker: which participation (project) the payment settles. */
@@ -38,6 +40,7 @@ export interface DraftChoices {
 
 /** What the sheet must ask for before it can save. */
 export interface DraftNeeds {
+  amount: boolean;
   account: boolean;
   project: boolean;
   participation: boolean;
@@ -45,20 +48,24 @@ export interface DraftNeeds {
 
 export function draftNeeds(r: ResolvedDraft): DraftNeeds {
   const d = r.draft;
+  const none: DraftNeeds = { amount: false, account: false, project: false, participation: false };
   switch (d.kind) {
     case 'expense':
     case 'income':
-      return { account: !r.account, project: false, participation: false };
+      return { ...none, amount: !d.amount, account: !r.account };
     case 'material':
-      return { account: !r.account, project: !r.project, participation: false };
+      return { ...none, amount: !(d.amount ?? (d.qty && d.rate)), account: !r.account, project: !r.project };
     case 'payWorker':
+      return { ...none, amount: !d.amount, account: !r.account, participation: true };
     case 'udhaarGive':
     case 'udhaarReturn':
-      return { account: !r.account, project: false, participation: d.kind === 'payWorker' };
+      return { ...none, amount: !d.amount, account: !r.account };
+    case 'transfer':
+      return { ...none, amount: !d.amount };
     case 'attendance':
-      return { account: false, project: !r.project, participation: false };
+      return { ...none, project: !r.project };
     default:
-      return { account: false, project: false, participation: false };
+      return none;
   }
 }
 
@@ -71,6 +78,10 @@ const need = (v: string | null | undefined, what: string): string => {
   if (!v) throw new Error(`missing ${what}`);
   return v;
 };
+const needAmount = (v: number | null | undefined): number => {
+  if (!v || v <= 0) throw new Error('missing amount');
+  return v;
+};
 
 export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<Applied> {
   const d = r.draft;
@@ -80,9 +91,10 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     case 'income': {
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       const projectId = r.project?.id ?? null;
+      const amount = needAmount(d.amount ?? c.amount);
       await addTransaction({
         direction: d.kind === 'expense' ? 'OUT' : 'IN',
-        amount: d.amount,
+        amount,
         date: d.date ?? today,
         accountId,
         projectId,
@@ -93,7 +105,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
         description: d.note ?? null,
       });
       return {
-        message: `${t('aiSaved')} · ${formatRupees(d.amount)}`,
+        message: `${t('aiSaved')} · ${formatRupees(amount)}`,
         target: projectId ? { screen: 'ProjectDetail', projectId } : { screen: 'Cash' },
       };
     }
@@ -101,8 +113,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
     case 'material': {
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       const projectId = need(r.project?.id ?? c.projectId, 'project');
-      const amount = d.amount ?? (d.qty && d.rate ? Math.round(d.qty * d.rate) : 0);
-      if (amount <= 0) throw new Error('missing amount');
+      const amount = needAmount(d.amount ?? (d.qty && d.rate ? Math.round(d.qty * d.rate) : undefined) ?? c.amount);
       const desc = `${r.category?.name ?? d.item} ${d.qty ?? ''}${d.unit ? ` ${d.unit}` : ''}${d.rate ? ` @ ${d.rate}` : ''}`.trim();
       await addTransaction({
         direction: 'OUT',
@@ -124,8 +135,9 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
       if (!r.worker) throw new Error(t('aiNoWorkerFound'));
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       const projectLaborerId = need(c.projectLaborerId, 'participation');
-      await payLaborer({ projectLaborerId, amount: d.amount, date: d.date ?? today, accountId, note: d.note ?? null });
-      return { message: `${t('aiSaved')} · ${formatRupees(d.amount)}`, target: { screen: 'LaborerDetail', laborerId: r.worker.id } };
+      const amount = needAmount(d.amount ?? c.amount);
+      await payLaborer({ projectLaborerId, amount, date: d.date ?? today, accountId, note: d.note ?? null });
+      return { message: `${t('aiSaved')} · ${formatRupees(amount)}`, target: { screen: 'LaborerDetail', laborerId: r.worker.id } };
     }
 
     case 'attendance': {
@@ -155,17 +167,19 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
         const created = await createUdhaar({ personName: r.party?.name ?? d.person, partyId: r.party?.id ?? null, direction: 'GIVEN' });
         udhaarId = created.id;
       }
-      const move = { udhaarId, amount: d.amount, date: d.date ?? today, accountId };
+      const amount = needAmount(d.amount ?? c.amount);
+      const move = { udhaarId, amount, date: d.date ?? today, accountId };
       if (d.kind === 'udhaarGive') await giveUdhaar(move);
       else await returnUdhaar(move);
-      return { message: `${t('aiSaved')} · ${formatRupees(d.amount)}`, target: { screen: 'UdhaarDetail', udhaarId } };
+      return { message: `${t('aiSaved')} · ${formatRupees(amount)}`, target: { screen: 'UdhaarDetail', udhaarId } };
     }
 
     case 'transfer': {
       const fromAccountId = need(r.account?.id, 'from account');
       const toAccountId = need(r.accountTo?.id, 'to account');
-      await transferBetween({ fromAccountId, toAccountId, amount: d.amount, date: d.date ?? today });
-      return { message: `${t('aiSaved')} · ${formatRupees(d.amount)}`, target: { screen: 'Accounts' } };
+      const amount = needAmount(d.amount ?? c.amount);
+      await transferBetween({ fromAccountId, toAccountId, amount, date: d.date ?? today });
+      return { message: `${t('aiSaved')} · ${formatRupees(amount)}`, target: { screen: 'Accounts' } };
     }
 
     case 'createWorker': {

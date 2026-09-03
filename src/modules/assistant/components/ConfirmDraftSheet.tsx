@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CREATE_KINDS, type ResolvedDraft } from '@/ai';
-import { AppButton, AppIcon, AppSheet, AppText, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
+import { AmountInput, AppButton, AppIcon, AppSheet, AppText, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
 import {
   getLaborerKhata,
   listAccountsWithBalance,
@@ -72,6 +72,7 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [parts, setParts] = useState<LaborerProjectParticipation[]>([]);
+  const [amountTyped, setAmountTyped] = useState(0);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [plId, setPlId] = useState<string | null>(null);
@@ -112,11 +113,15 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
   const project = projects.find((p) => p.id === projectId);
   const part = parts.find((p) => p.projectLaborer.id === plId);
   const ready =
-    (!needs.account || !!accountId) && (!needs.project || !!projectId) && (!needs.participation || !!plId) && !(d.kind === 'payWorker' && !resolved.worker);
+    (!needs.amount || amountTyped > 0) &&
+    (!needs.account || !!accountId) &&
+    (!needs.project || !!projectId) &&
+    (!needs.participation || !!plId) &&
+    !(d.kind === 'payWorker' && !resolved.worker);
 
   const confirm = () => {
     void run(async () => {
-      const choices: DraftChoices = { accountId, projectId, projectLaborerId: plId };
+      const choices: DraftChoices = { amount: amountTyped || null, accountId, projectId, projectLaborerId: plId };
       const applied = await applyDraft(resolved, choices);
       onSaved(applied);
     }).then((ok) => ok && onClose());
@@ -177,12 +182,15 @@ export function ConfirmDraftSheet({ visible, resolved, onClose, onSaved, onEditI
               <AppText size="xxl" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit>
                 {formatRupees(amount)}
               </AppText>
-            ) : (
+            ) : !needs.amount ? (
               <AppText size="xl" weight="bold" numberOfLines={2} center>
                 {'name' in d ? d.name : ''}
               </AppText>
-            )}
+            ) : null}
           </View>
+
+          {/* The sentence had no amount: ask for it here, keyboard-first. */}
+          {needs.amount ? <AmountInput label={t('amount')} value={amountTyped} onChange={setAmountTyped} autoFocus floating surface={theme.colors.card} /> : null}
 
           <View style={styles.card}>
             {fields.map((f, i) => (
