@@ -11,7 +11,6 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { reportError } from '@/utils/log';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing';
-
 export type VoiceError = AiErrorCode | 'mic' | 'tooShort' | 'silence';
 
 export interface VoiceInput {
@@ -27,11 +26,6 @@ export interface VoiceInput {
 }
 
 /**
- * Hold-to-talk: records with `expo-audio` (works in Expo Go), then sends the
- * clip to Whisper through the configured transport. The vocabulary prompt
- * carries the user's material / supplier / worker names so spellings match.
- */
-/**
  * Mono 16 kHz AAC in an .m4a container on every platform. (The LOW_QUALITY
  * preset records .3gp/AMR on Android, which Whisper endpoints reject.)
  */
@@ -42,45 +36,89 @@ const SPEECH_RECORDING = {
   bitRate: 48000,
 };
 
+/**
+ * Hold-to-talk: records with `expo-audio` (works in Expo Go), then sends the
+ * clip to Whisper through the configured transport. The vocabulary prompt
+ * carries the user's material / supplier / worker names so spellings match.
+ *
+ * Start and stop are SERIALIZED: `pressIn` kicks off an async chain
+ * (permission → prepare → record) and a quick `pressOut` can arrive before it
+ * finishes. `stop` therefore waits for the in-flight start and, if the hold
+ * was released before recording began, cancels instead of calling
+ * `recorder.stop()` on an idle recorder (which Android rejects).
+ */
 export function useVoiceInput(onText: (text: string) => void): VoiceInput {
   const recorder = useAudioRecorder(SPEECH_RECORDING);
   const [status, setStatus] = useState<VoiceStatus>('idle');
   const [error, setError] = useState<VoiceError | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  /** True while the recorder is actually capturing. */
   const active = useRef(false);
+  /** The start chain in flight (resolves true once recording began). */
+  const starting = useRef<Promise<boolean> | null>(null);
+  /** Set when the user released before the start chain finished. */
+  const cancelled = useRef(false);
+
   const fail = (code: VoiceError, detail?: string) => {
     setError(code);
     setErrorDetail(detail ?? null);
   };
 
   const start = useCallback(async () => {
-    if (active.current) return;
+    if (active.current || starting.current) return;
     setError(null);
     setErrorDetail(null);
-    try {
-      const perm = await requestRecordingPermissionsAsync();
-      if (!perm.granted) {
-        fail('mic');
-        return;
+    cancelled.current = false;
+    starting.current = (async () => {
+      try {
+        const perm = await requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          fail('mic');
+          return false;
+        }
+        if (cancelled.current) return false;
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        if (cancelled.current) return false;
+        recorder.record();
+        active.current = true;
+        setStatus('recording');
+        return true;
+      } catch (e) {
+        reportError('voice:start', e);
+        fail('mic', e instanceof Error ? e.message : undefined);
+        return false;
+      } finally {
+        starting.current = null;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-      active.current = true;
-      setStatus('recording');
-    } catch (e) {
-      reportError('voice:start', e);
-      fail('mic', e instanceof Error ? e.message : undefined);
-    }
+    })();
+    await starting.current;
   }, [recorder]);
 
   const stop = useCallback(async () => {
+    // Released while still starting: cancel the start instead of stopping.
+    if (starting.current) {
+      cancelled.current = true;
+      const began = await starting.current;
+      if (!began) {
+        setStatus('idle');
+        fail('tooShort');
+        return;
+      }
+    }
     if (!active.current) return;
     active.current = false;
     setStatus('transcribing');
     try {
       const durationMs = recorder.getStatus().durationMillis;
-      await recorder.stop();
+      try {
+        await recorder.stop();
+      } catch (e) {
+        // Stopping an already-idle recorder: treat as an accidental tap.
+        reportError('voice:recorderStop', e);
+        fail('tooShort');
+        return;
+      }
       await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
       // A tap, not a hold: nothing to transcribe (and Whisper would hallucinate).
       if (durationMs < MIN_RECORDING_MS) {
