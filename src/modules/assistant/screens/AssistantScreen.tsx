@@ -215,15 +215,21 @@ export function AssistantScreen(): React.JSX.Element {
                 </AssistantRow>
               );
             }
-            // A pending question makes list rows tappable answers ("which plot?").
+            // On the newest reply, name-list rows are tappable answers ("which plot?")
+            // and the list is fully expanded so any item can be chosen.
             const isLast = turn.id === lastAssistantId;
-            const asksChoice = isLast && !turn.picked && (turn.options.length > 0 || /[?؟]\s*$/.test(turn.text));
+            const asksChoice = isLast && !turn.picked;
             return (
               <AssistantRow key={turn.id}>
                 <View style={styles.turnStack}>
                   {turn.text ? <AssistantBubble text={turn.text} /> : null}
                   {turn.cards.map((card, i) => (
-                    <AnswerCard key={`${turn.id}-c${i}`} answer={card} onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined} />
+                    <AnswerCard
+                      key={`${turn.id}-c${i}`}
+                      answer={card}
+                      expandAll={asksChoice && !!card.list}
+                      onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined}
+                    />
                   ))}
                   {turn.options.length > 0 ? (
                     <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />

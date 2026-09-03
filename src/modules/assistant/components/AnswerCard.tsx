@@ -25,13 +25,14 @@ const INLINE_ROWS = 5;
  * a one-line sub, then up to five dense rows and a quiet "Open" link. Money
  * rows carry a sign and direction color; list rows are names only.
  */
-export function AnswerCard({ answer, onPick }: { answer: Answer; onPick?: (title: string) => void }): React.JSX.Element {
+export function AnswerCard({ answer, onPick, expandAll }: { answer: Answer; onPick?: (title: string) => void; expandAll?: boolean }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const styles = makeStyles(theme);
 
-  const [expanded, setExpanded] = useState(false);
+  const [expandedByUser, setExpanded] = useState(false);
+  const expanded = expandedByUser || !!expandAll;
   const cap = expanded ? Number.MAX_SAFE_INTEGER : INLINE_ROWS;
   const list = answer.list?.slice(0, cap) ?? [];
   const rows = answer.list ? [] : answer.rows.slice(0, cap);
