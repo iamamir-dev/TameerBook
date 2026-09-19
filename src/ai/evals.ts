@@ -39,6 +39,8 @@ export interface EvalCase {
 const BANNED = [
   '\\brecord(ed|ing)?\\b',
   '\\btransaction\\b',
+  '\\bentry\\b',
+  '\\bentries\\b',
   '\\bdebit\\b',
   '\\bcredit\\b',
   'Great question',

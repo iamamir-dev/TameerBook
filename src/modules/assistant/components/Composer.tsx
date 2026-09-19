@@ -65,7 +65,9 @@ export function Composer({
   const canSend = !disabled && !recording && !transcribing && (value.trim().length > 0 || attachments.length > 0);
 
   return (
-    <View style={[styles.bar, { paddingBottom: bottomInset + theme.spacing.sm }]}>
+    // The pill needs real air under it: with the keyboard up `bottomInset` is 0,
+    // and a small gap left the rounded bottom edge sitting on the keyboard.
+    <View style={[styles.bar, { paddingBottom: bottomInset + theme.spacing.lg }]}>
       {attachments.length > 0 ? (
         <View style={styles.previews}>
           {attachments.map((a) => (
@@ -78,8 +80,10 @@ export function Composer({
           ))}
         </View>
       ) : null}
-      <View style={[styles.pill, recording && styles.pillRecording, transcribing && styles.pillBusy]}>
-        <View style={styles.leading}>
+      {/* WhatsApp layout: the field is one pill, the action is its own circle
+          beside it, so a growing message never moves or squeezes the button. */}
+      <View style={styles.row}>
+        <View style={[styles.pill, recording && styles.pillRecording, transcribing && styles.pillBusy]}>
           <Pressable
             onPress={onAttach}
             disabled={disabled || recording || transcribing}
@@ -90,38 +94,38 @@ export function Composer({
           >
             <AppIcon name="image" size={20} color="textSecondary" />
           </Pressable>
-        </View>
 
-        {recording ? (
-          <View style={styles.status}>
-            <PulseDot />
-            <AppText size="md" weight="semibold" color="danger">
-              {t('aiListening')}
-            </AppText>
-          </View>
-        ) : transcribing ? (
-          <View style={styles.status}>
-            <ActivityIndicator color={theme.colors.accent} />
-            <AppText size="md" color="textSecondary">
-              {t('aiThinking')}
-            </AppText>
-          </View>
-        ) : (
-          <TextInput
-            value={value}
-            onChangeText={onChange}
-            placeholder={attachments.length > 0 ? t('aiPhotoPlaceholder') : t('assistantPlaceholder')}
-            placeholderTextColor={theme.colors.textSecondary}
-            style={styles.input}
-            multiline
-            scrollEnabled
-            returnKeyType="send"
-            blurOnSubmit
-            onSubmitEditing={() => canSend && onSend()}
-            editable={!disabled}
-            accessibilityLabel={t('assistantPlaceholder')}
-          />
-        )}
+          {recording ? (
+            <View style={styles.status}>
+              <PulseDot />
+              <AppText size="md" weight="semibold" color="danger">
+                {t('aiListening')}
+              </AppText>
+            </View>
+          ) : transcribing ? (
+            <View style={styles.status}>
+              <ActivityIndicator color={theme.colors.accent} />
+              <AppText size="md" color="textSecondary">
+                {t('aiThinking')}
+              </AppText>
+            </View>
+          ) : (
+            <TextInput
+              value={value}
+              onChangeText={onChange}
+              placeholder={attachments.length > 0 ? t('aiPhotoPlaceholder') : t('assistantPlaceholder')}
+              placeholderTextColor={theme.colors.textSecondary}
+              style={styles.input}
+              multiline
+              scrollEnabled
+              returnKeyType="send"
+              blurOnSubmit
+              onSubmitEditing={() => canSend && onSend()}
+              editable={!disabled}
+              accessibilityLabel={t('assistantPlaceholder')}
+            />
+          )}
+        </View>
 
         {canSend || transcribing ? (
           <Pressable
@@ -129,21 +133,21 @@ export function Composer({
             disabled={!canSend}
             accessibilityRole="button"
             accessibilityLabel={t('askAssistant')}
-            style={({ pressed }) => [styles.round, canSend ? styles.send : styles.sendDisabled, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.action, canSend ? styles.send : styles.sendDisabled, pressed && styles.pressed]}
           >
-            <AppIcon name="send" size={20} color={canSend ? 'onAccent' : 'textSecondary'} style={styles.sendIcon} />
+            <AppIcon name="send" size={22} color={canSend ? 'onAccent' : 'textSecondary'} style={styles.sendIcon} />
           </Pressable>
         ) : (
-          /* Empty field: the hold-to-talk mic sits where Send appears once there is text (WhatsApp style). */
+          /* Empty field: hold-to-talk sits where Send appears once there is text. */
           <Pressable
             onPressIn={onMicPressIn}
             onPressOut={onMicPressOut}
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel={t('aiHoldToTalk')}
-            style={({ pressed }) => [styles.round, recording ? styles.micRecording : styles.send, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.action, recording ? styles.micRecording : styles.send, pressed && styles.pressed]}
           >
-            <AppIcon name="mic" size={20} color="onAccent" />
+            <AppIcon name="mic" size={22} color="onAccent" />
           </Pressable>
         )}
       </View>

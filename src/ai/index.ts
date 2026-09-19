@@ -46,9 +46,11 @@ export { isWhisperNoise, MIN_RECORDING_MS } from './transcript';
 export { TOOLS, interpretToolCall, summarizeAnswerForModel, type ToolAction } from './tools';
 export { describeDraft, runAgent, splitSuggestions, type AgentDeps, type AgentResult } from './agent';
 export {
+  arabicShare,
   decideReplyLanguage,
   detectLanguage,
   dominantLanguage,
+  dominantScript,
   languageDirective,
   REPLY_LANGUAGE_SETTINGS,
   type LanguageGuess,

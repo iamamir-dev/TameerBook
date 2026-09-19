@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { Easing, FadeIn, FadeOut, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 
@@ -40,6 +40,14 @@ export function ThinkingBubble({ status }: ThinkingBubbleProps): React.JSX.Eleme
   const theme = useTheme();
   const styles = makeStyles(theme);
   const still = useReducedMotion();
+  // A model call can take ten seconds or more. Without a moving number the
+  // dots alone read as "stuck", so count up once the wait is worth noting.
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setSecs(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
   return (
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(140)} style={styles.bubble}>
       <View style={styles.dots}>
@@ -47,8 +55,8 @@ export function ThinkingBubble({ status }: ThinkingBubbleProps): React.JSX.Eleme
           <Dot key={i} index={i} still={still} />
         ))}
       </View>
-      <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.status}>
-        {status}
+      <AppText size="sm" color="textSecondary" numberOfLines={1} style={styles.status}>
+        {secs >= 3 ? `${status} · ${secs}s` : status}
       </AppText>
     </Animated.View>
   );

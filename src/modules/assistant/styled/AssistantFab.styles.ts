@@ -39,9 +39,9 @@ export const makeStyles = (theme: Theme) =>
     /** Glassy highlight on the upper half. */
     sheen: {
       position: 'absolute',
-      top: 3,
-      left: 8,
-      right: 8,
+      top: theme.spacing.xxs,
+      left: theme.spacing.sm,
+      right: theme.spacing.sm,
       height: FAB_SIZE * 0.42,
       borderRadius: theme.radius.pill,
       backgroundColor: 'rgba(255,255,255,0.28)',
