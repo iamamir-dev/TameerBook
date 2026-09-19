@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { loadSettings, saveSetting } from '@/db/repositories/settings';
 import { uuid } from '@/db/uuid';
+import { REPLY_LANGUAGE_SETTINGS, type ReplyLanguageSetting } from '@/ai/language';
 import { AI_PROVIDERS, type AiProviderId } from '@/ai/providers';
 import type { Language } from '@/i18n/types';
 import { FONT_OPTIONS, FONT_SCALES, type FontKey, type FontScaleKey } from '@/theme/theme';
@@ -91,6 +92,8 @@ interface SettingsState {
   aiEnabled: boolean;
   /** Read assistant answers aloud (device text-to-speech). */
   aiSpeak: boolean;
+  /** Which language the assistant replies in: auto = follow the user's words. */
+  aiReplyLanguage: ReplyLanguageSetting;
   /** Which AI provider answers (see src/ai/providers.ts). */
   aiProvider: AiProviderId;
   /** API key per provider (the user's own, stored on-device). */
@@ -120,6 +123,7 @@ interface SettingsState {
   setRemoveBgKey: (key: string | null) => void;
   setAiEnabled: (on: boolean) => void;
   setAiSpeak: (on: boolean) => void;
+  setAiReplyLanguage: (lang: ReplyLanguageSetting) => void;
   setAiProxyUrl: (url: string | null) => void;
   setAiProxyToken: (token: string | null) => void;
   setAiProvider: (provider: AiProviderId) => void;
@@ -148,6 +152,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   removeBgKey: null,
   aiEnabled: false,
   aiSpeak: true,
+  aiReplyLanguage: 'auto',
   aiProvider: 'groq',
   aiKeys: {},
   aiModel: {},
@@ -174,6 +179,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (s.removeBgKey) patch.removeBgKey = s.removeBgKey;
       if (s.aiEnabled != null) patch.aiEnabled = s.aiEnabled === '1';
       if (s.aiSpeak != null) patch.aiSpeak = s.aiSpeak === '1';
+      if (s.aiReplyLanguage && (REPLY_LANGUAGE_SETTINGS as readonly string[]).includes(s.aiReplyLanguage)) patch.aiReplyLanguage = s.aiReplyLanguage as ReplyLanguageSetting;
       if (s.aiProxyUrl) patch.aiProxyUrl = s.aiProxyUrl;
       if (s.aiProxyToken) patch.aiProxyToken = s.aiProxyToken;
       if (s.aiCustomBaseUrl) patch.aiCustomBaseUrl = s.aiCustomBaseUrl;
@@ -288,6 +294,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAiSpeak: (aiSpeak) => {
     set({ aiSpeak });
     persist('aiSpeak', aiSpeak ? '1' : '0');
+  },
+  setAiReplyLanguage: (aiReplyLanguage) => {
+    set({ aiReplyLanguage });
+    persist('aiReplyLanguage', aiReplyLanguage);
   },
   setAiProxyUrl: (url) => {
     const aiProxyUrl = url?.trim().replace(/\/+$/, '') || null;

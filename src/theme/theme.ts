@@ -340,6 +340,8 @@ const typography: Typography = buildTypography();
 /* -------------------------------------------------------------------------- */
 
 export const spacing = {
+  /** Optical nudge only (a 2px baseline correction), never layout spacing. */
+  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
@@ -405,11 +407,14 @@ export interface IconSpec {
   strokeWidth: number;
   /** Default icon size. */
   size: number;
+  /** Square container a round icon sits in (avatar-style badges). */
+  box: number;
 }
 
 const icon: IconSpec = {
   strokeWidth: 1.8,
   size: 24,
+  box: 36,
 };
 
 export interface TouchSpec {

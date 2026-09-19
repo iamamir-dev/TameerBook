@@ -16,7 +16,8 @@ import {
   type SelectOption,
 } from '@/components/ui';
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AI_PROVIDERS, PROVIDERS, testConnection, type AiProviderId } from '@/ai';
+import { AI_PROVIDERS, PROVIDERS, REPLY_LANGUAGE_SETTINGS, testConnection, type AiProviderId, type ReplyLanguageSetting } from '@/ai';
+import { forgetMemory } from '@/modules/assistant/utils/memoryStore';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { Language } from '@/i18n/types';
 import type { RootStackParamList } from '@/navigation/types';
@@ -86,6 +87,25 @@ export function SettingsScreen(): React.JSX.Element {
   const [aiEdit, setAiEdit] = useState<AiEdit | null>(null);
   const [aiDraft, setAiDraft] = useState('');
   const [providerSheet, setProviderSheet] = useState(false);
+  const [replyLangSheet, setReplyLangSheet] = useState(false);
+  const aiReplyLanguage = useSettingsStore((s) => s.aiReplyLanguage);
+  const setAiReplyLanguage = useSettingsStore((s) => s.setAiReplyLanguage);
+  const REPLY_LANG_KEY: Record<ReplyLanguageSetting, TranslationKey> = { auto: 'aiReplyLangAuto', ur: 'aiReplyLangUr', roman: 'aiReplyLangRoman', en: 'aiReplyLangEn' };
+  const replyLangOptions: SelectOption[] = REPLY_LANGUAGE_SETTINGS.map((id) => ({ id, label: t(REPLY_LANG_KEY[id]), icon: 'language' as IconKey }));
+  const [forgot, setForgot] = useState(false);
+  const onForgetMemory = () =>
+    Alert.alert(t('aiForgetLabel'), t('aiForgetConfirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('aiForgetLabel'),
+        style: 'destructive',
+        onPress: () => {
+          forgetMemory()
+            .then(() => setForgot(true))
+            .catch(swallow('settings:forgetMemory'));
+        },
+      },
+    ]);
   const [modelSheet, setModelSheet] = useState(false);
   const [aiTest, setAiTest] = useState<'idle' | 'busy' | 'ok' | 'fail'>('idle');
   const [aiTestDetail, setAiTestDetail] = useState('');
@@ -398,11 +418,15 @@ export function SettingsScreen(): React.JSX.Element {
               <Divider />
             </>
           ) : null}
+          <SettingRow icon="language" label={t('aiReplyLangLabel')} value={t(REPLY_LANG_KEY[aiReplyLanguage])} onPress={() => setReplyLangSheet(true)} />
+          <Divider />
           <SettingRow
             icon="bell"
             label={t('aiSpeakLabel')}
             trailing={<AppToggle value={aiSpeak} onValueChange={setAiSpeak} accessibilityLabel={t('aiSpeakLabel')} />}
           />
+          <Divider />
+          <SettingRow icon="trash" label={t('aiForgetLabel')} value={forgot ? t('aiForgotten') : undefined} onPress={onForgetMemory} />
           <Divider />
           <SettingRow
             icon={aiTest === 'ok' ? 'checkCircle' : aiTest === 'fail' ? 'alert' : 'activity'}
@@ -623,6 +647,19 @@ export function SettingsScreen(): React.JSX.Element {
       >
         <FloatingLabelInput label={t('removeBgKeyLabel')} value={draftKey} onChangeText={setDraftKey} hint={t('removeBgKeyHint')} />
       </AppSheet>
+
+      <SelectSheet
+        visible={replyLangSheet}
+        onClose={() => setReplyLangSheet(false)}
+        options={replyLangOptions}
+        selectedId={aiReplyLanguage}
+        title={t('aiReplyLangLabel')}
+        searchable={false}
+        onSelect={(o) => {
+          setAiReplyLanguage(o.id as ReplyLanguageSetting);
+          setReplyLangSheet(false);
+        }}
+      />
 
       <SelectSheet
         visible={providerSheet}

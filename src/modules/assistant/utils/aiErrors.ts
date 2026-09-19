@@ -5,6 +5,7 @@ import type { TranslationKey } from '@/i18n';
 export const AI_ERROR_KEY: Record<AiErrorCode, TranslationKey> = {
   disabled: 'aiErrDisabled',
   offline: 'aiErrOffline',
+  timeout: 'aiErrTimeout',
   noProvider: 'aiErrNoProvider',
   noVoice: 'aiErrNoVoice',
   quota: 'aiErrQuota',

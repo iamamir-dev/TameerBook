@@ -28,6 +28,7 @@ import {
   type StressReport,
   type TestResult,
 } from '@/db';
+import { buildWorld, getAiTransport, runEvals, runIntent, type EvalResult } from '@/ai';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { RootStackParamList } from '@/navigation/types';
@@ -39,9 +40,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** Which long-running job holds the screen. `null` = idle. */
 type Busy =
-  | 'demo' | 'tests' | 'clear' | 'clearPo' | 'stress' | 'bench' | 'storage' | 'clearStress' | 'audit';
+  | 'demo' | 'tests' | 'clear' | 'clearPo' | 'stress' | 'bench' | 'storage' | 'clearStress' | 'audit' | 'evals';
 
-type SectionKey = 'tables' | 'stress' | 'audit' | 'perf' | 'storage' | 'tests' | 'danger';
+type SectionKey = 'tables' | 'stress' | 'audit' | 'perf' | 'storage' | 'tests' | 'evals' | 'danger';
 
 const mb = (bytes: number): string =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -62,6 +63,8 @@ export function DevToolsScreen(): React.JSX.Element {
 
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [tests, setTests] = useState<TestResult[]>([]);
+  const [evals, setEvals] = useState<EvalResult[]>([]);
+  const [evalProgress, setEvalProgress] = useState<{ done: number; total: number } | null>(null);
   const [busy, setBusy] = useState<Busy | null>(null);
   const [progress, setProgress] = useState<StressProgress | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -124,6 +127,30 @@ export function DevToolsScreen(): React.JSX.Element {
     await loadDemoData();
     await refreshCounts();
     await refreshProjects();
+  });
+
+  /**
+   * Assistant behaviour evals: scripted utterances through the REAL agent and
+   * the configured provider (needs AI helpers on + a key). Results also go to
+   * the console as one line per case so `adb logcat` / Metro shows them.
+   */
+  const onRunEvals = run('evals', async () => {
+    setEvals([]);
+    const transport = getAiTransport();
+    const world = await buildWorld();
+    const results = await runEvals({
+      transport,
+      world,
+      runIntent,
+      onCase: (r, i, total) => {
+        setEvalProgress({ done: i + 1, total });
+        setEvals((cur) => [...cur, r]);
+        console.log(`[assistant-eval] ${r.passed ? 'PASS' : 'FAIL'} ${r.id} (${r.calls} calls, ${r.ms}ms) ${r.detail}`);
+      },
+    });
+    const passed = results.filter((r) => r.passed).length;
+    console.log(`[assistant-eval] DONE ${passed}/${results.length} passed`);
+    setEvalProgress(null);
   });
 
   const onRunTests = run('tests', async () => {
@@ -624,6 +651,44 @@ export function DevToolsScreen(): React.JSX.Element {
           </>
         ) : null}
 
+        {/* ---------------- Assistant evals ---------------- */}
+        <Section id="evals" title="Assistant eval" hint={evals.length ? `${evals.filter((r) => r.passed).length}/${evals.length}` : undefined} />
+        {open === 'evals' ? (
+          <>
+            <AppButton
+              label={evalProgress ? `Running ${evalProgress.done}/${evalProgress.total}…` : 'Run assistant evals'}
+              icon="assistant"
+              variant="secondary"
+              onPress={onRunEvals}
+              loading={busy === 'evals'}
+              disabled={disabled}
+            />
+            <AppText size="xs" color="textSecondary">
+              Sends each scripted message through the real assistant with the configured provider. Load demo data first. Takes a few minutes on a free tier.
+            </AppText>
+            {evals.length > 0 ? (
+              <AppCard compact>
+                {evals.map((r, i) => (
+                  <View key={r.id}>
+                    {i > 0 ? <View style={styles.divider} /> : null}
+                    <View style={styles.testRow}>
+                      <AppIcon name={r.passed ? 'checkCircle' : 'close'} size={20} color={r.passed ? 'success' : 'danger'} />
+                      <View style={styles.testText}>
+                        <AppText size="sm" weight="semibold">
+                          {r.id} · {r.calls} calls · {secs(r.ms)}
+                        </AppText>
+                        <AppText size="xs" color="textSecondary">
+                          {r.detail}
+                        </AppText>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </AppCard>
+            ) : null}
+          </>
+        ) : null}
+
         {/* ---------------- Danger zone ---------------- */}
         <Section id="danger" title="Danger zone" />
         {open === 'danger' ? (
@@ -658,6 +723,7 @@ export function DevToolsScreen(): React.JSX.Element {
 
 /** Banner text for jobs that report no step-level progress. */
 const BUSY_LABEL: Record<Busy, string> = {
+  evals: 'Running assistant evals…',
   demo: 'Loading demo data…',
   tests: 'Running self-tests…',
   clear: 'Clearing all data…',

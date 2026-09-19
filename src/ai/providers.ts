@@ -46,7 +46,8 @@ export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
     defaultModel: 'openai/gpt-oss-120b',
     models: [
       { id: 'openai/gpt-oss-120b', note: 'best reasoning + tools' },
-      { id: 'qwen/qwen3.6-27b', note: 'good Urdu · vision' },
+      { id: 'qwen/qwen3.8-27b', note: 'good Urdu · vision' },
+      { id: 'qwen/qwen3.6-27b', note: 'older Qwen · vision' },
       { id: 'openai/gpt-oss-20b', note: 'fastest' },
       { id: 'llama-3.3-70b-versatile', note: 'Llama 3.3' },
     ],
@@ -119,7 +120,7 @@ export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
     defaultModel: 'openai/gpt-oss-120b',
     models: [
       { id: 'openai/gpt-oss-120b', note: 'via Groq' },
-      { id: 'qwen/qwen3.6-27b', note: 'via Groq · vision' },
+      { id: 'qwen/qwen3.8-27b', note: 'via Groq · vision' },
     ],
     voice: true,
     vision: true,
@@ -148,3 +149,10 @@ export const GROQ_WHISPER = 'whisper-large-v3-turbo';
 export const MAX_OUTPUT_TOKENS = 700;
 /** Tool turns need room for reasoning + a JSON call + the final answer. */
 export const TOOL_MAX_TOKENS = 1400;
+/** Vision-capable Groq models, best first (the id list doubles as the fallback chain). */
+export const GROQ_VISION_MODELS = ['qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'] as const;
+/** Text fallbacks on Groq when the chosen model is capped or fails. */
+export const GROQ_TEXT_FALLBACKS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'] as const;
+/** Give up on a provider call after this long (React Native fetch has no timeout of its own). */
+export const REQUEST_TIMEOUT_MS = 60_000;
+export const IMAGE_REQUEST_TIMEOUT_MS = 90_000;

@@ -38,7 +38,7 @@ interface DraftCardProps {
   /** Restored outcome (the conversation is persisted across restarts). */
   settled?: { status: 'accepted' | 'rejected'; message?: string };
   /** Fires when the user accepts (message = what was saved) or rejects. */
-  onSettled?: (status: 'accepted' | 'rejected', message?: string, poId?: string) => void;
+  onSettled?: (status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => void;
   /** Purchase order created or touched by an earlier step in the same message: later steps act on it. */
   poId?: string | null;
   /** Toast after the write lands. */
@@ -173,7 +173,10 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
       try {
         const a = await applyDraft(target, choices);
         setApplied(a);
-        onSettled?.('accepted', a.message, a.target && 'poId' in a.target ? a.target.poId : undefined);
+        onSettled?.('accepted', a.message, a.target && 'poId' in a.target ? a.target.poId : undefined, {
+          account: account?.name ?? resolved.account?.name,
+          project: project?.name ?? part?.projectName ?? resolved.project?.name,
+        });
         onDone?.(a.message);
       } catch (e) {
         // Repository guards throw readable reasons ("No sale is set for this
@@ -206,7 +209,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
           : parts.map((p) => ({ id: p.projectLaborer.id, label: p.projectName, subtitle: formatRupees(p.balance.balance), icon: 'project' as IconKey }));
 
   const pickRow = (label: string, value: string | undefined, which: Picker, optional = false) => (
-    <Pressable key={which} onPress={() => setPicker(which)} accessibilityRole="button" style={[styles.row, styles.rowRuled]}>
+    <Pressable key={which} onPress={() => setPicker(which)} accessibilityRole="button" style={[styles.row, styles.rowTap, styles.rowRuled]}>
       <AppText size="xs" color="textSecondary" numberOfLines={1} style={styles.label}>
         {label}
       </AppText>
@@ -239,7 +242,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
               </AppText>
             </View>
           ) : (
-            <AppText size="xs" color="textSecondary" numberOfLines={1}>
+            <AppText size="sm" color="textSecondary" numberOfLines={2}>
               {step ? `${t('aiStep')} ${step.index}/${step.total} · ` : ''}
               {blocked ? t('aiPlotTaken') : ready ? (isCreate ? t('aiReadyToAdd') : t('aiWillWrite')) : t('aiFillMissing')}
             </AppText>
@@ -290,8 +293,8 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
 
           {failed ? (
             <View style={styles.warn}>
-              <AppIcon name="alert" size={14} color="danger" />
-              <AppText size="xs" weight="semibold" color="danger" style={styles.warnText}>
+              <AppIcon name="alert" size={16} color="danger" />
+              <AppText size="sm" weight="semibold" color="danger" style={styles.warnText}>
                 {failed}
               </AppText>
             </View>
@@ -299,30 +302,39 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
 
           {blocked ? (
             <View style={styles.warn}>
-              <AppIcon name="alert" size={14} color="gold" />
-              <AppText size="xs" weight="semibold" color="gold" style={styles.warnText}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
                 {t('aiPlotTaken')}
               </AppText>
             </View>
           ) : unresolvedShown.length > 0 ? (
             <View style={styles.warn}>
-              <AppIcon name="alert" size={14} color="gold" />
-              <AppText size="xs" weight="semibold" color="gold" style={styles.warnText}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
                 {t('aiUnresolved')} {unresolvedShown.join(', ')}
               </AppText>
             </View>
           ) : d.kind === 'payWorker' && !resolved.worker ? (
             <View style={styles.warn}>
-              <AppIcon name="alert" size={14} color="gold" />
-              <AppText size="xs" weight="semibold" color="gold" style={styles.warnText}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
                 {t('aiNoWorkerFound')}
               </AppText>
             </View>
           ) : needs.participation && resolved.worker && parts.length === 0 ? (
             <View style={styles.warn}>
-              <AppIcon name="alert" size={14} color="gold" />
-              <AppText size="xs" weight="semibold" color="gold" style={styles.warnText}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
                 {t('aiNothingOwed')}
+              </AppText>
+            </View>
+          ) : needs.project && projects.length === 0 ? (
+            // A required picker with nothing to pick leaves Accept greyed out and
+            // no way forward; say what is missing and where to fix it.
+            <View style={styles.warn}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
+                {t('aiNoProjectsYet')}
               </AppText>
             </View>
           ) : null}

@@ -23,8 +23,8 @@ export const makeStyles = (theme: Theme) =>
     },
     introHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
     introIcon: {
-      width: 36,
-      height: 36,
+      width: theme.icon.box,
+      height: theme.icon.box,
       borderRadius: theme.radius.pill,
       backgroundColor: theme.colors.accentSoft,
       alignItems: 'center',
@@ -34,18 +34,20 @@ export const makeStyles = (theme: Theme) =>
     chip: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: theme.spacing.md,
-      minHeight: 36,
+      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget,
       borderRadius: theme.radius.pill,
       backgroundColor: theme.colors.primarySoft,
     },
     chipPressed: { opacity: 0.7 },
     /** Model-offered follow-ups: outlined in the accent, quieter than answers. */
     /** Model-offered follow-ups: one small scrolling row of quiet pills. */
-    followRow: { flexDirection: 'row', gap: 6, paddingRight: theme.spacing.lg },
+    followRow: { flexDirection: 'row', gap: theme.spacing.xs, paddingRight: theme.spacing.lg, paddingVertical: theme.spacing.xs },
+    /** A scrolling row of follow-ups: kept visually light, so the tap area is
+        widened with hitSlop instead of a 56px pill (see DESIGN_GUIDELINES rule 1). */
     followChip: {
-      paddingHorizontal: theme.spacing.sm,
-      height: 28,
+      paddingHorizontal: theme.spacing.md,
+      height: 40,
       borderRadius: theme.radius.pill,
       borderWidth: 1,
       borderColor: theme.colors.accentSoft,

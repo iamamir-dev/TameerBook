@@ -7,144 +7,148 @@ import type { ToolCall, ToolSpec } from './types';
 /**
  * THE TOOL CATALOGUE — what the model can do, as function-calling specs.
  *
- *   read tools   → run against the repositories, results go back to the model
- *                  so it can write an exact answer (and the app shows a card)
- *   write tools  → become a Draft; the app shows a confirmation sheet and only
- *                  saves after the user taps Save. The model never writes.
- *   open_screen  → navigation, only when the user asks to open a screen
+ *   read tools    → run against the repositories, results go back to the model
+ *                   so it can write an exact answer (and the app shows a card)
+ *   write tools   → become a Draft; the app shows a confirmation card and only
+ *                   saves after the user taps Accept. The model never writes.
+ *   explain_app   → module knowledge handed back to the model
+ *   remember_fact → a lasting fact about the user, kept across chats
+ *   open_screen   → navigation, only when the user asks to open a screen
  *
- * Pure: no store, no native modules — unit-tested.
+ * Descriptions are short on purpose: every schema rides in every model call.
+ * Judgement (when to call what) lives in the system prompt. Pure; unit-tested.
  */
+
+const str = (description: string) => ({ type: 'string', description });
+const STR = { type: 'string' } as const;
+const NUM = { type: 'number' } as const;
+const num = (description: string) => ({ type: 'number', description });
+const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
 
 const period = {
   type: 'object',
-  description: 'Time window. "is mahine" = month, "pichle mahine" = lastMonth, "aaj" = today, "kal" (past) = yesterday, "is hafte" = week.',
-  properties: {
-    kind: { type: 'string', enum: [...PERIOD_KINDS, 'custom'] },
-    start: { type: 'string', description: 'YYYY-MM-DD (custom only)' },
-    end: { type: 'string', description: 'YYYY-MM-DD (custom only)' },
-  },
+  description: 'is mahine = month, pichle mahine = lastMonth, kal (past) = yesterday',
+  properties: { kind: { type: 'string', enum: [...PERIOD_KINDS, 'custom'] }, start: str('YYYY-MM-DD, custom'), end: STR },
   required: ['kind'],
 };
-const str = (description: string) => ({ type: 'string', description });
-const num = (description: string) => ({ type: 'number', description });
-const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
+const DATE = str('YYYY-MM-DD');
+const ACCOUNT = STR;
+const PROJECT = STR;
+const RS = NUM;
 
 /** Read tools: name → intent type. */
 const READ_TOOLS: { name: string; intent: Intent['type']; description: string; parameters: Record<string, unknown> }[] = [
   {
     name: 'get_spend_by_category',
     intent: 'spend_by_category',
-    description: 'Total spent on ONE category/material (amount + quantity) in a period, optionally for one project. "is mahine kitna cement liya".',
-    parameters: obj({ category: str('Category or material name from the lists'), project: str('Project name'), period }, ['category']),
+    description: 'Total spent on ONE category or material (amount + quantity) in a period, optionally one project.',
+    parameters: obj({ category: STR, project: PROJECT, period }, ['category']),
   },
   {
     name: 'get_spend_summary',
     intent: 'spend_summary',
-    description: 'Money in vs money out for a period, optionally one project. "is mahine kitna kharcha hua".',
-    parameters: obj({ project: str('Project name'), period }),
+    description: 'Money in vs money out for a period, optionally one project ("is mahine kitna kharcha hua").',
+    parameters: obj({ project: PROJECT, period }),
   },
   {
     name: 'get_expense_breakdown',
     intent: 'expense_breakdown',
-    description: 'Spend split by category with a bar chart. "kharcha kis cheez pe hua", "where did the money go".',
-    parameters: obj({ project: str('Project name'), period }),
+    description: 'Spend split by category, with a bar chart ("kharcha kis cheez pe hua").',
+    parameters: obj({ project: PROJECT, period }),
   },
   {
     name: 'get_cashflow_chart',
     intent: 'cashflow_chart',
-    description: 'Monthly money in vs out as a chart. "cash flow dikhao", "trend".',
-    parameters: obj({ months: num('How many months back (2-12), default 6') }),
+    description: 'Monthly money in vs out as a chart (cash flow, trend).',
+    parameters: obj({ months: num('Months back, 2-12, default 6') }),
   },
   {
     name: 'get_project_status',
     intent: 'project_status',
-    description: 'Cost so far, sale price, received and profit for one project (or all active when no name).',
-    parameters: obj({ project: str('Project name') }),
+    description: 'Cost so far, sale price, received and profit for one project, or all active when no name.',
+    parameters: obj({ project: PROJECT }),
   },
   {
     name: 'get_project_details',
     intent: 'project_details',
-    description:
-      'FULL REPORT on one project in one call: cost split (plot / construction / sale), top expense categories this month, sale + buyer outstanding, investors with ownership %, workers with wages owed, purchase orders, and what needs attention. Use for "details / sab kuch batao / full report / tell me about project X".',
-    parameters: obj({ project: str('Project name') }, ['project']),
+    description: 'FULL REPORT on one project: cost split, top categories this month, sale + buyer balance, investors, workers, orders, attention items.',
+    parameters: obj({ project: PROJECT }, ['project']),
   },
   {
     name: 'get_sale_status',
     intent: 'sale_status',
-    description: 'Buyer side of a project: agreed price, received, outstanding.',
-    parameters: obj({ project: str('Project name') }, ['project']),
+    description: 'Buyer side of a project: agreed price, received, still to come.',
+    parameters: obj({ project: PROJECT }, ['project']),
   },
   {
     name: 'get_worker_balance',
     intent: 'worker_balance',
-    description: 'What a worker is owed (with history), or every worker with a balance when no name.',
-    parameters: obj({ worker: str('Worker name') }),
+    description: 'What a worker is still to be paid (with history), or every worker with a balance when no name.',
+    parameters: obj({ worker: STR }),
   },
   {
     name: 'get_worker_attendance',
     intent: 'worker_attendance',
-    description: 'One worker\'s attendance (hazri) for a month: which days full / half / absent and the wages earned. The app shows it as a calendar. Use for "hazri dikhao", "attendance of X", "kitne din aaya".',
-    parameters: obj({ worker: str('Worker name'), month: str('YYYY-MM; omit for this month') }, ['worker']),
+    description: 'One worker\'s attendance (hazri) for a month, shown as a calendar.',
+    parameters: obj({ worker: STR, month: str('YYYY-MM; omit for this month') }, ['worker']),
   },
   {
     name: 'get_party_history',
     intent: 'party_history',
-    description: 'Payments to/from one supplier or contact in a period.',
-    parameters: obj({ party: str('Supplier / contact name'), period }, ['party']),
+    description: 'Payments to or from one supplier / contact in a period.',
+    parameters: obj({ party: STR, period }, ['party']),
   },
   {
     name: 'get_loan_balance',
     intent: 'udhaar_balance',
-    description: 'Udhaar (loans): what a person owes / we owe, or all open loans when no name.',
+    description: 'Udhaar (loans): what a person owes us or we owe them, or all open loans when no name.',
     parameters: obj({ person: str('Person name') }),
   },
   {
     name: 'get_account_balance',
     intent: 'account_balance',
-    description: 'Balance of one account, or all accounts when no name. "cash kitna hai".',
-    parameters: obj({ account: str('Account name') }),
+    description: 'Balance of one account, or all accounts when no name ("cash kitna hai").',
+    parameters: obj({ account: ACCOUNT }),
   },
   {
     name: 'get_plot_status',
     intent: 'plot_status',
-    description: 'Deal price, paid to seller, remaining, expenses for one plot (or all held plots).',
-    parameters: obj({ plot: str('Plot name') }),
+    description: 'Deal price, paid to seller, remaining and expenses for one plot, or all held plots.',
+    parameters: obj({ plot: STR }),
   },
   {
     name: 'get_investor_status',
     intent: 'investor_status',
-    description: 'Invested, profit, paid out, total for one investor (or all).',
-    parameters: obj({ investor: str('Investor name') }),
+    description: 'Invested, profit, paid out and total for one investor, or all.',
+    parameters: obj({ investor: STR }),
   },
   {
     name: 'get_purchase_orders',
     intent: 'purchase_orders',
-    description:
-      'Purchase orders filtered by status. Pick the NARROWEST: "pending" = material not delivered yet, "delivered" = all received, "unpaid" = money owed, "open" = anything unfinished, "all".',
+    description: 'Purchase orders by status. Narrowest wins: pending = not delivered, delivered = all received, unpaid = money still to pay, open = anything unfinished, all.',
     parameters: obj({ status: { type: 'string', enum: [...PO_STATUS_FILTERS] } }, ['status']),
   },
   {
     name: 'list_names',
     intent: 'list_entities',
-    description: 'NAMES ONLY (no money) of projects / plots / workers / suppliers / investors / accounts / materials, with an optional subset filter.',
+    description: 'NAMES ONLY (no money) of projects / plots / workers / suppliers / investors / accounts / materials, with an optional subset.',
     parameters: obj(
       {
         entity: { type: 'string', enum: [...ENTITY_KINDS] },
-        filter: { type: 'string', enum: [...ENTITY_FILTERS], description: 'projects: active|completed · plots: owned (= free, not in any project) | sold · workers: owed · else all' },
+        filter: { type: 'string', enum: [...ENTITY_FILTERS], description: 'projects: active | completed · plots: owned (free) | sold · workers: owed · else all' },
       },
       ['entity']
     ),
   },
   { name: 'get_company_overview', intent: 'company_overview', description: 'The whole business at a glance: cash, assets, projects, plots, dues.', parameters: obj({}) },
-  { name: 'get_attention_items', intent: 'insights', description: 'What needs attention today: overdue wages, deadlines, duplicates, odd rates.', parameters: obj({}) },
+  { name: 'get_attention_items', intent: 'insights', description: 'What needs attention today: unpaid wages, deadlines, duplicates, odd rates.', parameters: obj({}) },
   { name: 'get_recent_entries', intent: 'recent_entries', description: 'Recent transactions in a period.', parameters: obj({ period }) },
   { name: 'get_top_suppliers', intent: 'top_suppliers', description: 'Suppliers ranked by total paid.', parameters: obj({}) },
   { name: 'get_profit_loss', intent: 'pnl', description: 'Profit / loss per project.', parameters: obj({}) },
   {
     name: 'open_report',
     intent: 'report',
-    description: 'Open one of the PDF reports (the user asked for a report / PDF / statement / printout).',
+    description: 'Open a PDF report (the user asked for a report / PDF / statement / printout).',
     parameters: obj({ report: { type: 'string', enum: [...REPORT_KINDS] }, project: str('Project name (report = project)') }, ['report']),
   },
 ];
@@ -154,89 +158,89 @@ const WRITE_TOOLS: { name: string; kind: Draft['kind']; description: string; par
   {
     name: 'record_expense',
     kind: 'expense',
-    description: 'Money paid out (not a material purchase with quantity). Amount may be missing — the app asks.',
-    parameters: obj({ amount: num('Rupees'), category: str('Expense category from the lists'), party: str('Who was paid'), project: str('Project'), account: str('Account paid from'), note: str('What it was for, in the user\'s own words (e.g. "diesel for the generator at Gulberg Greens"), never one word'), date: str('YYYY-MM-DD only if the user said a date') }),
+    description: 'Money paid out that is not a material purchase with quantity. Amount may be missing (the app asks).',
+    parameters: obj({ amount: RS, category: STR, party: STR, project: PROJECT, account: ACCOUNT, note: str('What it was for, in the user\'s words'), date: DATE }),
   },
   {
     name: 'record_income',
     kind: 'income',
-    description: 'Money received that is NOT an investor payment, buyer payment or loan return.',
-    parameters: obj({ amount: num('Rupees'), category: str('Income category'), party: str('Who paid'), project: str('Project'), account: str('Account received into'), note: str('What it was for, in the user\'s own words, never one word'), date: str('YYYY-MM-DD') }),
+    description: 'Money received that is NOT from an investor, a buyer or a loan return.',
+    parameters: obj({ amount: RS, category: STR, party: STR, project: PROJECT, account: ACCOUNT, note: str('What it was for, in the user\'s words'), date: DATE }),
   },
   {
     name: 'record_material',
     kind: 'material',
-    description: 'Material bought with a quantity: "50 bori cement 1200 wala Akram se". qty=50, rate=1200.',
-    parameters: obj({ item: str('Material name'), qty: num('Quantity'), unit: str('bori / kg / ft…'), rate: num('Rate per unit'), amount: num('Total if stated'), party: str('Supplier'), project: str('Project'), account: str('Account'), date: str('YYYY-MM-DD') }, ['item']),
+    description: 'Material bought with a quantity ("50 bori cement 1200 wala Akram se": qty 50, rate 1200).',
+    parameters: obj({ item: STR, qty: NUM, unit: str('bori / kg / ft…'), rate: NUM, amount: NUM, party: STR, project: PROJECT, account: ACCOUNT, date: DATE }, ['item']),
   },
   {
     name: 'mark_attendance',
     kind: 'attendance',
-    description: 'Daily attendance. "sab aaye" → allPresent=true; per-worker marks FULL / HALF (aadha) / ABSENT (chutti).',
+    description: 'Daily attendance. "sab aaye" → allPresent true; per worker FULL / HALF (aadha) / ABSENT (chutti).',
     parameters: obj({
-      project: str('Project'),
-      date: str('YYYY-MM-DD'),
+      project: PROJECT,
+      date: DATE,
       allPresent: { type: 'boolean' },
-      marks: { type: 'array', items: obj({ worker: str('Worker name'), status: { type: 'string', enum: ['FULL', 'HALF', 'ABSENT'] } }, ['worker', 'status']) },
+      marks: { type: 'array', items: obj({ worker: STR, status: { type: 'string', enum: ['FULL', 'HALF', 'ABSENT'] } }, ['worker', 'status']) },
     }),
   },
   {
     name: 'pay_worker',
     kind: 'payWorker',
-    description: 'Pay a worker wages. "Bilal ko 2000 diye" when Bilal is a worker.',
-    parameters: obj({ worker: str('Worker name'), amount: num('Rupees'), account: str('Account'), date: str('YYYY-MM-DD'), note: str('Note') }, ['worker']),
+    description: 'Pay a worker wages ("Bilal ko 2000 diye" when Bilal is a worker).',
+    parameters: obj({ worker: STR, amount: RS, account: ACCOUNT, date: DATE, note: STR }, ['worker']),
   },
   {
     name: 'give_loan',
     kind: 'udhaarGive',
     description: 'Lend money to a person (udhaar diya).',
-    parameters: obj({ person: str('Person'), amount: num('Rupees'), account: str('Account'), date: str('YYYY-MM-DD') }, ['person']),
+    parameters: obj({ person: STR, amount: RS, account: ACCOUNT, date: DATE }, ['person']),
   },
   {
     name: 'receive_loan_return',
     kind: 'udhaarReturn',
     description: 'A person returned loaned money (udhaar wapas).',
-    parameters: obj({ person: str('Person'), amount: num('Rupees'), account: str('Account'), date: str('YYYY-MM-DD') }, ['person']),
+    parameters: obj({ person: STR, amount: RS, account: ACCOUNT, date: DATE }, ['person']),
   },
   {
     name: 'transfer_money',
     kind: 'transfer',
-    description: 'Move money between two of the user\'s accounts. "HBL se cash mein 50 hazar nikale".',
-    parameters: obj({ from: str('From account'), to: str('To account'), amount: num('Rupees'), date: str('YYYY-MM-DD') }, ['from', 'to']),
+    description: 'Move money between two of the user\'s own accounts ("HBL se cash mein 50 hazar nikale").',
+    parameters: obj({ from: STR, to: STR, amount: RS, date: DATE }, ['from', 'to']),
   },
   {
     name: 'add_worker',
     kind: 'createWorker',
-    description: 'Add a new worker (mazdoor). Call it even with no name — the app asks. Optional daily wage + project attaches him.',
-    parameters: obj({ name: str('Worker name'), phone: str('Phone'), wage: num('Daily wage'), project: str('Project') }),
+    description: 'Add a new worker (mazdoor); optional daily wage + project attaches them.',
+    parameters: obj({ name: STR, phone: STR, wage: NUM, project: PROJECT }),
   },
   {
     name: 'add_contact',
     kind: 'createParty',
     description: 'Add a supplier / buyer / seller / contractor / dealer.',
-    parameters: obj({ name: str('Name'), partyType: { type: 'string', enum: ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] }, phone: str('Phone') }),
+    parameters: obj({ name: STR, partyType: { type: 'string', enum: ['SUPPLIER', 'BUYER', 'SELLER', 'CONTRACTOR', 'DEALER'] }, phone: STR }),
   },
-  { name: 'add_investor', kind: 'createInvestor', description: 'Add an investor.', parameters: obj({ name: str('Name'), phone: str('Phone'), amount: num('Pledged amount') }) },
+  { name: 'add_investor', kind: 'createInvestor', description: 'Add an investor.', parameters: obj({ name: STR, phone: STR, amount: NUM }) },
   {
     name: 'add_account',
     kind: 'createAccount',
     description: 'Add a bank / cash / wallet account.',
-    parameters: obj({ name: str('Account name'), accountType: { type: 'string', enum: ['BANK', 'CASH', 'WALLET'] }, openingBalance: num('Opening balance') }),
+    parameters: obj({ name: str('Account name'), accountType: { type: 'string', enum: ['BANK', 'CASH', 'WALLET'] }, openingBalance: NUM }),
   },
   {
     name: 'add_plot',
     kind: 'createPlot',
     description: 'Record a plot purchase.',
-    parameters: obj({ name: str('Plot name'), society: str('Society'), plotNo: str('Plot number'), dealPrice: num('Agreed price'), seller: str('Seller name') }),
+    parameters: obj({ name: STR, society: STR, plotNo: STR, dealPrice: NUM, seller: STR }),
   },
   {
     name: 'add_project',
     kind: 'createProject',
-    description: 'Create a project on a FREE plot, optionally with investors. Ask for name / plot / investors first if missing; then call with everything.',
+    description: 'Create a project on a FREE plot, optionally with investors. Ask for name / plot / investors first if missing.',
     parameters: obj({
-      name: str('Project name'),
+      name: PROJECT,
       plot: str('A plot from "Plots (free)"'),
-      investors: { type: 'array', description: 'Investors to attach with their stake', items: obj({ name: str('Investor name'), amount: num('Amount invested (rupees)') }, ['name']) },
+      investors: { type: 'array', items: obj({ name: STR, amount: NUM }, ['name']) },
     }),
   },
 ];
@@ -246,80 +250,84 @@ WRITE_TOOLS.push(
   {
     name: 'create_purchase_order',
     kind: 'createPurchaseOrder',
-    description: 'Book material from a supplier for a project (a PO with one or more lines). Use for "order 500 bricks from Rafiq", "PO banao", a bill photo with several lines that is an ORDER (not yet paid).',
+    description: 'Book material from a supplier for a project (a PO with one or more lines; "PO banao", an unpaid bill).',
     parameters: obj({
-      supplier: str('Supplier name'),
-      project: str('Project name'),
-      items: { type: 'array', items: obj({ item: str('Material name'), qty: num('Quantity'), unit: str('Unit'), rate: num('Rate per unit') }, ['item', 'qty', 'rate']) },
+      supplier: STR,
+      project: PROJECT,
+      items: { type: 'array', items: obj({ item: STR, qty: NUM, unit: STR, rate: NUM }, ['item', 'qty', 'rate']) },
     }, ['items']),
   },
   {
     name: 'receive_delivery',
     kind: 'receiveDelivery',
-    description: 'Material of a purchase order arrived. "PO-0015 ka saman aa gaya" (all=true) or "500 bricks aa gaye Rafiq ke order mein" (item + qty).',
-    parameters: obj({ po: str('PO number (PO-0015) or supplier name'), item: str('Material name'), qty: num('Delivered quantity'), all: { type: 'boolean', description: 'true = everything remaining arrived' }, date: str('YYYY-MM-DD') }),
+    description: 'Material of a purchase order arrived: all of it (all true) or one item + qty.',
+    parameters: obj({ po: str('PO number (PO-0015) or supplier name'), item: STR, qty: NUM, all: { type: 'boolean' }, date: DATE }),
   },
   {
     name: 'pay_purchase_order',
     kind: 'payPurchaseOrder',
-    description: 'Pay a supplier against a purchase order. "Rafiq ko PO ke 50 hazar diye".',
-    parameters: obj({ po: str('PO number or supplier name'), amount: num('Rupees'), account: str('Account paid from'), date: str('YYYY-MM-DD') }),
+    description: 'Pay a supplier against a purchase order.',
+    parameters: obj({ po: str('PO number or supplier name'), amount: RS, account: ACCOUNT, date: DATE }),
   },
   {
     name: 'pay_plot_seller',
     kind: 'plotPayment',
-    description: 'Pay the SELLER of a plot toward the deal: token, bayana/advance, instalment or final. "Plot 14 ka token 5 lakh diya".',
-    parameters: obj({ plot: str('Plot name'), payType, amount: num('Rupees'), account: str('Account paid from'), date: str('YYYY-MM-DD') }),
+    description: 'Pay the SELLER of a plot toward the deal: token, bayana, instalment or final.',
+    parameters: obj({ plot: STR, payType, amount: RS, account: ACCOUNT, date: DATE }),
   },
   {
     name: 'record_plot_expense',
     kind: 'plotExpense',
-    description: 'A plot-side expense: transfer fee, tax, naqsha/approval, dealer commission on a plot.',
-    parameters: obj({ plot: str('Plot name'), category: str('Plot expense category'), amount: num('Rupees'), account: str('Account'), note: str('Note'), date: str('YYYY-MM-DD') }),
+    description: 'A plot-side cost: transfer fee, tax, naqsha / approval, dealer commission on a plot.',
+    parameters: obj({ plot: STR, category: STR, amount: RS, account: ACCOUNT, note: STR, date: DATE }),
   },
   {
     name: 'set_sale_deal',
     kind: 'setSale',
-    description: 'Record that a project is sold / agreed with a buyer: buyer name + agreed price. "Gulberg 2 crore mein Ahmed ko bech diya".',
-    parameters: obj({ project: str('Project name'), buyer: str('Buyer name'), price: num('Agreed price') }),
+    description: 'A project is sold / agreed with a buyer: buyer name + agreed price.',
+    parameters: obj({ project: PROJECT, buyer: STR, price: NUM }),
   },
   {
     name: 'record_buyer_payment',
     kind: 'saleReceipt',
-    description: 'Money RECEIVED from the buyer of a project (token, bayana, instalment, final). "buyer ne 20 lakh diye Gulberg ke".',
-    parameters: obj({ project: str('Project name'), payType, amount: num('Rupees'), account: str('Account received into'), date: str('YYYY-MM-DD') }),
+    description: 'Money RECEIVED from the buyer of a project (token, bayana, instalment, final).',
+    parameters: obj({ project: PROJECT, payType, amount: RS, account: STR, date: DATE }),
   },
   {
     name: 'record_sale_cost',
     kind: 'saleCost',
     description: 'A cost on the sale side of a project: dealer commission, buyer-side tax, paperwork.',
-    parameters: obj({ project: str('Project name'), note: str('What for (e.g. dealer commission)'), amount: num('Rupees'), account: str('Account'), date: str('YYYY-MM-DD') }),
+    parameters: obj({ project: PROJECT, note: STR, amount: RS, account: ACCOUNT, date: DATE }),
   },
   {
     name: 'record_investor_payment',
     kind: 'investorPayment',
-    description: 'Money RECEIVED from an investor. With a project = staked into that project; without = general payment against the pledge. "Umar ne 5 lakh diye Gulberg ke liye".',
-    parameters: obj({ investor: str('Investor name'), project: str('Project name (optional)'), amount: num('Rupees'), account: str('Account received into'), date: str('YYYY-MM-DD') }),
+    description: 'Money RECEIVED from an investor; with a project = staked into it, without = against the pledge.',
+    parameters: obj({ investor: STR, project: PROJECT, amount: RS, account: STR, date: DATE }),
   },
   {
     name: 'mark_plot_transferred',
     kind: 'markTransferred',
-    description: 'The plot transfer (registry) is complete. "Plot 14 transfer ho gaya".',
-    parameters: obj({ plot: str('Plot name'), date: str('YYYY-MM-DD') }),
+    description: 'The plot transfer (registry) is complete.',
+    parameters: obj({ plot: STR, date: DATE }),
   }
 );
 
 const EXPLAIN_TOOL: ToolSpec = {
   name: 'explain_app',
-  description:
-    'Deep knowledge of one TameerBook module (rules, formulas, guards, screens). Call it BEFORE answering how something works, why a number is what it is, or what a rule means (e.g. how settlement splits profit, how worker balance is computed, what PO statuses mean).',
+  description: 'Deep knowledge of one TameerBook module (rules, formulas, guards). Call before explaining how something works or why a number is what it is.',
   parameters: obj({ topic: { type: 'string', enum: [...KNOWLEDGE_TOPICS] } }, ['topic']),
+};
+
+const REMEMBER_TOOL: ToolSpec = {
+  name: 'remember_fact',
+  description: 'Keep a lasting fact about the user or their business for future chats (their role, a standing preference, what a name means). Not for numbers or one-off events.',
+  parameters: obj({ fact: str('One short sentence, in English, ≤ 140 characters') }, ['fact']),
 };
 
 const OPEN_TOOL: ToolSpec = {
   name: 'open_screen',
-  description:
-    'Navigate to an app screen. ONLY when the user literally says open / show / go to a page (e.g. "open reports", "cash page dikhao"). NEVER for adding or recording anything — use add_* / record_* even when details are missing.',
+  description: 'Navigate to an app screen, ONLY when the user literally asks to open / show a page. Never for adding or recording.',
   parameters: obj({ screen: { type: 'string', enum: [...OPEN_SCREENS] } }, ['screen']),
 };
 
@@ -328,6 +336,7 @@ export const TOOLS: ToolSpec[] = [
   ...READ_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })),
   ...WRITE_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })),
   EXPLAIN_TOOL,
+  REMEMBER_TOOL,
   OPEN_TOOL,
 ];
 
@@ -337,6 +346,8 @@ export type ToolAction =
   | { kind: 'open'; screen: OpenScreen }
   /** Module knowledge handed straight back to the model (no card). */
   | { kind: 'knowledge'; text: string }
+  /** A fact to keep in the user's memory. */
+  | { kind: 'remember'; fact: string }
   | { kind: 'invalid'; reason: string };
 
 /** Validate a model tool call into something the app can run. */
@@ -355,6 +366,10 @@ export function interpretToolCall(call: ToolCall): ToolAction {
     const text = explainTopic(typeof call.args.topic === 'string' ? call.args.topic : '');
     return text ? { kind: 'knowledge', text } : { kind: 'invalid', reason: `Unknown topic. Use one of: ${KNOWLEDGE_TOPICS.join(', ')}.` };
   }
+  if (call.name === REMEMBER_TOOL.name) {
+    const fact = typeof call.args.fact === 'string' ? call.args.fact.trim() : '';
+    return fact.length >= 3 ? { kind: 'remember', fact } : { kind: 'invalid', reason: 'remember_fact needs a short sentence.' };
+  }
   if (call.name === OPEN_TOOL.name) {
     const screen = typeof call.args.screen === 'string' ? call.args.screen : '';
     return (OPEN_SCREENS as readonly string[]).includes(screen)
@@ -370,6 +385,12 @@ export function interpretToolCall(call: ToolCall): ToolAction {
  * without inventing anything. Cards render the full data in the UI.
  */
 export function summarizeAnswerForModel(a: Answer): string {
+  if (a.notFound) {
+    return JSON.stringify({
+      error: `No ${a.notFound.what} named "${a.notFound.query}".`,
+      ...(a.notFound.candidates.length ? { didYouMean: a.notFound.candidates, note: 'Ask the user which one they meant, with an OPTIONS line listing these names exactly.' } : { note: 'Tell the user it is not saved and offer to add it.' }),
+    });
+  }
   const rows: unknown[] = a.list
     ? a.list.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle }))
     : a.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction }));
@@ -379,15 +400,15 @@ export function summarizeAnswerForModel(a: Answer): string {
     rows: sec.rows.slice(0, 12).map((r) => (r.fields ? { title: r.title, ...r.fields } : { title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
   }));
   // `cardRows` tells the model the UI already renders these rows as a card, so
-  // it should summarise rather than repeat them (see WRITING template C).
+  // it should summarise rather than repeat them (see HOW TO WRITE).
   const showsCard = total > 0 || Boolean(a.chart) || Boolean(a.calendar);
   return JSON.stringify({
     title: a.title,
     headline: a.headline,
     sub: a.sub,
     count: total,
-    ...(a.calendar ? { calendar: { month: a.calendar.month, full: a.calendar.full, half: a.calendar.half, absent: a.calendar.absent, note: 'The app shows this month as a calendar with coloured days. Summarise in 1 to 2 sentences (days present, earned); do not list dates.' } } : {}),
-    ...(showsCard ? { cardRows: total, note: 'The app shows these rows as a card under your reply. Do not repeat them as a table or list; summarise in 1 to 2 sentences.' } : {}),
+    ...(a.calendar ? { calendar: { month: a.calendar.month, full: a.calendar.full, half: a.calendar.half, absent: a.calendar.absent, note: 'The app shows this month as a calendar. Summarise in 1 to 2 sentences (days present, earned); do not list dates.' } } : {}),
+    ...(showsCard ? { cardRows: total, note: 'The app shows these rows as a card under your reply. Do not repeat them; summarise in 1 to 2 sentences.' } : {}),
     rows,
     more: Math.max(0, total - rows.length),
     ...(sections ? { sections } : {}),

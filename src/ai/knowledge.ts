@@ -12,16 +12,15 @@
  * rule changes there, change it here.
  */
 
-export const CORE_KNOWLEDGE = `APP MODEL (how TameerBook keeps the books)
-- Accounts are the source of truth for cash: Bank / Cash-in-hand / Wallet. Balance = opening + Σ money in − Σ money out. Nothing is stored twice.
-- Every rupee that moves is ONE transaction (IN or OUT) on an account, tagged with what it is for: a plot, a project phase (PLOT / CONSTRUCTION / SALE / GENERAL), a category, a party (supplier / buyer / seller), a worker, a loan, an order. Mistakes are corrected by a reversal, never deleted (append-only ledger). Edits keep the audit trail.
-- Plot = land bought from a seller: deal price → payments to seller (token, bayana/advance, instalments, final) → remaining = deal − paid; plus plot expenses (tax, transfer fee, naqsha). Plot cost = paid to seller + expenses. A plot is OWNED (free), IN_PROJECT, or SOLD.
-- Project = one plot + construction + sale. Project cost = plot cost + construction cost + sale costs. Construction cost = material/labour cash spend + wages ACCRUED (earned but unpaid). Profit so far = sale received − project cost. Status is derived from the data (ACTIVE → COMPLETED after settlement or manual completion; ON_HOLD / CANCELLED exist).
-- Workers (mazdoor) have a per-project daily wage (dihari). Attendance FULL = full wage, HALF = half, ABSENT = 0; one worker can earn on only one project per day. Owed = Σ accrued − Σ paid. Paying a worker moves cash but does not add cost (the accrual already did).
-- Purchase order (PO) = material booked from a supplier: qty booked vs delivered (material still to receive) and total vs paid (money still owed). Closed when both are settled.
-- Udhaar (loan) = money lent to (GIVEN) or borrowed from (TAKEN) a person, who may not be saved anywhere else; balance = given − returned.
-- Investors (Musharakah): pledge (committed) → received (cash in) → staked in projects. Profit splits by the rule chosen at settlement (ownership share / agreed % / owner's work share first / investor's return first / manual); LOSS always splits by capital ratio. A charity (sadaqah) % is taken from profit first. Investor standing = invested + profit − paid out.
-- Amounts are Pakistani rupees, grouped 25,00,000 (25 lakh). 1 lakh = 100,000, 1 crore = 100 lakh.`;
+export const CORE_KNOWLEDGE = `APP MODEL (how TameerBook keeps the books; explain_app has the detail per module)
+- Accounts (bank / cash / wallet) hold the money; balance = opening + in − out. Every rupee that moves is one IN or OUT on an account, tagged with what it is for: plot, project phase (PLOT / CONSTRUCTION / SALE / GENERAL), category, party, worker, loan, order. Mistakes are reversed, never deleted.
+- Plot = land bought from a seller: deal price → payments (token, bayana, instalments, final) → remaining; plus plot expenses. Plot cost = paid + expenses. A plot is free, in a project, or sold.
+- Project = plot + construction + sale. Cost = plot cost + construction (cash spend + wages earned but unpaid) + sale costs. Profit so far = sale received − cost.
+- Workers earn a daily wage (dihari) per project: FULL / HALF / ABSENT; still to pay = earned − paid. Paying wages moves cash but adds no cost.
+- Purchase order = material booked from a supplier: qty booked vs delivered, total vs paid; closed when both settle.
+- Udhaar = money lent (GIVEN) or borrowed (TAKEN); balance = given − returned.
+- Investors (Musharakah): pledge → received → staked in projects. Profit splits by the rule chosen at settlement; loss always by capital ratio. Standing = invested + profit − paid out.
+- Rupees are grouped Pakistani style: 25,00,000 = 25 lakh; 1 crore = 100 lakh.`;
 
 export const KNOWLEDGE_TOPICS = [
   'accounts',

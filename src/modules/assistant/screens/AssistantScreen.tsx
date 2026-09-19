@@ -188,7 +188,7 @@ export function AssistantScreen(): React.JSX.Element {
                 <View style={styles.introIcon}>
                   <AppIcon name="assistant" size={22} color="accent" />
                 </View>
-                <AppText size="xs" color="textSecondary" style={styles.flex}>
+                <AppText size="sm" color="textSecondary" style={styles.flex}>
                   {t('assistantHint')}
                 </AppText>
               </View>
@@ -201,7 +201,7 @@ export function AssistantScreen(): React.JSX.Element {
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
                     >
-                      <AppText size="xs" weight="semibold">
+                      <AppText size="sm" weight="semibold">
                         {t(k)}
                       </AppText>
                     </Pressable>
@@ -269,7 +269,7 @@ export function AssistantScreen(): React.JSX.Element {
                         settled={turn.settled?.[di]}
                         step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
                         poId={linkedPo}
-                        onSettled={(status, message, poId) => settle(turn.id, di, status, message, poId)}
+                        onSettled={(status, message, poId, used) => settle(turn.id, di, status, message, poId, used)}
                         onDone={showToast}
                       />
                     );
@@ -290,9 +290,10 @@ export function AssistantScreen(): React.JSX.Element {
                           onPress={() => void ask(sug)}
                           disabled={busy}
                           accessibilityRole="button"
+                          hitSlop={theme.touch.hitSlop}
                           style={({ pressed }) => [styles.followChip, pressed && styles.chipPressed]}
                         >
-                          <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
+                          <AppText size="sm" weight="semibold" color="accent" numberOfLines={1}>
                             {sug}
                           </AppText>
                         </Pressable>

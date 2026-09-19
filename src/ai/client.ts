@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
-import { GROQ_WHISPER, MAX_OUTPUT_TOKENS, PROVIDERS, TOOL_MAX_TOKENS, type AiProviderId } from './providers';
+import { GROQ_TEXT_FALLBACKS, GROQ_VISION_MODELS, GROQ_WHISPER, IMAGE_REQUEST_TIMEOUT_MS, MAX_OUTPUT_TOKENS, PROVIDERS, REQUEST_TIMEOUT_MS, TOOL_MAX_TOKENS, type AiProviderId } from './providers';
 import {
   AiError,
   type AiChatMessage,
@@ -67,7 +67,7 @@ export function getAiTransport(): AiTransport {
         null,
         model,
         { 'x-device-id': s.aiDeviceId, ...(s.aiProxyToken ? { 'x-app-token': s.aiProxyToken } : {}) },
-        { voiceModel: GROQ_WHISPER }
+        { voiceModel: GROQ_WHISPER, fallbackModels: GROQ_TEXT_FALLBACKS.filter((m) => m !== model) }
       );
     case 'custom':
       if (!s.aiCustomBaseUrl) throw new AiError('noProvider');
@@ -89,7 +89,7 @@ export function getAiTransport(): AiTransport {
     case 'groq':
     default:
       if (!key) throw new AiError('noProvider');
-      return new OpenAiCompatTransport('groq', info.baseUrl!, key, model, {}, { voiceModel: GROQ_WHISPER, fallbackModel: model === 'qwen/qwen3.6-27b' ? 'openai/gpt-oss-120b' : 'qwen/qwen3.6-27b' });
+      return new OpenAiCompatTransport('groq', info.baseUrl!, key, model, {}, { voiceModel: GROQ_WHISPER, fallbackModels: GROQ_TEXT_FALLBACKS.filter((m) => m !== model) });
   }
 }
 
@@ -97,18 +97,34 @@ export function getAiTransport(): AiTransport {
 /*  Shared HTTP helpers                                                       */
 /* -------------------------------------------------------------------------- */
 
-async function doFetch(url: string, init: RequestInit): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch (e) {
-    throw new AiError('offline', e instanceof Error ? e.message : undefined);
+/**
+ * fetch with a deadline (React Native's fetch never times out on its own) and
+ * one quiet retry on a transient server error. Errors come back coded.
+ */
+async function doFetch(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, signal: ctrl.signal });
+    } catch (e) {
+      clearTimeout(timer);
+      if (ctrl.signal.aborted) throw new AiError('timeout', `${timeoutMs}ms`);
+      throw new AiError('offline', e instanceof Error ? e.message : undefined);
+    }
+    clearTimeout(timer);
+    if (res.ok) return res;
+    const body = await res.text().catch(() => '');
+    if (res.status === 401 || res.status === 403) throw new AiError('badkey', body.slice(0, 200));
+    if (res.status === 429 || res.status === 402) throw new AiError('quota', body.slice(0, 200));
+    // 5xx / 408: the provider hiccupped. One short pause, one retry, then give up.
+    if (attempt === 0 && (res.status >= 500 || res.status === 408)) {
+      await new Promise((r) => setTimeout(r, 800));
+      continue;
+    }
+    throw new AiError('failed', `${res.status} ${body.slice(0, 200)}`);
   }
-  if (res.ok) return res;
-  const body = await res.text().catch(() => '');
-  if (res.status === 401 || res.status === 403) throw new AiError('badkey', body.slice(0, 200));
-  if (res.status === 429 || res.status === 402) throw new AiError('quota', body.slice(0, 200));
-  throw new AiError('failed', `${res.status} ${body.slice(0, 200)}`);
 }
 
 const parseArgs = (raw: unknown): Record<string, unknown> => {
@@ -173,6 +189,9 @@ function toOaMessages(messages: AiChatMessage[]): OaMessage[] {
 }
 
 const hasImages = (messages: AiChatMessage[]): boolean => messages.some((m) => m.role === 'user' && !!m.images?.length);
+/** Same test on the already-converted OpenAI-shape body. */
+const hasImagePayload = (messages: unknown[]): boolean =>
+  messages.some((m) => Array.isArray((m as { content?: unknown }).content) && ((m as { content: { type?: string }[] }).content).some((p) => p.type === 'image_url'));
 
 interface CompatOptions {
   /** Whisper model available at `${baseUrl}/audio/transcriptions`. */
@@ -183,8 +202,8 @@ interface CompatOptions {
   tokensParam?: 'max_tokens' | 'max_completion_tokens';
   /** Reasoning models only accept the default temperature. */
   fixedTemperature?: boolean;
-  /** Retry once on this model when the primary fails (per-model caps, tool-call glitches). */
-  fallbackModel?: string;
+  /** Models to try in order when the chosen one fails (per-model caps, tool-call glitches). */
+  fallbackModels?: readonly string[];
 }
 
 class OpenAiCompatTransport implements AiTransport {
@@ -212,18 +231,30 @@ class OpenAiCompatTransport implements AiTransport {
       delete b.max_tokens;
     }
     if (this.o.fixedTemperature) delete b.temperature;
-    try {
-      const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify(b) });
+    const timeout = Array.isArray(b.messages) && hasImagePayload(b.messages) ? IMAGE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+    const post = async (model: unknown): Promise<OaResponse> => {
+      const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ ...b, model }) }, timeout);
       return (await res.json()) as OaResponse;
+    };
+    try {
+      return await post(b.model);
     } catch (e) {
-      // Groq free tier: per-model daily caps (429) and occasional malformed
-      // tool calls (400 tool_use_failed). One retry on the secondary model.
-      const fb = this.o.fallbackModel;
-      if (fb && b.model !== fb && e instanceof AiError && (e.code === 'quota' || e.code === 'failed')) {
-        const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ ...b, model: fb }) });
-        return (await res.json()) as OaResponse;
+      // Groq free tier: per-model caps (429) and occasional malformed tool
+      // calls (400 tool_use_failed). Walk the fallback chain once each.
+      if (!(e instanceof AiError) || (e.code !== 'quota' && e.code !== 'failed')) throw e;
+      // An image needs a vision model: only those may stand in.
+      const withImage = Array.isArray(b.messages) && hasImagePayload(b.messages);
+      const chain = (this.o.fallbackModels ?? []).filter((m) => m !== b.model && (!withImage || (GROQ_VISION_MODELS as readonly string[]).includes(m)));
+      let last: unknown = e;
+      for (const fb of chain) {
+        try {
+          return await post(fb);
+        } catch (e2) {
+          last = e2;
+          if (e2 instanceof AiError && (e2.code === 'badkey' || e2.code === 'offline' || e2.code === 'timeout')) throw e2;
+        }
       }
-      throw e;
+      throw last;
     }
   }
 
@@ -236,11 +267,20 @@ class OpenAiCompatTransport implements AiTransport {
       temperature: opts.temperature ?? 0.2,
       max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 4000 : MAX_OUTPUT_TOKENS),
       ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      ...(reasoning ? { reasoning_effort: 'low' } : {}),
+      ...(reasoning ? { reasoning_effort: 'low', ...(this.hidesReasoning(model) ? { reasoning_format: 'hidden' } : {}) } : {}),
     });
     const content = data.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new AiError('failed', 'empty completion');
     return content;
+  }
+
+  /**
+   * Groq's gpt-oss models put their chain of thought in `content` unless asked
+   * to hide it, which showed up as leaked reasoning or an empty-looking reply.
+   * `raw` is rejected alongside tools, so `hidden` is the only safe choice.
+   */
+  private hidesReasoning(model: string): boolean {
+    return (this.kind === 'groq' || this.kind === 'proxy') && model.startsWith('openai/gpt-oss');
   }
 
   /** Reasoning models (gpt-oss on Groq, GPT-5 / o-series on OpenAI) think inside the completion budget. */
@@ -253,7 +293,7 @@ class OpenAiCompatTransport implements AiTransport {
     const chosen = opts.model ?? this.model;
     if (!hasImages(messages)) return chosen;
     // Groq (and the proxy in front of it): only the Qwen family reads images.
-    if ((this.kind === 'groq' || this.kind === 'proxy') && !chosen.startsWith('qwen/')) return 'qwen/qwen3.6-27b';
+    if ((this.kind === 'groq' || this.kind === 'proxy') && !chosen.startsWith('qwen/')) return GROQ_VISION_MODELS[0];
     return chosen;
   }
 
@@ -269,8 +309,9 @@ class OpenAiCompatTransport implements AiTransport {
       max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 6000 : TOOL_MAX_TOKENS),
       tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
       tool_choice: 'auto',
-      // Keep the thinking short so the reply fits and arrives fast.
-      ...(reasoning ? { reasoning_effort: 'low' } : {}),
+      // Keep the thinking short so the reply fits and arrives fast, and keep
+      // it out of `content` so the chat never shows the model's scratchpad.
+      ...(reasoning ? { reasoning_effort: 'low', ...(this.hidesReasoning(model) ? { reasoning_format: 'hidden' } : {}) } : {}),
     });
     const msg = data.choices?.[0]?.message;
     if (!msg) throw new AiError('failed', 'empty completion');

@@ -57,6 +57,13 @@ function scoreOne(query: string, candidate: string): number {
   // Typos: allow 1 edit for short words, 2 for longer ones.
   const allowed = Math.max(query.length, candidate.length) >= 6 ? 2 : 1;
   if (Math.abs(query.length - candidate.length) <= allowed && editDistance(query, candidate) <= allowed) return 0.6;
+  // A misspelt FIRST name against a full name ("Zulfiqarr" → "Zulfiqar Ahmed"):
+  // compare the query with each word of the candidate, not just the whole.
+  for (const token of ct) {
+    if (token.length < 4) continue;
+    const slack = Math.max(token.length, query.length) >= 6 ? 2 : 1;
+    if (Math.abs(query.length - token.length) <= slack && editDistance(query, token) <= slack) return 0.7;
+  }
   return 0;
 }
 
@@ -107,4 +114,29 @@ export function findNamesIn<T extends Named>(text: string, candidates: readonly 
     }
   }
   return hits.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * The closest saved names to a query that matched nothing well enough — for a
+ * "did you mean…" question. Relaxed ladder: shared word, shared 3-letter
+ * prefix, or a small edit distance; falls back to the first few names.
+ */
+export function suggestNames<T extends Named>(query: string, candidates: readonly T[], n = 5): string[] {
+  const q = normalizeName(query);
+  const qTokens = q.split(' ').filter((x) => x.length >= 2);
+  const scored = candidates.map((c) => {
+    const names = [c.name, ...(c.alt ?? [])].map(normalizeName);
+    let score = 0;
+    for (const name of names) {
+      const tokens = name.split(' ');
+      if (name === q) score = Math.max(score, 3);
+      if (qTokens.some((t) => tokens.includes(t))) score = Math.max(score, 2);
+      if (qTokens.some((t) => tokens.some((k) => k.startsWith(t.slice(0, 3)) || t.startsWith(k.slice(0, 3))))) score = Math.max(score, 1.5);
+      if (q.length >= 4 && editDistance(q, name) <= Math.max(2, Math.floor(q.length / 3))) score = Math.max(score, 1);
+    }
+    return { name: c.name, score };
+  });
+  const close = scored.filter((x) => x.score > 0).sort((a, b) => b.score - a.score).map((x) => x.name);
+  const out = close.length ? close : candidates.map((c) => c.name);
+  return Array.from(new Set(out)).slice(0, n);
 }

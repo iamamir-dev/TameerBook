@@ -1,20 +1,33 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import {
+  addFact,
   buildWorld,
+  compactHistory,
+  decideReplyLanguage,
+  detectLanguage,
   getAiTransport,
   isAiError,
+  memoryBlock,
+  noteAccepted,
+  noteLanguage,
+  parseExchanges,
+  recordOutcome,
   runAgent,
   runIntent,
-  type AiChatMessage,
   type AiErrorCode,
   type Answer,
   type AnswerTarget,
+  type Exchange,
   type OpenScreen,
   type ResolvedDraft,
 } from '@/ai';
 import { loadSettings, saveSetting } from '@/db';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { todayISO } from '@/utils/date';
 import { reportError, swallow } from '@/utils/log';
+
+import { loadMemory, saveMemory } from '../utils/memoryStore';
 
 /** One message in the conversation. */
 export type Turn =
@@ -124,17 +137,16 @@ function normalizeTurn(raw: unknown): Turn | null {
   };
 }
 
-/** Persisted conversation: the visible turns + the model's compact memory. */
+/** Persisted conversation: the visible turns + the structured exchanges the model's history is built from. */
 interface SavedChat {
   turns: Turn[];
-  history: AiChatMessage[];
+  exchanges: Exchange[];
 }
 const CHAT_KEY = 'aiChat';
 /** Keep the saved conversation bounded (old turns fall off). */
 const MAX_SAVED_TURNS = 40;
-
-/** How many prior messages the model sees (3 exchanges). */
-const HISTORY_TURNS = 6;
+/** Exchanges kept for the model (the older ones are folded into a summary). */
+const MAX_EXCHANGES = 14;
 
 let seq = 0;
 const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -149,8 +161,8 @@ export interface AssistantApi extends State {
   onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
-  /** Record that a draft card was accepted or rejected. */
-  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string) => void;
+  /** Record that a draft card was accepted or rejected (`used` = account / project chosen in the card). */
+  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => void;
   /** Re-run the prompt behind a failed reply (replaces the error bubble). */
   retry: (turnId: string) => Promise<void>;
   /** The user tapped one of the offered choices: remember it and send it. */
@@ -171,13 +183,9 @@ export function useAssistant(): AssistantApi {
   const onOpen = useRef<((screen: OpenScreen) => void) | null>(null);
   const onOpenTarget = useRef<((target: AnswerTarget) => void) | null>(null);
   const inFlight = useRef(false);
-  // Short conversational memory for the model (compact text, last few turns).
-  const history = useRef<AiChatMessage[]>([]);
-  const remember = (role: 'user' | 'assistant', content: string) => {
-    if (!content) return;
-    const msg: AiChatMessage = role === 'user' ? { role, content: content.slice(0, 500) } : { role, content: content.slice(0, 500) };
-    history.current = [...history.current, msg].slice(-HISTORY_TURNS);
-  };
+  // What the model remembers of this chat: one structured record per turn
+  // (words, tools with arguments, proposed writes, what the user did with them).
+  const exchanges = useRef<Exchange[]>([]);
 
   // Restore the saved conversation once; then mirror every change back.
   useEffect(() => {
@@ -189,7 +197,7 @@ export function useAssistant(): AssistantApi {
         }
         try {
           const saved = JSON.parse(s[CHAT_KEY]) as SavedChat;
-          history.current = Array.isArray(saved.history) ? saved.history : [];
+          exchanges.current = parseExchanges(saved.exchanges);
           const turns = (Array.isArray(saved.turns) ? saved.turns : []).map(normalizeTurn).filter((x): x is Turn => x !== null);
           // The app died while a reply was in flight (backgrounded, killed, crashed): the last
           // message has no answer. Show the failure bubble so Retry is one tap away.
@@ -204,7 +212,7 @@ export function useAssistant(): AssistantApi {
   }, []);
   useEffect(() => {
     if (!state.hydrated) return;
-    const payload: SavedChat = { turns: state.turns.slice(-MAX_SAVED_TURNS), history: history.current };
+    const payload: SavedChat = { turns: state.turns.slice(-MAX_SAVED_TURNS), exchanges: exchanges.current.slice(-MAX_EXCHANGES) };
     void saveSetting(CHAT_KEY, JSON.stringify(payload)).catch(swallow('assistant:persist'));
   }, [state.turns, state.hydrated]);
 
@@ -216,18 +224,39 @@ export function useAssistant(): AssistantApi {
     dispatch({ type: 'busy', busy: true });
     try {
       const transport = getAiTransport();
-      const world = await buildWorld();
+      const [world, memory] = await Promise.all([buildWorld(), loadMemory()]);
+      // Language is decided here, not by the model: the user's setting, then
+      // the words of this message, then what they usually write in.
+      const settings = useSettingsStore.getState();
+      const guess = detectLanguage(text);
+      const language = decideReplyLanguage({ text, setting: settings.aiReplyLanguage, appLanguage: settings.language, recent: memory.langs });
+      const { summary, messages } = compactHistory(exchanges.current);
       const r = await runAgent(text, {
         transport,
         world,
         runIntent,
-        history: history.current,
+        history: messages,
+        prompt: { language, memory: memoryBlock(memory), summary },
         onProgress: (phase, tools) => dispatch({ type: 'working', phase, tools }),
         images: images?.map((i) => i.base64),
       });
-      remember('user', images?.length ? `${text} [sent ${images.length} photo(s)]` : text);
-      remember('assistant', r.memory);
-      dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options } });
+      const turnId = nextId();
+      exchanges.current = [
+        ...exchanges.current,
+        {
+          turnId,
+          user: images?.length ? `${text} [sent ${images.length} photo(s)]` : text,
+          assistant: r.text || (r.open ? `opened ${r.open}` : ''),
+          tools: r.toolLog,
+          drafts: r.draftLines,
+          outcomes: [],
+        },
+      ].slice(-MAX_EXCHANGES);
+      // Learn quietly: the language only from clear evidence, facts only when the model asked to keep one.
+      let mem = noteLanguage(memory, guess.strong ? guess.language : null);
+      for (const f of r.learned) mem = addFact(mem, f, todayISO());
+      if (mem !== memory) void saveMemory(mem).catch(swallow('assistant:memory'));
+      dispatch({ type: 'push', turn: { id: turnId, role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);
@@ -277,12 +306,23 @@ export function useAssistant(): AssistantApi {
   );
 
   const clear = useCallback(() => {
-    history.current = [];
+    exchanges.current = [];
     dispatch({ type: 'clear' });
     void saveSetting(CHAT_KEY, '').catch(swallow('assistant:clear'));
   }, []);
 
-  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string) => {
+  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => {
+    // The model learns what the user did with its proposal; an accepted write also teaches the usual account / project.
+    exchanges.current = recordOutcome(exchanges.current, turnId, index, status, message);
+    if (status === 'accepted') {
+      const turn = turnsRef.current.find((x) => x.id === turnId);
+      const draft = turn && turn.role === 'assistant' && 'drafts' in turn ? turn.drafts[index] : undefined;
+      if (draft) {
+        loadMemory()
+          .then((m) => saveMemory(noteAccepted(m, draft, used)))
+          .catch(swallow('assistant:memoryDefaults'));
+      }
+    }
     dispatch({ type: 'settle', turnId, index, status, message, poId });
   }, []);
 

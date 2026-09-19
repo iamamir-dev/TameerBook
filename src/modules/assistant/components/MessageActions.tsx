@@ -57,12 +57,12 @@ export function MessageActions({ text, onCopied, onSpeak, onRetry, disabled }: M
           hitSlop={theme.touch.hitSlop}
           style={({ pressed }) => [styles.action, it.accent && styles.actionAccent, pressed && styles.pressed]}
         >
-          <AppIcon name={it.icon} size={14} color={it.accent ? 'accent' : 'textSecondary'} />
-          {it.accent ? (
-            <AppText size="xs" weight="bold" color="accent">
-              {it.label}
-            </AppText>
-          ) : null}
+          {/* Rule 3: icon AND text — a slow reader needs the icon, a low-literacy
+              user needs neither to be alone. "Read aloud" especially. */}
+          <AppIcon name={it.icon} size={16} color={it.accent ? 'accent' : 'textSecondary'} />
+          <AppText size="sm" weight={it.accent ? 'bold' : 'semibold'} color={it.accent ? 'accent' : 'textSecondary'}>
+            {it.label}
+          </AppText>
         </Pressable>
       ))}
     </View>

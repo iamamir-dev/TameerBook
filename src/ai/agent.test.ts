@@ -163,12 +163,22 @@ describe('runAgent', () => {
   });
 
   it('stops at a write tool with a resolved draft', async () => {
-    const t = fake([{ content: 'Adding Kamran as a worker.', toolCalls: [{ id: 'c1', name: 'add_worker', args: { name: 'Kamran', project: 'gulberg' } }] }]);
+    // Writes are queued step by step: the model is told the write is queued and
+    // gets one more call to add further steps or wrap up with a sentence.
+    const t = fake([
+      { content: null, toolCalls: [{ id: 'c1', name: 'add_worker', args: { name: 'Kamran', project: 'gulberg' } }] },
+      { content: 'Kamran ready to add on Gulberg House.', toolCalls: [] },
+    ]);
     const r = await runAgent('add worker Kamran on Gulberg', { transport: t, world, runIntent: async () => poAnswer });
     expect(r.drafts[0]?.draft.kind).toBe('createWorker');
     expect(r.drafts[0]?.project?.id).toBe('pr1');
-    expect(r.calls).toBe(1);
+    expect(r.calls).toBe(2);
+    expect(r.text).toBe('Kamran ready to add on Gulberg House.');
     expect(r.memory).toContain('awaiting user confirmation');
+    expect(r.draftLines[0]).toContain('createWorker');
+    // The queued note went back as a tool result before the second call.
+    const toolMsg = t.seen[1].find((m) => m.role === 'tool') as { content: string };
+    expect(toolMsg.content).toContain('queued');
   });
 
   it('turns several write calls (a bill with two lines) into several drafts', async () => {

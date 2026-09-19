@@ -4,16 +4,17 @@ import type { Theme } from '@/theme/theme';
 
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingLeft: theme.spacing.xs, marginTop: -2 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingLeft: theme.spacing.xs, marginTop: -theme.spacing.xxs },
+    /** Icon + label together (DESIGN_GUIDELINES rule 3); hitSlop carries the
+        target to 56px without a heavy bar under every reply (rule 1). */
     action: {
-      minWidth: 28,
-      height: 28,
-      paddingHorizontal: 6,
+      minHeight: 40,
+      paddingHorizontal: theme.spacing.sm,
       borderRadius: theme.radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'row',
-      gap: 4,
+      gap: theme.spacing.xs,
     },
     actionAccent: { backgroundColor: theme.colors.accentSoft, paddingHorizontal: theme.spacing.sm },
     pressed: { opacity: 0.6 },

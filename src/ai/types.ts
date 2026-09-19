@@ -9,6 +9,8 @@ export type AiErrorCode =
   | 'disabled'
   /** No network. */
   | 'offline'
+  /** The provider did not answer within the time limit. */
+  | 'timeout'
   /** No key / URL configured for the chosen provider. */
   | 'noProvider'
   /** The chosen provider cannot transcribe audio and no Groq key is set. */

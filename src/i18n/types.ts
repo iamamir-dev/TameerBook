@@ -688,6 +688,15 @@ export interface TranslationKeys {
   aiErrBadKey: string;
   aiErrFailed: string;
   aiErrUnparseable: string;
+  aiErrTimeout: string;
+  aiReplyLangLabel: string;
+  aiReplyLangAuto: string;
+  aiReplyLangUr: string;
+  aiReplyLangRoman: string;
+  aiReplyLangEn: string;
+  aiForgetLabel: string;
+  aiForgetConfirm: string;
+  aiForgotten: string;
   aiUnresolved: string;
   aiDraftTitle: string;
   aiOpenForm: string;
@@ -744,6 +753,7 @@ export interface TranslationKeys {
   aiNoLoanFound: string;
   aiNoWorkerFound: string;
   aiNothingOwed: string;
+  aiNoProjectsYet: string;
   aiReportOpening: string;
   aiChartOther: string;
   monthsLabel: string;

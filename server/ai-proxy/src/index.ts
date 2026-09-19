@@ -27,8 +27,8 @@ export interface Env {
 const GROQ = 'https://api.groq.com/openai/v1';
 const MODELS = {
   text: 'openai/gpt-oss-120b',
-  textFallback: 'qwen/qwen3.6-27b',
-  vision: 'qwen/qwen3.6-27b',
+  textFallback: 'qwen/qwen3.8-27b',
+  vision: 'qwen/qwen3.8-27b',
   whisper: 'whisper-large-v3-turbo',
   cfText: '@cf/google/gemma-4-26b-a4b-it',
   cfVision: '@cf/meta/llama-3.2-11b-vision-instruct',
@@ -36,7 +36,8 @@ const MODELS = {
 } as const;
 
 const MAX_BODY_BYTES = 6 * 1024 * 1024; // audio + images stay small (the app compresses)
-const MAX_OUTPUT_TOKENS = 900;
+// Tool turns on reasoning models spend tokens thinking before the call; give them room.
+const MAX_OUTPUT_TOKENS = 1600;
 
 type Json = Record<string, unknown>;
 
@@ -152,6 +153,8 @@ async function chat(req: Request, env: Env): Promise<Json> {
     tools?: unknown[];
     tool_choice?: unknown;
     response_format?: unknown;
+    reasoning_effort?: unknown;
+    reasoning_format?: unknown;
   };
   if (!Array.isArray(b.messages) || b.messages.length === 0) throw new HttpError(400, 'messages required');
   const base = {
@@ -160,6 +163,8 @@ async function chat(req: Request, env: Env): Promise<Json> {
     max_tokens: clamp(b.max_tokens ?? b.maxTokens ?? MAX_OUTPUT_TOKENS, 1, MAX_OUTPUT_TOKENS),
     ...(b.json || b.response_format ? { response_format: b.response_format ?? { type: 'json_object' } } : {}),
     ...(Array.isArray(b.tools) && b.tools.length ? { tools: b.tools, tool_choice: b.tool_choice ?? 'auto' } : {}),
+    ...(typeof b.reasoning_effort === 'string' ? { reasoning_effort: b.reasoning_effort } : {}),
+    ...(typeof b.reasoning_format === 'string' ? { reasoning_format: b.reasoning_format } : {}),
   };
   const model = b.model && (b.model.startsWith('openai/') || b.model.startsWith('qwen/') || b.model.startsWith('llama')) ? b.model : MODELS.text;
   // The app speaks the OpenAI shape end-to-end, so return it as-is (tool_calls included).

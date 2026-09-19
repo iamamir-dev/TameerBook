@@ -30,7 +30,7 @@ import { formatQty, formatRupees } from '@/utils/money';
 import { inRange, type DateRange } from '@/utils/period';
 
 import type { CategoryNamed } from './drafts';
-import { matchName, type Named } from './match';
+import { matchName, suggestNames, type Named } from './match';
 import { periodToRange, type Intent, type Period } from './intents';
 import type { World } from './prompts';
 
@@ -109,6 +109,8 @@ export interface Answer {
   speak: string;
   /** Where "Open" goes. */
   target?: AnswerTarget;
+  /** The name the model asked for matched nothing; `candidates` are the closest saved names (no card is shown). */
+  notFound?: { what: string; query: string; candidates: string[] };
 }
 
 const MAX_ROWS = 25;
@@ -162,14 +164,24 @@ async function liveTxns(range: DateRange): Promise<TransactionRow[]> {
 
 const none = (title: string): Answer => ({ title, rows: [], speak: t('noResultsLabel') });
 
+/** A named thing the user asked for does not exist: hand the model the nearest names so it can ask, not guess. */
+const miss = (what: string, query: string, candidates: readonly Named[]): Answer => ({
+  title: query,
+  rows: [],
+  speak: `${t('noResultsLabel')} ${query}`,
+  notFound: { what, query, candidates: suggestNames(query, candidates) },
+});
+
 /** Run one intent → one answer. */
 export async function runIntent(intent: Intent, w: World): Promise<Answer> {
   switch (intent.type) {
     case 'spend_by_category': {
-      const cat = pick(intent.category, w.categories.filter((c) => c.type === 'EXPENSE'));
-      if (!cat) return none(intent.category);
+      const expenseCats = w.categories.filter((c) => c.type === 'EXPENSE');
+      const cat = pick(intent.category, expenseCats);
+      if (!cat) return miss('category or material', intent.category, expenseCats);
       const ids = categoryFamily(cat, w);
       const project = pick(intent.project, w.projects);
+      if (intent.project && !project) return miss('project', intent.project, w.projects);
       const range = periodToRange(intent.period, w.today);
       const rows = (await liveTxns(range)).filter(
         (x) => x.direction === 'OUT' && x.category_id && ids.has(x.category_id) && (!project || x.project_id === project.id)
@@ -190,6 +202,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'spend_summary': {
       const project = pick(intent.project, w.projects);
+      if (intent.project && !project) return miss('project', intent.project, w.projects);
       const range = periodToRange(intent.period, w.today);
       const rows = (await liveTxns(range)).filter((x) => !project || x.project_id === project.id);
       const inSum = rows.filter((x) => x.direction === 'IN').reduce((s, x) => s + x.amount, 0);
@@ -208,6 +221,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
     case 'project_status': {
       const summaries = await listProjectSummaries();
       const project = pick(intent.project, w.projects);
+      if (intent.project && !project) return miss('project', intent.project, w.projects);
       const chosen = project ? summaries.filter((s) => s.project.id === project.id) : summaries.filter((s) => s.project.status === 'ACTIVE');
       if (chosen.length === 0) return none(t('projects'));
       if (chosen.length === 1) {
@@ -238,7 +252,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'project_details': {
       const project = pick(intent.project, w.projects);
-      if (!project) return none(intent.project);
+      if (!project) return miss('project', intent.project, w.projects);
       const monthPrefix = w.today.slice(0, 7);
       const [summary, sale, capital, workers, pos, construction, insights] = await Promise.all([
         getProjectSummary(project.id),
@@ -327,6 +341,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'worker_balance': {
       const worker = pick(intent.worker, w.workers);
+      if (intent.worker && !worker) return miss('worker', intent.worker, w.workers);
       if (worker) {
         const k = await getLaborerKhata(worker.id);
         return {
@@ -359,7 +374,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'worker_attendance': {
       const worker = pick(intent.worker, w.workers);
-      if (!worker) return none(t('laborTitle'));
+      if (!worker) return miss('worker', intent.worker, w.workers);
       const k = await getLaborerKhata(worker.id);
       const now = new Date();
       const month = intent.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -386,7 +401,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'party_history': {
       const party = pick(intent.party, w.parties);
-      if (!party) return none(intent.party);
+      if (!party) return miss('supplier or contact', intent.party, w.parties);
       const range = periodToRange(intent.period, w.today);
       const rows = (await liveTxns(range)).filter((x) => x.party_id === party.id);
       const paid = rows.filter((x) => x.direction === 'OUT').reduce((s, x) => s + x.amount, 0);
@@ -403,7 +418,9 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'udhaar_balance': {
       const open = await listUdhaar('OPEN');
-      const one = intent.person ? matchName(intent.person, open.map((u) => ({ id: u.id, name: u.person_name })))?.item : undefined;
+      const people = open.map((u) => ({ id: u.id, name: u.person_name }));
+      const one = intent.person ? matchName(intent.person, people)?.item : undefined;
+      if (intent.person && !one) return miss('person with an open loan', intent.person, people);
       const list = one ? open.filter((u) => u.id === one.id) : open.filter((u) => u.balance > 0);
       if (list.length === 0) return none(t('udhaar'));
       const receivable = list.filter((u) => u.direction === 'GIVEN').reduce((s, u) => s + u.balance, 0);
@@ -423,6 +440,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
     case 'account_balance': {
       const accounts = await listAccountsWithBalance();
       const one = pick(intent.account, accounts);
+      if (intent.account && !one) return miss('account', intent.account, accounts);
       const list = one ? accounts.filter((a) => a.id === one.id) : accounts;
       const total = list.reduce((s, a) => s + a.balance, 0);
       return {
@@ -438,6 +456,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
     case 'plot_status': {
       const summaries = await listPlotSummaries();
       const one = pick(intent.plot, w.plots);
+      if (intent.plot && !one) return miss('plot', intent.plot, w.plots);
       const list = one ? summaries.filter((s) => s.plot.id === one.id) : summaries.filter((s) => s.plot.status !== 'SOLD');
       if (list.length === 0) return none(t('plotsTitle'));
       if (list.length === 1) {
@@ -469,6 +488,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'investor_status': {
       const one = pick(intent.investor, w.investors);
+      if (intent.investor && !one) return miss('investor', intent.investor, w.investors);
       if (one) {
         const s = await getInvestorSummary(one.id);
         if (!s) return none(one.name);
@@ -499,6 +519,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'sale_status': {
       const project = pick(intent.project, w.projects) ?? (w.projects.length === 1 ? w.projects[0] : undefined);
+      if (intent.project && !project) return miss('project', intent.project, w.projects);
       if (!project) return none(t('projects'));
       const s = await getSaleSummary(project.id);
       const agreed = s.sale?.agreed_price ?? 0;
@@ -645,6 +666,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
     case 'report': {
       if (intent.report === 'project') {
         const project = pick(intent.project, w.projects) ?? (w.projects.length === 1 ? w.projects[0] : undefined);
+        if (intent.project && !project) return miss('project', intent.project, w.projects);
         if (!project) return none(t('projects'));
         return {
           title: `${project.name} · ${t('reports')}`,
@@ -674,6 +696,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
 
     case 'expense_breakdown': {
       const project = pick(intent.project, w.projects);
+      if (intent.project && !project) return miss('project', intent.project, w.projects);
       const range = periodToRange(intent.period, w.today);
       const txns = (await liveTxns(range)).filter((x) => x.direction === 'OUT' && (!project || x.project_id === project.id));
       if (txns.length === 0) return none(t('kharcha'));
