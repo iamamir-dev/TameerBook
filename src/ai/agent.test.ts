@@ -178,7 +178,7 @@ describe('runAgent', () => {
     expect(r.draftLines[0]).toContain('createWorker');
     // The queued note went back as a tool result before the second call.
     const toolMsg = t.seen[1].find((m) => m.role === 'tool') as { content: string };
-    expect(toolMsg.content).toContain('queued');
+    expect(toolMsg.content).toContain('prepared');
   });
 
   it('turns several write calls (a bill with two lines) into several drafts', async () => {

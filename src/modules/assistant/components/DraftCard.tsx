@@ -156,6 +156,8 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
   const part = parts.find((p) => p.projectLaborer.id === plId);
   // A taken plot can be swapped for a free one right here.
   const plotFixed = blocked ? !!plotId : true;
+  /** The draft needs a project but the user has not made one yet. */
+  const noProjects = needs.project && projects.length === 0;
   const ready =
     plotFixed &&
     (!needs.name || nameTyped.trim().length > 0) &&
@@ -270,7 +272,7 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
         {!done ? (
           <>
             {needs.account ? pickRow(t('accountLabel'), account ? `${account.name} · ${formatRupees(account.balance)}` : undefined, 'account') : null}
-            {needs.project ? pickRow(t('projectLabel'), project?.name, 'project') : null}
+            {needs.project && !noProjects ? pickRow(t('projectLabel'), project?.name, 'project') : null}
             {needs.participation ? pickRow(t('aiChooseParticipation'), part ? `${part.projectName} · ${formatRupees(part.balance.balance)}` : undefined, 'participation') : null}
             {needs.plot || blocked ? pickRow(t('plotLabel'), plot?.name, 'plot', !blocked) : null}
             {needs.workerProject ? pickRow(t('projectLabel'), project?.name, 'project', true) : null}
@@ -328,15 +330,21 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
                 {t('aiNothingOwed')}
               </AppText>
             </View>
-          ) : needs.project && projects.length === 0 ? (
-            // A required picker with nothing to pick leaves Accept greyed out and
-            // no way forward; say what is missing and where to fix it.
-            <View style={styles.warn}>
-              <AppIcon name="alert" size={16} color="gold" />
-              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
+          ) : null}
+
+          {/* Nothing to choose from: point at the one thing that unblocks this,
+              instead of a greyed-out Accept the user cannot explain. */}
+          {noProjects ? (
+            <Pressable
+              onPress={() => navigation.navigate('NewProject')}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.prereq, pressed && styles.pressed]}
+            >
+              <AppIcon name="add" size={18} color="accent" />
+              <AppText size="sm" weight="bold" color="accent" style={styles.warnText}>
                 {t('aiNoProjectsYet')}
               </AppText>
-            </View>
+            </Pressable>
           ) : null}
 
           <View style={styles.actions}>

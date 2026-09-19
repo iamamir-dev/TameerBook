@@ -31,6 +31,8 @@ export interface EvalCase {
   asks?: boolean;
   /** Exchanges to seed as history before this case (a follow-up test). */
   after?: { user: string; assistant: string; tools?: string[] }[];
+  /** Run this case against a narrowed world (e.g. a book with no projects yet). */
+  world?: Partial<World>;
 }
 
 /** Words the builder never wants to read, in any language. */
@@ -70,10 +72,20 @@ export const EVAL_CASES: EvalCase[] = [
   { id: 'expense-roman', text: 'aaj generator ke diesel pe 3 hazar kharch hue', draft: 'expense', lang: 'roman', mustNot: ['record', 'entry'] },
   // 50 x 1250 = 62,500. On device the model wrote "Rs 1,25,000" here, so the
   // reply must carry the app's figure or no figure at all, never its own sum.
-  { id: 'material-roman', text: '50 bori cement 1250 wala Akram se liya', draft: 'material', lang: 'roman', mustNot: ['1,25,000', '125000', '\\b62,?500 ?x', '\\b1,?25,?000'] },
+  { id: 'material-roman', text: '50 bori cement 1250 wala Akram se liya', draft: 'material', lang: 'roman', mustNot: ['1,25,000', '125000', '\\b1,?25,?000', '\\bqueue\\b', '\\bcard\\b'] },
   { id: 'pay-worker-urdu', text: 'بلال کو دو ہزار دیے', draft: 'payWorker', lang: 'ur' },
   { id: 'attendance-roman', text: 'aaj sab mazdoor aaye', draft: 'attendance', lang: 'roman' },
   { id: 'transfer-en', text: 'moved 50 thousand from bank to cash', draft: 'transfer', lang: 'en' },
+  // A write that needs something the user has none of: offer to create it,
+  // never propose the write and never ask them to pick from an empty list.
+  {
+    id: 'no-project-yet',
+    text: '50 bori cement 1250 wala Akram se liya',
+    asks: true,
+    lang: 'roman',
+    world: { projects: [], plots: [] },
+    mustNot: ['\\bchoose\\b', 'chun', 'select'],
+  },
   // Clarification only when essential
   { id: 'add-worker-noname', text: 'worker add karo', asks: true, lang: 'roman' },
   { id: 'project-new', text: 'naya project banao', asks: true, lang: 'roman' },
@@ -176,7 +188,7 @@ export async function runEvals(deps: EvalDeps): Promise<EvalResult[]> {
     const language = decideReplyLanguage({ text: c.text, setting: 'auto', appLanguage: deps.world.language, recent: [] });
     for (let attempt = 0; ; attempt++) {
       try {
-        const r = await runAgent(c.text, { ...deps, history, prompt: { language } });
+        const r = await runAgent(c.text, { ...deps, world: c.world ? { ...deps.world, ...c.world } : deps.world, history, prompt: { language } });
         const j = judge(c, r);
         result = { id: c.id, ...j, ms: Date.now() - started, calls: r.calls };
         break;

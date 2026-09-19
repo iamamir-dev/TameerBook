@@ -253,7 +253,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
         const resolved = resolveDraft(action.draft, world);
         const total = draftTotal(action.draft);
         content = JSON.stringify({
-          queued: true,
+          prepared: true,
           step: queued.length,
           // The figures the app will actually save, so the sentence states them
           // rather than arithmetic of the model's own.
@@ -266,7 +266,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
             ...(resolved.plot ? { plot: resolved.plot.name } : {}),
             ...(resolved.unresolved.length ? { notSavedYet: resolved.unresolved } : {}),
           },
-          note: `Queued for the user to confirm in the app (not saved yet). If the user's message describes more actions (delivery received, payment made, more bill lines), call those tools now, in order; later steps may refer to this order by supplier name. When nothing is left, stop calling tools and write ONE short sentence, in ${languageName(lang)}, saying in your own words what is about to happen. Use ONLY the figures in willSave: never multiply, add or restate an amount yourself. Do not label fields and do not repeat the user's sentence.`,
+          note: `Ready for the user to confirm, not saved yet. Never use the words queue, step, card or confirm in your reply. If the user's message describes more actions (delivery received, payment made, more bill lines), call those tools now, in order; later steps may refer to this order by supplier name. When nothing is left, stop calling tools and write ONE short sentence, in ${languageName(lang)}, saying in your own words what is about to happen. Use ONLY the figures in willSave: never multiply, add or restate an amount yourself. Do not label fields and do not repeat the user's sentence.`,
         });
       } else if (action.kind === 'read') {
         try {

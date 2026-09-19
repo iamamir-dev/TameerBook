@@ -34,8 +34,8 @@ export const makeStyles = (theme: Theme) =>
     chip: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
-      minHeight: theme.touch.minTarget,
+      paddingHorizontal: theme.spacing.md,
+      minHeight: 36,
       borderRadius: theme.radius.pill,
       backgroundColor: theme.colors.primarySoft,
     },
@@ -43,11 +43,11 @@ export const makeStyles = (theme: Theme) =>
     /** Model-offered follow-ups: outlined in the accent, quieter than answers. */
     /** Model-offered follow-ups: one small scrolling row of quiet pills. */
     followRow: { flexDirection: 'row', gap: theme.spacing.xs, paddingRight: theme.spacing.lg, paddingVertical: theme.spacing.xs },
-    /** A scrolling row of follow-ups: kept visually light, so the tap area is
-        widened with hitSlop instead of a 56px pill (see DESIGN_GUIDELINES rule 1). */
+    /** Follow-ups stay a light scrolling row; hitSlop carries the tap target
+        instead of a 56px pill (DESIGN_GUIDELINES rule 1, small touchables). */
     followChip: {
-      paddingHorizontal: theme.spacing.md,
-      height: 40,
+      paddingHorizontal: theme.spacing.sm,
+      height: 30,
       borderRadius: theme.radius.pill,
       borderWidth: 1,
       borderColor: theme.colors.accentSoft,

@@ -199,9 +199,10 @@ export function AssistantScreen(): React.JSX.Element {
                       key={k}
                       onPress={() => void ask(t(k))}
                       accessibilityRole="button"
+                      hitSlop={theme.touch.hitSlop}
                       style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
                     >
-                      <AppText size="sm" weight="semibold">
+                      <AppText size="xs" weight="semibold">
                         {t(k)}
                       </AppText>
                     </Pressable>
@@ -293,7 +294,7 @@ export function AssistantScreen(): React.JSX.Element {
                           hitSlop={theme.touch.hitSlop}
                           style={({ pressed }) => [styles.followChip, pressed && styles.chipPressed]}
                         >
-                          <AppText size="sm" weight="semibold" color="accent" numberOfLines={1}>
+                          <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
                             {sug}
                           </AppText>
                         </Pressable>
