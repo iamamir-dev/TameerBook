@@ -117,6 +117,8 @@ export const EVAL_CASES: EvalCase[] = [
   },
   // One question, not a checklist of everything that is missing.
   { id: 'one-question', text: 'Bilal ko paise diye', asks: true, lang: 'roman', mustNot: ['\\n\\s*2[.)]', '\\n\\s*-\\s.*\\n\\s*-\\s'] },
+  // Creating a project must not turn into a three-part form in one message.
+  { id: 'project-one-thing', text: 'naya project banayein', asks: true, lang: 'roman', world: { projects: [] }, mustNot: ['\\binvestor', '\\?.*\\?'] },
   // Clarification only when essential
   { id: 'add-worker-noname', text: 'worker add karo', asks: true, lang: 'roman' },
   { id: 'project-new', text: 'naya project banao', asks: true, lang: 'roman' },

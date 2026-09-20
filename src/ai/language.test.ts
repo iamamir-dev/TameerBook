@@ -25,6 +25,10 @@ describe('detectLanguage', () => {
   it('is only weakly sure about a single English word', () => {
     expect(detectLanguage('show balance')).toEqual({ language: 'en', strong: false });
   });
+  it('reads the polite -ein verb forms the assistant itself uses', () => {
+    expect(detectLanguage('naya project banayein').language).toBe('roman');
+    expect(detectLanguage('yeh kharcha likhein').language).toBe('roman');
+  });
   it('reads Roman Urdu built around English ledger nouns', () => {
     // These sentences are Roman Urdu; the nouns just happen to be English.
     expect(detectLanguage('kon se orders abhi tak deliver nahi hue').language).toBe('roman');

@@ -30,7 +30,8 @@ const ROMAN_URDU = new Set(
     'mera meri mere tum aap hum humara humari hamara woh yeh ye wo unko usko inko iska uska unka jo jab agar magar lekin ' +
     'sab kuch bhi sirf abhi phir bas chalo dekho dekhna chahiye chahye chahta chahti chahte zaroorat zarurat ' +
     'paise paisa rupay rupaye rupey lakh laakh hazar hazaar crore karod ' +
-    'banao bana banana likho likh hazri haazri dihari dehari mazdoor kharcha kharch aamdani udhaar udhar baqaya baki baqi ' +
+    'banao bana banana banayein banaein likho likh likhein bhejein dikhayein lagayein naya nayi naye ' +
+    'hazri haazri dihari dehari mazdoor kharcha kharch aamdani udhaar udhar baqaya baki baqi ' +
     'kaam ghar saman samaan aaya aayi aaye mila mile mili bech becha bechna khareed kharida kharidna tak sath saath wapas ' +
     'pichle pichla pichli agla agli mahine mahina mahiney hafte hafta din saal subah sham raat ' +
     'theek thik acha accha achha bilkul zyada ziada kam poora pura aadha adha chutti hazir ghaib ' +

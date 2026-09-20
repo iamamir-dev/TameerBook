@@ -161,7 +161,9 @@ function draftTotal(d: Draft): number | undefined {
 
 /** Sampling: exact for the first call (tool choice), warmer once results are in (prose). */
 const TEMP_FIRST = 0.2;
-const TEMP_COMPOSE = 0.5;
+// Warm enough that the wording varies between turns, tight enough that the
+// reply language and the style rules are actually followed.
+const TEMP_COMPOSE = 0.35;
 
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
   const { transport, world, runIntent } = deps;
@@ -275,7 +277,10 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
         const gaps = draftGaps(resolved, world);
         if (gaps.length > 0) {
           sawResults = true;
-          content = JSON.stringify({ notReady: true, ask: gapPrompt(gaps) });
+          // The gap instruction is the last thing the model reads before it
+          // writes, so it has to carry the language too, or the reply comes
+          // back in the language of the instruction rather than the user's.
+          content = JSON.stringify({ notReady: true, ask: `${gapPrompt(gaps)} Write it in ${languageName(lang)}.` });
           messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content });
           continue;
         }
