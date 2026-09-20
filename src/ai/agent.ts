@@ -91,6 +91,19 @@ export function splitSuggestions(raw: string | null | undefined): { text: string
     options = splitPipes(opt[1], 8);
     text = text.slice(0, opt.index).trim();
   }
+  // Safety net: the model sometimes tucks the marker mid-sentence, often in
+  // brackets ("plot choose karo (OPTIONS: A | B) aur…"). The user must never
+  // read the word OPTIONS, so lift those choices out and heal the sentence.
+  text = text.replace(/[([]\s*\**OPTIONS\**\s*:\s*([^)\]]+)[)\]]/gi, (_m, list: string) => {
+    if (options.length === 0) options = splitPipes(list, 8);
+    return '';
+  });
+  text = text
+    .replace(/(?:^|\n)\s*\**(?:OPTIONS|SUGGEST)\**\s*:.*$/gim, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.:;?!])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return { text, suggestions, options };
 }
 

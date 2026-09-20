@@ -42,7 +42,10 @@ describe('prompt budget', () => {
   // while the per-call total above still fits.
   it('keeps each half from creeping', () => {
     const sys = agentSystemPrompt(world, { language: 'roman' });
-    expect(TOKENS(sys.length)).toBeLessThan(3_100);
+    // 3,150: every rise since 3,000 paid for a rule that fixed a measured eval
+    // failure (nothing to pick yet, no invented totals, markers on their own
+    // line). The per-call total above is the constraint that actually binds.
+    expect(TOKENS(sys.length)).toBeLessThan(3_150);
     expect(TOKENS(JSON.stringify(TOOLS).length)).toBeLessThan(4_800);
   });
   it('keeps the confirmation prompt tiny', () => {

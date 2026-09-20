@@ -174,7 +174,12 @@ export function AssistantScreen(): React.JSX.Element {
             : undefined
         }
       />
-      <KeyboardAvoidingView style={[styles.flex, kb > 0 && { paddingBottom: kb }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* The composer must never look glued to the keyboard: lift it by the
+          keyboard's height PLUS a visible gap, so the pill keeps its own air. */}
+      <KeyboardAvoidingView
+        style={[styles.flex, kb > 0 && { paddingBottom: kb + theme.spacing.md }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <ScrollView
           ref={scroll}
           style={styles.flex}

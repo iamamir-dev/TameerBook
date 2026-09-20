@@ -86,18 +86,6 @@ export const makeStyles = (theme: Theme) =>
       paddingVertical: theme.spacing.xs,
     },
     warnText: { flex: 1, minWidth: 0 },
-    /** "Make a project first" — a real action, full touch target, accent-tinted. */
-    prereq: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
-      marginHorizontal: theme.spacing.sm,
-      marginTop: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      minHeight: theme.touch.minTarget,
-      borderRadius: theme.radius.sm,
-      backgroundColor: theme.colors.accentSoft,
-    },
     /** Reject (ghost) · Accept (filled): compact, right-aligned like a dialog footer. */
     actions: {
       flexDirection: 'row',

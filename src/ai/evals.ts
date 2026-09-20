@@ -21,6 +21,8 @@ export interface EvalCase {
   noTool?: boolean;
   /** A write draft must be proposed (kind from the Draft union). */
   draft?: string;
+  /** `draft` is satisfied by a clarifying question too (both are reasonable). */
+  orAsks?: boolean;
   /** Expected reply language. */
   lang?: ReplyLanguage;
   /** Regexes the reply text must match (case-insensitive). */
@@ -76,7 +78,9 @@ export const EVAL_CASES: EvalCase[] = [
   // reply must carry the app's figure or no figure at all, never its own sum.
   { id: 'material-roman', text: '50 bori cement 1250 wala Akram se liya', draft: 'material', lang: 'roman', mustNot: ['1,25,000', '125000', '\\b1,?25,?000', '\\bqueue\\b', '\\bcard\\b'] },
   { id: 'pay-worker-urdu', text: 'بلال کو دو ہزار دیے', draft: 'payWorker', lang: 'ur' },
-  { id: 'attendance-roman', text: 'aaj sab mazdoor aaye', draft: 'attendance', lang: 'roman' },
+  // With two projects, proposing the draft (the card picks the project) and
+  // asking which project are both reasonable; only silence would be wrong.
+  { id: 'attendance-roman', text: 'aaj sab mazdoor aaye', draft: 'attendance', orAsks: true, lang: 'roman' },
   { id: 'transfer-en', text: 'moved 50 thousand from bank to cash', draft: 'transfer', lang: 'en' },
   // A write that needs something the user has none of: offer to create it,
   // never propose the write and never ask them to pick from an empty list.
@@ -159,8 +163,11 @@ export function judge(c: EvalCase, r: AgentResult): { passed: boolean; detail: s
   const draftKinds = r.drafts.map((d) => d.draft.kind as string);
   if (c.tools && !c.tools.some((t) => ran.includes(t)) && !(c.tools.includes('remember_fact') && r.learned.length > 0)) problems.push(`tools ran: ${ran.join(', ') || 'none'}; expected one of ${c.tools.join(' / ')}`);
   if (c.noTool && (ran.length > 0 || draftKinds.length > 0)) problems.push(`unexpected tool: ${[...ran, ...draftKinds].join(', ')}`);
-  if (c.draft && !draftKinds.includes(c.draft)) problems.push(`drafts: ${draftKinds.join(', ') || 'none'}; expected ${c.draft}`);
-  if (c.asks && !ASKS.test(r.text) && r.options.length === 0) problems.push('expected a question');
+  const asked = ASKS.test(r.text) || r.options.length > 0;
+  if (c.draft && !draftKinds.includes(c.draft) && !(c.orAsks && asked)) {
+    problems.push(`drafts: ${draftKinds.join(', ') || 'none'}; expected ${c.draft}${c.orAsks ? ' or a question' : ''}`);
+  }
+  if (c.asks && !asked) problems.push('expected a question');
   if (!r.text && r.drafts.length === 0 && !r.open) problems.push('empty reply');
   if (c.lang && r.text) {
     const got = replyLanguage(r.text);

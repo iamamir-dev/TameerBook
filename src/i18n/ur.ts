@@ -706,7 +706,7 @@ export const ur: TranslationKeys = {
   aiNoLoanFound: 'اس شخص کا کوئی کھلا قرض نہیں ملا۔',
   aiNoWorkerFound: 'یہ مزدور ابھی محفوظ نہیں ہے۔',
   aiNothingOwed: 'اس مزدور کا کوئی بقایا نہیں۔',
-  aiNoProjectsYet: 'پہلے پروجیکٹ بنائیں، پھر یہ محفوظ کریں',
+  aiNoProjectsYet: 'ابھی کوئی پروجیکٹ نہیں۔ مجھے کہیں، میں بنا دیتا ہوں۔',
   aiReportOpening: 'رپورٹ کھول رہا ہے',
   aiChartOther: 'دیگر',
   monthsLabel: 'مہینے',

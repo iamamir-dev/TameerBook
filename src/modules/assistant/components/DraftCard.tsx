@@ -332,19 +332,15 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
             </View>
           ) : null}
 
-          {/* Nothing to choose from: point at the one thing that unblocks this,
-              instead of a greyed-out Accept the user cannot explain. */}
+          {/* Nothing to choose from. No button here on purpose: the assistant
+              offers to make the project in the conversation and creates it. */}
           {noProjects ? (
-            <Pressable
-              onPress={() => navigation.navigate('NewProject')}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.prereq, pressed && styles.pressed]}
-            >
-              <AppIcon name="add" size={18} color="accent" />
-              <AppText size="sm" weight="bold" color="accent" style={styles.warnText}>
+            <View style={styles.warn}>
+              <AppIcon name="alert" size={16} color="gold" />
+              <AppText size="sm" weight="semibold" color="gold" style={styles.warnText}>
                 {t('aiNoProjectsYet')}
               </AppText>
-            </Pressable>
+            </View>
           ) : null}
 
           <View style={styles.actions}>
