@@ -26,7 +26,7 @@ import { formatRupees } from '@/utils/money';
 
 import { makeStyles } from '../styled/DraftCard.styles';
 import { applyDraft, draftNeeds, type Applied, type DraftChoices } from '../utils/applyDraft';
-import { draftAmount, draftFields, draftTitle } from '../utils/draftSummary';
+import { draftAmount, draftDirection, draftFields, draftTitle } from '../utils/draftSummary';
 import { navigateToTarget } from '../utils/navigateTarget';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -94,6 +94,9 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
   const needs = useMemo(() => draftNeeds(resolved), [resolved]);
   const fields = useMemo(() => draftFields(resolved, t), [resolved, t]);
   const amount = draftAmount(resolved);
+  // Green tint on an expense read as "money in"; the surface is neutral now and
+  // the direction lives on the amount, with a sign so colour is never alone.
+  const direction = draftDirection(resolved);
   const isCreate = CREATE_KINDS.has(d.kind);
   const blocked = resolved.issues.length > 0;
 
@@ -227,9 +230,9 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
   const unresolvedShown = resolved.unresolved.filter((n) => n !== freeParty);
 
   return (
-    <View style={[styles.card, done && styles.cardDone]}>
+    <View style={[styles.card, !done && styles.cardPending, done && styles.cardDone]}>
       <View style={styles.head}>
-        <View style={[styles.iconChip, applied && styles.iconChipDone, rejected && styles.iconChipMuted]}>
+        <View style={[styles.iconChip, !done && direction === 'out' && styles.iconChipOut, !done && direction === 'in' && styles.iconChipIn, applied && styles.iconChipDone, rejected && styles.iconChipMuted]}>
           <AppIcon name={applied ? 'checkCircle' : rejected ? 'close' : ICON[d.kind] ?? 'assistant'} size={16} color={applied ? 'success' : rejected ? 'textSecondary' : 'accent'} />
         </View>
         <View style={styles.headText}>
@@ -251,7 +254,16 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
           )}
         </View>
         {amount != null ? (
-          <AppText size="lg" weight="bold" tabular numberOfLines={1} adjustsFontSizeToFit style={styles.headAmount}>
+          <AppText
+            size="lg"
+            weight="bold"
+            tabular
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            color={done ? 'textSecondary' : direction === 'in' ? 'success' : direction === 'out' ? 'danger' : 'textPrimary'}
+            style={styles.headAmount}
+          >
+            {direction === 'in' ? '+ ' : direction === 'out' ? '- ' : ''}
             {formatRupees(amount)}
           </AppText>
         ) : null}

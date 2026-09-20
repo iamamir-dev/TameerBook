@@ -58,6 +58,7 @@ export {
   type ReplyLanguageSetting,
 } from './language';
 export { addFact, emptyMemory, forgetFacts, memoryBlock, noteAccepted, noteLanguage, parseMemory, type UserMemory } from './memory';
+export { draftGaps, gapPrompt, type Gap } from './gaps';
 export { EVAL_CASES, judge, runEvals, type EvalCase, type EvalDeps, type EvalResult } from './evals';
 export { assistantGist, compactHistory, parseExchanges, recordOutcome, type Exchange } from './history';
 export { CORE_KNOWLEDGE, KNOWLEDGE_TOPICS, MODULE_KNOWLEDGE, explainTopic, type KnowledgeTopic } from './knowledge';

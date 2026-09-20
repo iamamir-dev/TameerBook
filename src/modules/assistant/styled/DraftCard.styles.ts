@@ -9,13 +9,23 @@ export const makeStyles = (theme: Theme) =>
      * with a header (icon · title · amount), hairline-ruled detail rows on the
      * same surface (one colour, nothing inset), and a compact Reject / Accept footer.
      */
+    /**
+     * Neutral surface on purpose: DESIGN_GUIDELINES reserve green for money IN,
+     * and every draft used to be tinted green, including expenses. Direction is
+     * carried by the amount (colour + sign), not by the whole card.
+     */
     card: {
       alignSelf: 'stretch',
-      backgroundColor: theme.colors.accentSoft,
-      borderRadius: theme.radius.lg,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.card,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
       overflow: 'hidden',
     },
-    cardDone: { backgroundColor: theme.colors.primarySoft },
+    /** Awaiting a decision: a thin accent edge says "your turn" without tinting
+        the whole card a colour that would read as a direction. */
+    cardPending: { borderLeftWidth: 3, borderLeftColor: theme.colors.accent },
+    cardDone: { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primarySoft },
     head: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -28,10 +38,13 @@ export const makeStyles = (theme: Theme) =>
       width: theme.icon.box,
       height: theme.icon.box,
       borderRadius: theme.radius.md,
-      backgroundColor: 'transparent',
+      backgroundColor: theme.colors.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
+    /** The one place a direction colour belongs at a glance. */
+    iconChipOut: { backgroundColor: theme.colors.dangerSoft },
+    iconChipIn: { backgroundColor: theme.colors.successSoft },
     iconChipDone: { backgroundColor: 'transparent' },
     iconChipMuted: { backgroundColor: theme.colors.track },
     headText: { flex: 1, minWidth: 0, gap: 1 },

@@ -68,6 +68,34 @@ export function draftTitle(r: ResolvedDraft, t: T): string {
   }
 }
 
+/**
+ * Which way the money moves, for colour and sign. DESIGN_GUIDELINES: money IN
+ * is success green, money OUT is danger red, and colour is never the only
+ * signal, so the amount also carries a sign.
+ */
+export function draftDirection(r: ResolvedDraft): 'in' | 'out' | null {
+  switch (r.draft.kind) {
+    case 'expense':
+    case 'material':
+    case 'payWorker':
+    case 'udhaarGive':
+    case 'payPurchaseOrder':
+    case 'plotPayment':
+    case 'plotExpense':
+    case 'saleCost':
+      return 'out';
+    case 'income':
+    case 'udhaarReturn':
+    case 'saleReceipt':
+    case 'investorPayment':
+      return 'in';
+    default:
+      // Transfers move money between the user's own accounts, and add_* /
+      // attendance move none: neither is a gain or a loss.
+      return null;
+  }
+}
+
 /** The headline figure, when the draft is about money. */
 export function draftAmount(r: ResolvedDraft): number | null {
   const d = r.draft;

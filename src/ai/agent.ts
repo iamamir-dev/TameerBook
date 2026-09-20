@@ -1,4 +1,5 @@
 import { resolveDraft, type Draft, type ResolvedDraft } from './drafts';
+import { draftGaps, gapPrompt } from './gaps';
 import type { Intent, OpenScreen } from './intents';
 import type { ReplyLanguage } from './language';
 import { languageName } from './language';
@@ -260,10 +261,20 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     for (const { tc, action } of actions) {
       let content: string;
       if (action.kind === 'write') {
+        const resolved = resolveDraft(action.draft, world);
+        // A card is a receipt, not a form. If anything essential is still
+        // unknown, nothing is shown: the model asks in the chat instead, and
+        // offers to create what the user does not have yet.
+        const gaps = draftGaps(resolved, world);
+        if (gaps.length > 0) {
+          sawResults = true;
+          content = JSON.stringify({ notReady: true, ask: gapPrompt(gaps) });
+          messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content });
+          continue;
+        }
         queued.push({ tc, draft: action.draft });
         // The next call only writes the confirmation sentence: let it vary.
         sawResults = true;
-        const resolved = resolveDraft(action.draft, world);
         const total = draftTotal(action.draft);
         content = JSON.stringify({
           prepared: true,
