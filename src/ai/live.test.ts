@@ -88,8 +88,12 @@ function fakeIntent(intent: { type: string } & Record<string, unknown>): Answer 
       return { title: 'Orders · 2', headline: 'Rs 1,20,000', sub: '0 delivered · 2 pending', rows: [row('1', 'PO-0016 · Rafiq Traders', 120000, 'Pending delivery')], speak: '2 orders, 2 pending' };
     case 'worker_balance':
       return { title: 'Workers', headline: 'Rs 34,000', sub: '2 workers', rows: [row('w1', 'Bilal', 20000), row('w2', 'Ustad Liaqat Malik', 14000)], speak: 'Still to pay Rs 34,000 to 2 workers' };
-    case 'worker_attendance':
-      return { title: 'Bilal · September', headline: '18 days', sub: '16 full · 2 half', rows: [], calendar: { month: '2026-09', days: {}, full: 16, half: 2, absent: 3 }, speak: 'Bilal: 16 full, 2 half, 3 absent' };
+    case 'worker_attendance': {
+      // Answer about the worker actually asked for; returning Bilal's calendar
+      // for every name made the model report the wrong person.
+      const who = worker ? (matchName(worker, world.workers)?.item.name ?? worker) : 'Bilal';
+      return { title: `${who} · September`, headline: '18 days', sub: '16 full · 2 half', rows: [], calendar: { month: '2026-09', days: {}, full: 16, half: 2, absent: 3 }, speak: `${who}: 16 full, 2 half, 3 absent` };
+    }
     case 'list_entities': {
       const kind = String(intent.entity ?? 'projects');
       const names = kind === 'plots' ? world.plots.filter((p) => !p.taken).map((p) => p.name) : kind === 'workers' ? world.workers.map((w) => w.name) : world.projects.map((p) => p.name);

@@ -38,13 +38,20 @@ export interface EvalCase {
 }
 
 /** Words the builder never wants to read, in any language. */
+/**
+ * Words that genuinely sound like accounting software to a builder. "Entry"
+ * and "record" are NOT here on purpose: Pakistani Urdish absorbs English nouns
+ * like bill, total, account and entry, and a builder does say "entry daal do",
+ * so banning them made the assistant read less naturally, not more. The prompt
+ * still prefers the Urdu word; only the alien terms fail a case.
+ */
 const BANNED = [
-  '\\brecord(ed|ing)?\\b',
   '\\btransaction\\b',
-  '\\bentry\\b',
-  '\\bentries\\b',
   '\\bdebit\\b',
   '\\bcredit\\b',
+  '\\breceivable\\b',
+  '\\bpayable\\b',
+  '\\boutstanding\\b',
   'Great question',
   '^Sure',
   '!',
@@ -82,7 +89,7 @@ export const EVAL_CASES: EvalCase[] = [
   { id: 'expense-roman', text: 'aaj generator ke diesel pe 3 hazar kharch hue', draft: 'expense', lang: 'roman', mustNot: ['record', 'entry'] },
   // 50 x 1250 = 62,500. On device the model wrote "Rs 1,25,000" here, so the
   // reply must carry the app's figure or no figure at all, never its own sum.
-  { id: 'material-roman', text: '50 bori cement 1250 wala Akram se liya', draft: 'material', lang: 'roman', mustNot: ['1,25,000', '125000', '\\b1,?25,?000', '\\bqueue\\b', '\\bcard\\b'] },
+  { id: 'material-roman', text: 'Gulberg Greens G-508 ke liye 50 bori cement 1250 wala Akram se liya', draft: 'material', lang: 'roman', mustNot: ['1,25,000', '125000', '\\b1,?25,?000', '\\bqueue\\b', '\\bcard\\b'] },
   { id: 'pay-worker-urdu', text: 'بلال کو دو ہزار دیے', draft: 'payWorker', lang: 'ur' },
   // With two projects, proposing the draft (the card picks the project) and
   // asking which project are both reasonable; only silence would be wrong.
