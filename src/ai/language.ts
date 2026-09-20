@@ -136,15 +136,42 @@ export function decideReplyLanguage(input: ReplyLanguageInput): ReplyLanguage {
   return input.appLanguage === 'ur' ? 'ur' : 'en';
 }
 
-/** The one line the model gets about language. */
+/**
+ * The language rules for one reply. These ride only with the language they
+ * apply to, so an English turn never pays for the Urdu spelling list.
+ *
+ * Register: Microsoft's Urdu style guide marks the -iye / -ijiye endings
+ * (bataiye, kijiye) as the over-formal "classic" form and -ein (batayein,
+ * karein) as the modern respectful one; batao / karo / do are tum forms, which
+ * address a business owner like an employee. So: aap + -ein.
+ *
+ * Roman Urdu has no standard spelling at all, so one convention is pinned
+ * here: users read every variant fine, but an assistant that writes "nahi" and
+ * "nahin" in one breath looks careless.
+ */
 export function languageDirective(lang: ReplyLanguage): string {
   switch (lang) {
     case 'ur':
-      return 'Reply in simple spoken Urdu, Urdu script (اردو). Keep names, PO numbers and amounts as they are ("Rs 5,000"). Never Hindi or Devanagari, never Roman Urdu.';
+      return [
+        'Reply in simple spoken Urdu, Urdu script (اردو).',
+        'Address the user as آپ and use the modern -ein verb endings (بتائیں، کریں، دیں); never تم/تو forms (بتاؤ، کرو) and never the stiff -ijiye forms (بتائیے، فرمائیے).',
+        'Offer to do something yourself with کیا میں ... دوں؟',
+        'Urdu puts the verb last and the question word (کون سا، کتنا، کس) immediately BEFORE the verb: "یہ خرچہ کس پروجیکٹ کا ہے؟", never English word order.',
+        'Everyday English words Pakistanis already use stay English in the Urdu sentence: project, site, plot, cash, rate, bill, total, supplier, account, balance.',
+        'Amounts and names stay as they are ("Rs 5,000"). Never Hindi or Devanagari, never Roman Urdu.',
+      ].join(' ');
     case 'roman':
-      return 'Reply in Roman Urdu (Urdu written in Latin letters, spoken style, e.g. "Is mahine Rs 5,000 kharcha hua"). English words the user used are fine. Never Urdu script, never Devanagari.';
+      return [
+        'Reply in Roman Urdu: Urdu in Latin letters, the way it is spoken.',
+        'Address the user as aap and use -ein endings (batayein, karein, dein); never batao / karo / do, which sound like talking to an employee.',
+        'Offer to do something yourself with "Kya main ... kar doon?".',
+        'Keep the question word just before the verb: "Yeh kharcha kis project ka hai?".',
+        'Spell these one way, always: aap, hai, hain, tha, thi, nahi, kya, kaun sa, kitna, kis, kahan, karein, batayein, dein, doon, main, abhi, raqam, kharcha, theek hai.',
+        'No final -n on nasals (nahi, mein, hoon), "ai" not "ay" (hai, kaise), "kya" for what and "kiya" only for did, and English words keep their English spelling (project, site, cash, rate, supplier).',
+        'Never Urdu script, never Devanagari.',
+      ].join(' ');
     default:
-      return 'Reply in simple, plain English. Keep the user\'s own words for things (dihari, hazri, udhaar) when they used them.';
+      return 'Reply in simple, plain English, the way a good bookkeeper speaks. Keep the user\'s own words for things (dihari, hazri, udhaar, bori) when they used them.';
   }
 }
 

@@ -61,8 +61,9 @@ export function AnswerCard({ answer, onPick, expandAll, compact }: AnswerCardPro
           </AppText>
         ) : null}
       </View>
-      <AppText size="sm" weight="bold" tabular color={r.direction === 'in' ? 'success' : 'danger'} style={styles.value}>
-        {`${r.direction === 'in' ? '+' : '−'} ${formatRupees(r.amount)}`}
+      {/* A balance is neither a gain nor a loss: no sign, no direction colour. */}
+      <AppText size="sm" weight="bold" tabular color={r.direction === 'flat' ? 'textPrimary' : r.direction === 'in' ? 'success' : 'danger'} style={styles.value}>
+        {`${r.direction === 'flat' ? '' : r.direction === 'in' ? '+ ' : '− '}${formatRupees(r.amount)}`}
       </AppText>
     </View>
   );

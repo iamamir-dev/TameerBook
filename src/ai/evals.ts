@@ -51,6 +51,12 @@ const BANNED = [
   '[\\u0900-\\u097F]',
   'SUGGEST:',
   'OPTIONS:',
+  // Never describe the app's own limits; ask about the user's world instead.
+  "\\b(can'?t|cannot|unable|not possible)\\b",
+  '\\bnahi kar sakta\\b',
+  'نہیں کر سکتا',
+  // tum-register: too familiar for a service addressing a business owner.
+  '\\b(batao|karo|dikhao|bhejo|likho)\\b',
 ];
 
 /** Extra bans for a turn that proposes a write: raw field names must never surface. */
@@ -90,8 +96,20 @@ export const EVAL_CASES: EvalCase[] = [
     asks: true,
     lang: 'roman',
     world: { projects: [], plots: [] },
-    mustNot: ['\\bchoose\\b', 'chun', 'select'],
+    // It must offer to make one, not report that none exists.
+    must: ['\\b(bana doon|bana dein|banata hoon|bana dun)\\b'],
+    mustNot: ['\\bchoose\\b', 'chun', 'select', '\\bkoi project nahi\\b'],
   },
+  // Several projects: ask which one, and offer them as taps.
+  {
+    id: 'which-project',
+    text: '50 bori cement 1250 wala Akram se liya',
+    asks: true,
+    lang: 'roman',
+    mustNot: ['\\bchoose\\b'],
+  },
+  // One question, not a checklist of everything that is missing.
+  { id: 'one-question', text: 'Bilal ko paise diye', asks: true, lang: 'roman', mustNot: ['\\n\\s*2[.)]', '\\n\\s*-\\s.*\\n\\s*-\\s'] },
   // Clarification only when essential
   { id: 'add-worker-noname', text: 'worker add karo', asks: true, lang: 'roman' },
   { id: 'project-new', text: 'naya project banao', asks: true, lang: 'roman' },
@@ -153,8 +171,12 @@ function replyLanguage(text: string): ReplyLanguage | null {
   return guess.language === 'ur' ? null : guess.language;
 }
 
-/** A question mark, a choice list, or an imperative ask ("naam batao", "tell me"). */
-const ASKS = /[?؟]|\b(batao|bataiye|bata dein|batayen|likho|chahiye|kaunsa|konsa|kis |kitn|tell me|give me|let me know|which|what|need)\b|بتائ|بتا|کون|کتن/i;
+/**
+ * A real question: a question mark, or tappable choices. An imperative like
+ * "Naam batayein." is not enough — several replies "asked" without a "?" and
+ * the user simply had nothing to answer.
+ */
+const ASKS = /[?؟]/;
 
 /** Judge one reply against its case. */
 export function judge(c: EvalCase, r: AgentResult): { passed: boolean; detail: string } {

@@ -38,7 +38,7 @@ describe('draftGaps', () => {
   it('offers to create the missing thing when the user owns none', () => {
     const [gap] = gaps({ kind: 'material', item: 'Cement', qty: 50, rate: 1250 }, world());
     expect(gap.mustCreate).toBe(true);
-    expect(gapPrompt([gap])).toContain('OFFER TO CREATE IT YOURSELF');
+    expect(gapPrompt([gap])).toContain('offer to make it');
   });
 
   it('asks which one, with the names, when there are several', () => {
@@ -66,7 +66,39 @@ describe('draftGaps', () => {
     expect(gaps({ kind: 'expense', amount: 500, note: 'tea' }, w).some((g) => g.what.includes('account'))).toBe(true);
   });
 
-  it('never tells the model to send the user to a screen', () => {
-    expect(gapPrompt([{ what: 'a project', mustCreate: true }])).toContain('do not tell the user to open a screen');
+  it('covers every module, not just projects', () => {
+    const empty = world({ projects: [{ id: 'p', name: 'Only' }] });
+    // Labour: nobody to mark a day against.
+    expect(gaps({ kind: 'attendance', allPresent: true, marks: [], project: 'Only' }, empty)[0].mustCreate).toBe(true);
+    // Investors: the money came from a named partner.
+    expect(gaps({ kind: 'investorPayment', investor: 'Umar', amount: 5000 }, empty)[0].mustCreate).toBe(true);
+    // Orders: nothing outstanding to pay against.
+    expect(gaps({ kind: 'payPurchaseOrder', po: 'Rafiq', amount: 5000 }, empty).some((g) => g.what.includes('purchase order'))).toBe(true);
+    // Transfers need two ends.
+    expect(gaps({ kind: 'transfer', from: 'HBL', to: 'Cash', amount: 5000 }, empty)[0].what).toContain('second account');
+    // A sale is agreed on a project.
+    const many = world({ projects: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] });
+    expect(gaps({ kind: 'setSale', buyer: 'Ahmed', price: 100 }, many).some((g) => g.what.includes('project'))).toBe(true);
+  });
+
+  it('asks which account when a transfer names one it cannot place', () => {
+    const w = world({ accounts: [{ id: 'a1', name: 'Cash in Hand' }, { id: 'a2', name: 'Meezan bank' }], projects: [{ id: 'p', name: 'Only' }] });
+    const found = gaps({ kind: 'transfer', from: 'Meezan bank', to: 'Faysal', amount: 5000 }, w);
+    expect(found).toHaveLength(1);
+    expect(found[0].what).toContain('Faysal');
+  });
+
+  it('never tells the model to send the user to a screen or name the app\'s limits', () => {
+    const p = gapPrompt([{ what: 'a project', mustCreate: true }]);
+    expect(p).toContain('do not tell the user to open a screen');
+    expect(p).toContain('do not tell them what is missing from the app');
+  });
+  it('asks about one thing only, even when several are missing', () => {
+    const p = gapPrompt([
+      { what: 'the amount in rupees', mustCreate: false },
+      { what: 'which project this belongs to', mustCreate: false, choices: ['A', 'B'] },
+    ]);
+    expect(p).toContain('the amount in rupees');
+    expect(p).not.toContain('which project');
   });
 });

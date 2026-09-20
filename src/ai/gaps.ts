@@ -40,7 +40,7 @@ const NEEDS_AMOUNT: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>([
 ]);
 
 /** Writes that cannot be filed anywhere but a project. */
-const NEEDS_PROJECT: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>(['material', 'attendance', 'createPurchaseOrder', 'saleReceipt', 'saleCost']);
+const NEEDS_PROJECT: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>(['material', 'attendance', 'createPurchaseOrder', 'saleReceipt', 'saleCost', 'setSale']);
 
 /** add_* tools: without a name there is nothing to create. */
 const NEEDS_NAME: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>(['createWorker', 'createParty', 'createInvestor', 'createAccount', 'createPlot', 'createProject']);
@@ -105,6 +105,35 @@ export function draftGaps(resolved: ResolvedDraft, world: World): Gap[] {
     );
   }
 
+  // Labour: a day's hazri needs someone to mark it against.
+  if (d.kind === 'attendance' && world.workers.length === 0) {
+    gaps.push({ what: 'a worker to mark the day for, and there are none yet', mustCreate: true });
+  }
+
+  // Investors: the payment is from a named partner, so that partner must exist.
+  if (d.kind === 'investorPayment' && !resolved.investor) {
+    gaps.push(
+      world.investors.length === 0
+        ? { what: 'an investor this money came from, and there are none yet', mustCreate: true }
+        : { what: `which investor "${d.investor ?? ''}" is`, mustCreate: false, choices: names(world.investors) }
+    );
+  }
+
+  // Orders: money cannot be paid against an order the user does not have.
+  if (d.kind === 'payPurchaseOrder' && (world.unpaidOrders ?? []).length === 0) {
+    gaps.push({ what: 'an open purchase order to pay against, and there are none with money outstanding', mustCreate: true });
+  }
+
+  // Transfers move money between the user's OWN accounts: both ends must exist.
+  if (d.kind === 'transfer') {
+    if (world.accounts.length < 2) {
+      gaps.push({ what: 'a second account to move the money into, and there is only one', mustCreate: true });
+    } else {
+      if (!resolved.account) gaps.push({ what: `which account "${d.from}" is`, mustCreate: false, choices: names(world.accounts) });
+      if (!resolved.accountTo) gaps.push({ what: `which account "${d.to}" is`, mustCreate: false, choices: names(world.accounts) });
+    }
+  }
+
   if (world.accounts.length === 0 && (NEEDS_AMOUNT.has(d.kind) || d.kind === 'material')) {
     gaps.push({ what: 'an account for the money to move through, and there are none yet', mustCreate: true });
   }
@@ -114,16 +143,18 @@ export function draftGaps(resolved: ResolvedDraft, world: World): Gap[] {
 
 /** The instruction handed back to the model when a write is not ready. */
 export function gapPrompt(gaps: readonly Gap[]): string {
-  const missing = gaps.map((g) => g.what).join('; ');
-  const create = gaps.filter((g) => g.mustCreate);
-  const choices = gaps.flatMap((g) => g.choices ?? []);
+  // Only the first gap is asked about: one question per turn beats a checklist,
+  // and the rest come back on the next pass once this one is answered.
+  const first = gaps[0];
+  const choices = first.choices ?? [];
   return [
-    `Not saved: this needs ${missing}.`,
-    'Do NOT call this tool again yet and do not tell the user to open a screen.',
-    create.length > 0
-      ? 'The user owns none of these, so OFFER TO CREATE IT YOURSELF in one short sentence and wait for a yes; when they agree, call the matching add_ tool.'
-      : 'Ask the user for it in ONE short sentence.',
-    choices.length > 0 && choices.length <= MAX_CHOICES ? `Offer these on an OPTIONS line, copied exactly: ${choices.join(' | ')}` : '',
+    `Not saved yet: this still needs ${first.what}.`,
+    'Do NOT call this tool again yet, do not tell the user to open a screen, and do not tell them what is missing from the app.',
+    'Reply with ONE line repeating what you already understood (with the figure), then ONE short question for this.',
+    first.mustCreate
+      ? 'They have none of these, so do not point that out: simply offer to make it ("Kya main bana doon?") and, once they agree, call the matching add_ tool and then redo this write.'
+      : 'Ask for it in one short question.',
+    choices.length > 0 ? `Put these on an OPTIONS line, copied exactly: ${choices.join(' | ')}` : '',
   ]
     .filter(Boolean)
     .join(' ');

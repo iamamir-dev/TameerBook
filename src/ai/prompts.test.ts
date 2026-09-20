@@ -26,30 +26,26 @@ const world: World = {
 };
 
 describe('prompt budget', () => {
-  // Groq's free tier meters ~8,000 tokens per MINUTE and a turn makes 2-4
-  // calls, so the fixed part of every call (system prompt + tool schemas) is
-  // the number that decides whether the assistant answers or gets rate
-  // limited. ~3.6 chars per token for this mix of English, names and JSON.
+  // The app targets OpenAI (gpt-5-mini), so there is no 8K-per-minute ceiling
+  // to dodge any more. What the fixed part of every call costs now is money and
+  // latency: it is re-sent on each of the 2-4 calls a turn makes, and only the
+  // static prefix is cached. These caps are generous enough for a rule that
+  // earns its place and tight enough that nobody dumps prose in here.
+  // ~3.6 chars per token for this mix of English, names and JSON.
   const TOKENS = (chars: number) => Math.round(chars / 3.6);
 
-  it('keeps system prompt + tool schemas inside one minute of free quota', () => {
+  it('keeps the fixed part of a call affordable', () => {
     const sys = agentSystemPrompt(world, { language: 'roman', memory: 'ABOUT THIS USER\n- Usually pays from: Cash in Hand', summary: '' });
-    const fixedPerCall = sys.length + JSON.stringify(TOOLS).length;
-    expect(TOKENS(fixedPerCall)).toBeLessThan(8_000);
+    expect(TOKENS(sys.length + JSON.stringify(TOOLS).length)).toBeLessThan(9_000);
   });
-  // Sub-caps exist to catch creep, not to hit a round number: raise one only
-  // when a rule earned its place by fixing a measured eval failure, and only
-  // while the per-call total above still fits.
   it('keeps each half from creeping', () => {
     const sys = agentSystemPrompt(world, { language: 'roman' });
-    // 3,150: every rise since 3,000 paid for a rule that fixed a measured eval
-    // failure (nothing to pick yet, no invented totals, markers on their own
-    // line). The per-call total above is the constraint that actually binds.
-    expect(TOKENS(sys.length)).toBeLessThan(3_150);
+    expect(TOKENS(sys.length)).toBeLessThan(3_800);
     expect(TOKENS(JSON.stringify(TOOLS).length)).toBeLessThan(4_800);
   });
-  it('keeps the confirmation prompt tiny', () => {
-    expect(TOKENS(confirmationSystemPrompt('roman').length)).toBeLessThan(350);
+  it('keeps the confirmation prompt small', () => {
+    // It carries the whole language directive, which is the point of it.
+    expect(TOKENS(confirmationSystemPrompt('roman').length)).toBeLessThan(600);
   });
 });
 

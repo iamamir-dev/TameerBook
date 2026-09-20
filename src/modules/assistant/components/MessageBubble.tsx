@@ -3,7 +3,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import React from 'react';
 import { Image, Pressable, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import type { AiErrorCode, OpenScreen } from '@/ai';
 import { AppIcon, AppText } from '@/components/ui';
@@ -12,6 +12,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import { swallow } from '@/utils/log';
 
+import { useEnter } from '../utils/motion';
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
 import { RichText } from './RichText';
@@ -25,7 +26,7 @@ export function UserBubble({ text, imageUris, onCopied }: { text: string; imageU
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   return (
-    <Animated.View entering={FadeInUp.duration(220)} style={styles.userWrap}>
+    <Animated.View entering={useEnter()} style={styles.userWrap}>
       {imageUris?.length ? (
         <View style={styles.userImages}>
           {imageUris.map((u) => (
@@ -63,8 +64,9 @@ export function UserBubble({ text, imageUris, onCopied }: { text: string; imageU
 export function AssistantRow({ children }: { children: React.ReactNode }): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
+  // The reply rises like the question did, instead of dropping in from above.
   return (
-    <Animated.View entering={FadeInDown.duration(240)} style={styles.assistantRow}>
+    <Animated.View entering={useEnter()} style={styles.assistantRow}>
       <View style={styles.assistantBody}>{children}</View>
     </Animated.View>
   );

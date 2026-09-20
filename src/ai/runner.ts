@@ -48,7 +48,8 @@ export interface AnswerRow {
   date: string;
   subtitle?: string;
   amount: number;
-  direction: 'in' | 'out';
+  /** 'flat' = a standing figure (a balance, a cost) that is neither a gain nor a loss. */
+  direction: 'in' | 'out' | 'flat';
   typeLabel?: string;
   /** Separate facts for the model's tables (wage, days, supplier, status…), one per column. */
   fields?: Record<string, string | number>;
@@ -288,7 +289,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
           title: t('aiSoldLabel'),
           rows: agreed > 0
             ? [
-                { id: 'agreed', title: t('agreedPrice'), date: '', subtitle: sale.sale?.buyer_name ?? '', amount: agreed, direction: 'in' as const },
+                { id: 'agreed', title: t('agreedPrice'), date: '', subtitle: sale.sale?.buyer_name ?? '', amount: agreed, direction: 'flat' as const },
                 { id: 'recv', title: t('aiReceivedLabel'), date: '', subtitle: `${sale.receipts.filter((r) => !r.is_void).length} ${t('transactions').toLowerCase()}`, amount: sale.receiptsTotal, direction: 'in' as const },
                 { id: 'out', title: t('remaining'), date: '', subtitle: t('insightBuyerOwes'), amount: sale.outstanding, direction: 'out' as const },
               ]
@@ -296,7 +297,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         },
         {
           title: `${t('investors')} · ${money(capital.totalCapital)}`,
-          rows: capital.shares.map((sh) => ({ id: sh.projectInvestorId, title: sh.name, date: '', subtitle: `${Math.round(sh.ownershipPct)}%`, amount: sh.capital, direction: 'in' as const, fields: { sharePct: Math.round(sh.ownershipPct), invested: sh.capital } })),
+          rows: capital.shares.map((sh) => ({ id: sh.projectInvestorId, title: sh.name, date: '', subtitle: `${Math.round(sh.ownershipPct)}%`, amount: sh.capital, direction: 'flat' as const, fields: { sharePct: Math.round(sh.ownershipPct), invested: sh.capital } })),
         },
         {
           title: `${t('laborTitle')} · ${workers.length} ${t('aiWorkersLabel')}`,
@@ -447,7 +448,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         title: one ? one.name : t('accountsTitle'),
         headline: money(total),
         sub: one ? undefined : `${list.length} ${t('accountsTitle').toLowerCase()} · ${t('totalBalance')}`,
-        rows: list.map((a) => ({ id: a.id, title: a.name, date: '', subtitle: '', amount: a.balance, direction: 'in' as const })),
+        rows: list.map((a) => ({ id: a.id, title: a.name, date: '', subtitle: '', amount: a.balance, direction: 'flat' as const })),
         speak: `${one ? one.name : t('totalBalance')}: ${money(total)}`,
         target: { screen: 'Accounts' },
       };
@@ -511,7 +512,7 @@ export async function runIntent(intent: Intent, w: World): Promise<Answer> {
         title: t('investors'),
         headline: money(total),
         sub: `${all.length}`,
-        rows: all.map((x) => ({ id: x.id, title: x.name, date: '', subtitle: `${t('netSoFar')} ${money(x.profit)}`, amount: x.total, direction: 'in' as const })),
+        rows: all.map((x) => ({ id: x.id, title: x.name, date: '', subtitle: `${t('netSoFar')} ${money(x.profit)}`, amount: x.total, direction: 'flat' as const })),
         speak: `${all.length} ${t('investors')}: ${money(total)}`,
         target: { screen: 'Investors' },
       };

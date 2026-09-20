@@ -31,6 +31,7 @@ import { AI_ERROR_KEY } from '../utils/aiErrors';
 import { navigateToTarget } from '../utils/navigateTarget';
 import { openScreen } from '../utils/openScreen';
 import { turnToText } from '../utils/turnText';
+import { TurnPiece } from '../components/TurnPiece';
 import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
 
@@ -250,6 +251,7 @@ export function AssistantScreen(): React.JSX.Element {
                 <View style={styles.turnStack}>
                   {turn.text ? <AssistantBubble text={turn.text} /> : turn.drafts.length > 0 && !turn.settled ? <AssistantBubble text={t('aiConfirmHint')} /> : null}
                   {turn.cards.map((card, i) => (
+                    <TurnPiece key={`${turn.id}-cw${i}`} step={1 + i}>
                     <AnswerCard
                       key={`${turn.id}-c${i}`}
                       answer={card}
@@ -257,9 +259,12 @@ export function AssistantScreen(): React.JSX.Element {
                       compact={writtenReport && !!card.sections?.length}
                       onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined}
                     />
+                    </TurnPiece>
                   ))}
                   {turn.options.length > 0 ? (
-                    <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
+                    <TurnPiece step={1 + turn.cards.length}>
+                      <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
+                    </TurnPiece>
                   ) : null}
                   {/* Several actions from one message (a bill: order → delivery → payment) run one step at a time: the next card
                       appears only after the previous is accepted or rejected, because later steps depend on the earlier ones. */}
@@ -269,6 +274,7 @@ export function AssistantScreen(): React.JSX.Element {
                     // The order created / touched by an earlier accepted step, so delivery and payment hit the same one.
                     const linkedPo = turn.drafts.slice(0, di).map((_, k) => turn.settled?.[k]?.poId).filter(Boolean).pop() ?? null;
                     return (
+                      <TurnPiece key={`${turn.id}-dw${di}`} step={1 + turn.cards.length + di}>
                       <DraftCard
                         key={`${turn.id}-d${di}`}
                         resolved={d}
@@ -278,6 +284,7 @@ export function AssistantScreen(): React.JSX.Element {
                         onSettled={(status, message, poId, used) => settle(turn.id, di, status, message, poId, used)}
                         onDone={showToast}
                       />
+                      </TurnPiece>
                     );
                   })}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
@@ -289,6 +296,7 @@ export function AssistantScreen(): React.JSX.Element {
                     disabled={busy}
                   />
                   {turn.suggestions.length > 0 && turn.options.length === 0 && turn.id === lastAssistantId ? (
+                    <TurnPiece step={2 + turn.cards.length + turn.drafts.length}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
                       {turn.suggestions.map((sug) => (
                         <Pressable
@@ -305,6 +313,7 @@ export function AssistantScreen(): React.JSX.Element {
                         </Pressable>
                       ))}
                     </ScrollView>
+                    </TurnPiece>
                   ) : null}
                 </View>
               </AssistantRow>

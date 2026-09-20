@@ -153,7 +153,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   aiEnabled: false,
   aiSpeak: true,
   aiReplyLanguage: 'auto',
-  aiProvider: 'groq',
+  // OpenAI is the target provider for this app (gpt-5-mini): the others stay
+  // selectable, but the defaults and the prompt budget assume this one.
+  aiProvider: 'openai',
   aiKeys: {},
   aiModel: {},
   aiProxyUrl: null,
