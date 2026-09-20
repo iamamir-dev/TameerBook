@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { resolveDraft, type Draft } from './drafts';
-import { draftGaps, gapPrompt } from './gaps';
+import { draftGaps, gapPrompt, groundNames } from './gaps';
 import type { World } from './prompts';
 
 const base: World = {
@@ -18,6 +18,31 @@ const base: World = {
 
 const world = (over: Partial<World> = {}): World => ({ ...base, ...over });
 const gaps = (draft: Draft, w: World) => draftGaps(resolveDraft(draft, w), w);
+
+describe('groundNames', () => {
+  it('keeps a name the user actually said, in any spelling they used', () => {
+    const d = { kind: 'material', item: 'Cement', qty: 50, rate: 1250, project: 'Gulberg Greens G-508' } as const;
+    expect(groundNames(d, 'Gulberg ke liye 50 bori cement liya').project).toBe('Gulberg Greens G-508');
+  });
+  it('drops a project the user never mentioned, so it becomes a question', () => {
+    const d = { kind: 'material', item: 'Cement', qty: 50, rate: 1250, project: 'Gulberg Greens G-508' } as const;
+    expect(groundNames(d, '50 bori cement 1250 wala Akram se liya').project).toBeUndefined();
+  });
+  it('counts what the user said earlier in the chat, not just this message', () => {
+    const d = { kind: 'material', item: 'Cement', qty: 50, project: 'Wapda Town H-101' } as const;
+    expect(groundNames(d, 'Wapda Town wala kaam. aur 50 bori cement').project).toBe('Wapda Town H-101');
+  });
+  it('does not strip a name the user said in the other script', () => {
+    const d = { kind: 'payWorker', worker: 'Bilal', amount: 2000 } as const;
+    expect(groundNames(d, 'بلال کو دو ہزار دیے').worker).toBe('Bilal');
+  });
+  it('leaves the account and a brand-new supplier alone', () => {
+    const d = { kind: 'expense', amount: 3000, account: 'Cash in Hand', party: 'Naya Traders' } as const;
+    const out = groundNames(d, 'diesel pe 3 hazar kharch');
+    expect(out.account).toBe('Cash in Hand');
+    expect(out.party).toBe('Naya Traders');
+  });
+});
 
 describe('draftGaps', () => {
   it('is empty when everything essential is known', () => {

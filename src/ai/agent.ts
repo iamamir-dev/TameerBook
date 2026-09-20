@@ -1,5 +1,5 @@
 import { resolveDraft, type Draft, type ResolvedDraft } from './drafts';
-import { draftGaps, gapPrompt } from './gaps';
+import { draftGaps, gapPrompt, groundNames } from './gaps';
 import type { Intent, OpenScreen } from './intents';
 import type { ReplyLanguage } from './language';
 import { languageName } from './language';
@@ -175,6 +175,10 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     // drifting back to English when it only appeared in the system prompt.
     { role: 'user', content: `${text}\n\n(Answer in ${languageName(lang)}.)`, ...(deps.images?.length ? { images: deps.images } : {}) },
   ];
+  // Everything the user has actually said that the model can still see: this
+  // message plus the recent turns, so an answer to "which project?" still
+  // grounds the name it supplies next.
+  const heardFromUser = [...(deps.history ?? []).filter((m) => m.role === 'user').map((m) => m.content), text].join(' ');
   const cards: Answer[] = [];
   const toolLog: string[] = [];
   const learned: string[] = [];
@@ -261,7 +265,10 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     for (const { tc, action } of actions) {
       let content: string;
       if (action.kind === 'write') {
-        const resolved = resolveDraft(action.draft, world);
+        // A name the user never said is a guess, not an argument: drop it so
+        // the gap check below turns it into a question.
+        const draft = groundNames(action.draft, heardFromUser);
+        const resolved = resolveDraft(draft, world);
         // A card is a receipt, not a form. If anything essential is still
         // unknown, nothing is shown: the model asks in the chat instead, and
         // offers to create what the user does not have yet.
@@ -272,10 +279,10 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
           messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content });
           continue;
         }
-        queued.push({ tc, draft: action.draft });
+        queued.push({ tc, draft });
         // The next call only writes the confirmation sentence: let it vary.
         sawResults = true;
-        const total = draftTotal(action.draft);
+        const total = draftTotal(draft);
         content = JSON.stringify({
           prepared: true,
           step: queued.length,

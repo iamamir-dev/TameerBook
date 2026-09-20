@@ -1,4 +1,6 @@
 import type { Draft, ResolvedDraft } from './drafts';
+import { dominantScript } from './language';
+import { normalizeName } from './match';
 import type { World } from './prompts';
 
 /**
@@ -13,6 +15,43 @@ import type { World } from './prompts';
  * ("kis project ke liye?", "abhi koi project nahi hai, main bana doon?"), and
  * only a complete write is ever shown. Pure + unit-tested.
  */
+
+/**
+ * Fields that name a real thing in the user's books. If the user did not say
+ * it, the assistant must not pick one: filing a purchase against the wrong
+ * site is a silent, expensive error, and the model does reach for a plausible
+ * name when left to itself. Account is absent on purpose (it legitimately
+ * defaults to the last used one) and so is party, which may be brand new.
+ */
+const GROUNDED_FIELDS = ['project', 'plot', 'worker', 'investor'] as const;
+
+/** Words worth matching on: ignore the short connectives in a name. */
+const tokens = (text: string): string[] => normalizeName(text).split(' ').filter((w) => w.length >= 3);
+
+/**
+ * Drop any name the user never mentioned, in this message or the ones the
+ * model can still see. The write then comes back as a question instead of a
+ * guess. Returns the same draft when everything checks out.
+ */
+export function groundNames<T extends Draft>(draft: T, said: string): T {
+  const heard = new Set(tokens(said));
+  if (heard.size === 0) return draft;
+  const saidScript = dominantScript(said);
+  let stripped: Record<string, unknown> | null = null;
+  for (const field of GROUNDED_FIELDS) {
+    const value = (draft as Record<string, unknown>)[field];
+    if (typeof value !== 'string' || !value) continue;
+    // "بلال" and the saved "Bilal" are the same person in two scripts, and no
+    // token comparison can see that. When the scripts differ the check cannot
+    // speak, so it stays quiet rather than stripping a name the user did say.
+    if (saidScript && dominantScript(value) && dominantScript(value) !== saidScript) continue;
+    // Keep it when any meaningful word of the name was actually spoken.
+    if (tokens(value).some((w) => heard.has(w))) continue;
+    stripped ??= { ...draft };
+    delete stripped[field];
+  }
+  return (stripped ?? draft) as T;
+}
 
 export interface Gap {
   /** What is missing, in the model's vocabulary. */
@@ -154,7 +193,9 @@ export function gapPrompt(gaps: readonly Gap[]): string {
     first.mustCreate
       ? 'They have none of these, so do not point that out: simply offer to make it ("Kya main bana doon?") and, once they agree, call the matching add_ tool and then redo this write.'
       : 'Ask for it in one short question.',
-    choices.length > 0 ? `Put these on an OPTIONS line, copied exactly: ${choices.join(' | ')}` : '',
+    choices.length > 0
+      ? `The ONLY options are these, copied exactly onto an OPTIONS line: ${choices.join(' | ')}`
+      : 'There is nothing to choose from, so write no OPTIONS line at all.',
   ]
     .filter(Boolean)
     .join(' ');
