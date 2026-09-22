@@ -794,4 +794,8 @@ export interface TranslationKeys {
   aiNoPoFound: string;
   aiNoSaleYet: string;
   aiFillMissing: string;
+  photoSourceTitle: string;
+  photoFromCamera: string;
+  photoFromGallery: string;
+  companyLogo: string;
 }

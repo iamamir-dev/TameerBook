@@ -30,6 +30,7 @@ import {
   ICONS,
   SelectSheet,
   StickyFooter,
+  ReceiptPhotoField,
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
@@ -59,7 +60,6 @@ import { todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
 import { formatPhone } from '@/utils/mask';
 import { formatRupees } from '@/utils/money';
-import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type EntryRoute = RouteProp<RootStackParamList, 'Entry'>;
@@ -250,11 +250,6 @@ export function EntryScreen(): React.JSX.Element {
     setResetKey((k) => k + 1);
   };
 
-  const onPickReceipt = async () => {
-    const uri = await captureReceipt().catch(swallow('entry:receipt'));
-    if (uri) setReceiptUri(uri);
-  };
-
   return (
     <View style={styles.screen}>
       <AppHeader
@@ -374,18 +369,8 @@ export function EntryScreen(): React.JSX.Element {
           {/* Date */}
           <DateField value={date} onChange={setDate} />
 
-          {/* Receipt photo */}
-          {receiptUri ? (
-            <Pressable onPress={() => setReceiptUri(null)} style={styles.receiptRow} accessibilityRole="button">
-              <Image source={{ uri: receiptUri }} style={styles.receiptThumb} />
-              <AppText size="sm" weight="semibold" style={styles.flex}>
-                {t('photoReceipt')}
-              </AppText>
-              <AppIcon name="close" size={20} color="danger" />
-            </Pressable>
-          ) : (
-            <AppButton label={t('photoReceipt')} icon="camera" variant="secondary" onPress={onPickReceipt} />
-          )}
+          {/* Receipt photo (Camera + Gallery) */}
+          <ReceiptPhotoField uri={receiptUri} onChange={setReceiptUri} label={t('photoReceipt')} />
         </ScrollView>
 
         {/* Save  pinned to the bottom, always in reach */}

@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AppButton, AppIcon, AppSheet } from '@/components/ui';
+import { AppButton, AppIcon, AppSheet, PhotoSourceSheet } from '@/components/ui';
 import { addLaborer } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
-import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 
 import { makeStyles } from '../styled/AddLaborerSheet.styles';
 
@@ -44,10 +42,7 @@ export function AddLaborerSheet({ visible, onClose, onSaved }: Props): React.JSX
     if (visible) setForm(EMPTY);
   }, [visible]);
 
-  const pickPhoto = async () => {
-    const uri = await captureReceipt().catch(swallow('worker:photo'));
-    if (uri) patch({ photoUri: uri });
-  };
+  const [photoSheet, setPhotoSheet] = useState(false);
 
   const onSave = () => {
     const trimmed = form.name.trim();
@@ -73,7 +68,7 @@ export function AddLaborerSheet({ visible, onClose, onSaved }: Props): React.JSX
       title={t('addWorker')}
       footer={<AppButton label={t('save')} icon="check" onPress={onSave} loading={saving} disabled={!form.name.trim()} />}
     >
-      <Pressable onPress={pickPhoto} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.photoPicker}>
+      <Pressable onPress={() => setPhotoSheet(true)} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.photoPicker}>
         {form.photoUri ? (
           <Image source={{ uri: form.photoUri }} style={styles.avatar} />
         ) : (
@@ -85,6 +80,12 @@ export function AddLaborerSheet({ visible, onClose, onSaved }: Props): React.JSX
           <AppIcon name="camera" size={14} color="onAccent" />
         </View>
       </Pressable>
+      <PhotoSourceSheet
+        visible={photoSheet}
+        onClose={() => setPhotoSheet(false)}
+        onSelect={(uri) => patch({ photoUri: uri })}
+        title={t('photo')}
+      />
       <FloatingLabelInput label={t('workerName')} value={form.name} onChangeText={(v) => patch({ name: v })} />
       <FloatingLabelInput label={t('phone')} value={form.phone} onChangeText={(v) => patch({ phone: v })} mask="phone" />
       <FloatingLabelInput label={t('cnic')} value={form.cnic} onChangeText={(v) => patch({ cnic: v })} hint={t('optional')} mask="cnic" />

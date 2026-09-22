@@ -1275,6 +1275,14 @@ ALTER TABLE sale_receipts DROP COLUMN doc_id;
 ALTER TABLE sales DROP COLUMN completed_at;
 `;
 
+export const SCHEMA_V38_INDEXES_AND_INTEGRITY = `
+CREATE INDEX IF NOT EXISTS idx_txn_comp_void_date ON transactions(company_id, is_void, date);
+CREATE INDEX IF NOT EXISTS idx_txn_account_void_date ON transactions(account_id, is_void, date);
+CREATE INDEX IF NOT EXISTS idx_txn_proj_phase_void ON transactions(project_id, phase, is_void);
+CREATE INDEX IF NOT EXISTS idx_capital_inv_type ON capital_ledger(project_investor_id, entry_type);
+CREATE INDEX IF NOT EXISTS idx_labor_attend_proj_date ON labor_attendance(project_laborer_id, date);
+`;
+
 export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 7, sql: SCHEMA_V7_CLEAN_REBUILD },
   { version: 8, sql: SCHEMA_V8_COMPANIES },
@@ -1309,6 +1317,7 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 35, sql: SCHEMA_V35_SALE_SECTION },
   { version: 36, sql: SCHEMA_V36_SECTIONS_ONLY },
   { version: 37, sql: SCHEMA_V37_RETIRE_DEAD },
+  { version: 38, sql: SCHEMA_V38_INDEXES_AND_INTEGRITY },
 ];
 
 /* -------------------------------------------------------------------------- */

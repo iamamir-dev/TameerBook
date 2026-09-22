@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppButton, AppHeader, AppText, ImageLightbox } from '@/components/ui';
+import { AppButton, AppHeader, AppText, ImageLightbox, PhotoSourceSheet } from '@/components/ui';
 import { addDocument, type DocumentRow, getProject, listDocuments, type ProjectRow } from '@/db';
 import { useSaveAction } from '@/hooks';
 import { useTranslation } from '@/i18n';
@@ -13,7 +13,6 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DiaryRoute = RouteProp<RootStackParamList, 'PhotoDiary'>;
@@ -30,6 +29,7 @@ export function PhotoDiaryScreen(): React.JSX.Element {
   const [project, setProject] = useState<ProjectRow | null>(null);
   const { saving: busy, run: runSave } = useSaveAction();
   const [viewer, setViewer] = useState<string | null>(null);
+  const [photoSheet, setPhotoSheet] = useState(false);
 
   const load = useCallback(async () => {
     const [pics, p] = await Promise.all([
@@ -56,13 +56,10 @@ export function PhotoDiaryScreen(): React.JSX.Element {
     return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }, [photos]);
 
-  const onCapture = async () => {
+  const onPhotoSelected = async (uri: string) => {
     await runSave(async () => {
-      const uri = await captureReceipt();
-      if (uri) {
-        await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
-        await load();
-      }
+      await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
+      await load();
     });
   };
 
@@ -76,7 +73,15 @@ export function PhotoDiaryScreen(): React.JSX.Element {
       >
         {/* A completed project's diary is history — no new photos. */}
         {project?.status !== 'COMPLETED' ? (
-          <AppButton label={t('todayPhotos')} icon="camera" onPress={onCapture} loading={busy} />
+          <>
+            <AppButton label={t('todayPhotos')} icon="camera" onPress={() => setPhotoSheet(true)} loading={busy} />
+            <PhotoSourceSheet
+              visible={photoSheet}
+              onClose={() => setPhotoSheet(false)}
+              onSelect={onPhotoSelected}
+              title={t('todayPhotos')}
+            />
+          </>
         ) : null}
 
         {groups.length === 0 ? (

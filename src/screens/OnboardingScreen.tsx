@@ -13,11 +13,10 @@ import Animated, { FadeIn, FadeInDown, useAnimatedStyle, withTiming } from 'reac
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AmountInput, AppButton, AppIcon, AppText, type IconKey } from '@/components/ui';
+import { AmountInput, AppButton, AppIcon, AppText, PhotoSourceSheet, type IconKey } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
 import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 import type { Language } from '@/i18n/types';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
@@ -75,11 +74,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
   const [companyName, setCompanyName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
-
-  const pickLogo = async () => {
-    const uri = await captureReceipt().catch(swallow('onboarding:logo'));
-    if (uri) setLogoUri(uri);
-  };
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [phone, setPhone] = useState('');
   const [openingCash, setOpeningCash] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -177,18 +172,25 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.
 
 
               {/* Company logo — tap to add/replace (optional). */}
-              <Pressable onPress={pickLogo} accessibilityRole="button" accessibilityLabel={t('photo')} style={stylesLogo.picker}>
+              <Pressable onPress={() => setPhotoSheetOpen(true)} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.picker}>
                 {logoUri ? (
-                  <Image source={{ uri: logoUri }} style={stylesLogo.logo} />
+                  <Image source={{ uri: logoUri }} style={styles.logo} />
                 ) : (
-                  <View style={stylesLogo.fallback}>
+                  <View style={styles.fallback}>
                     <AppIcon name="projects" size={26} color="primary" />
                   </View>
                 )}
-                <View style={stylesLogo.badge}>
+                <View style={styles.badge}>
                   <AppIcon name="camera" size={14} color="onAccent" />
                 </View>
               </Pressable>
+
+              <PhotoSourceSheet
+                visible={photoSheetOpen}
+                onClose={() => setPhotoSheetOpen(false)}
+                onSelect={(uri) => setLogoUri(uri)}
+                title={t('companyLogo')}
+              />
 
               {/* Required */}
               <FloatingLabelInput
@@ -500,29 +502,25 @@ const makeStyles = (theme: Theme) =>
     createBtn: {
       marginTop: theme.spacing.md,
     },
+    picker: { alignSelf: 'center' },
+    logo: { width: 72, height: 72, borderRadius: 20 },
+    fallback: {
+      width: 72,
+      height: 72,
+      borderRadius: 20,
+      backgroundColor: theme.colors.track,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badge: {
+      position: 'absolute',
+      right: -4,
+      bottom: -4,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: theme.colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   });
-
-/** Shared look for the tappable company-logo picker (both create forms). */
-const stylesLogo = StyleSheet.create({
-  picker: { alignSelf: 'center' },
-  logo: { width: 72, height: 72, borderRadius: 20 },
-  fallback: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: 'rgba(127,127,127,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    right: -4,
-    bottom: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#2E7D32',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

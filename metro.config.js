@@ -9,4 +9,7 @@ const nested = /[\\/]server[\\/].*[\\/]node_modules[\\/].*/;
 const prev = config.resolver.blockList;
 config.resolver.blockList = Array.isArray(prev) ? [...prev, nested] : prev ? [prev, nested] : [nested];
 
+// Disable watchman to prevent watch-project hanging during builds
+config.resolver.useWatchman = false;
+
 module.exports = config;

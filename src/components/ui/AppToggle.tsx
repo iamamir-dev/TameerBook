@@ -53,7 +53,7 @@ export function AppToggle({
       style={disabled ? styles.disabled : undefined}
     >
       <Animated.View style={[styles.track, trackStyle]}>
-        <Animated.View style={[styles.thumb, thumbStyle]} />
+        <Animated.View style={[styles.thumb, { backgroundColor: theme.colors.onAccent }, thumbStyle]} />
       </Animated.View>
     </Pressable>
   );
@@ -70,7 +70,6 @@ const styles = StyleSheet.create({
     width: THUMB,
     height: THUMB,
     borderRadius: THUMB / 2,
-    backgroundColor: '#FFFFFF',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

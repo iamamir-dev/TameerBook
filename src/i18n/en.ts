@@ -753,4 +753,8 @@ export const en: TranslationKeys = {
   aiNoPoFound: 'No open purchase order matched. Say the PO number or supplier.',
   aiNoSaleYet: 'No sale is set for this project yet. Set the buyer and price first.',
   aiFillMissing: 'Add what is missing below',
+  photoSourceTitle: 'Add Photo',
+  photoFromCamera: 'Take Photo',
+  photoFromGallery: 'Choose from Gallery',
+  companyLogo: 'Company Logo',
 };

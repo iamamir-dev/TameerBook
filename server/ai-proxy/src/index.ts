@@ -102,7 +102,7 @@ async function authorize(req: Request, env: Env): Promise<void> {
 function corsHeaders(req: Request, env: Env): HeadersInit {
   const origin = req.headers.get('origin');
   const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!origin || (allowed.length && !allowed.includes(origin))) return {};
+  if (!origin || allowed.length === 0 || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'POST, OPTIONS',
@@ -176,8 +176,21 @@ async function chat(req: Request, env: Env): Promise<Json> {
       return await groqRaw(env, { ...base, model: MODELS.textFallback });
     } catch {
       if (!env.AI) throw first;
+      const cleanMessages = b.messages.map((m) => {
+        let textContent = '';
+        if (typeof m.content === 'string') {
+          textContent = m.content;
+        } else if (Array.isArray(m.content)) {
+          textContent = m.content
+            .map((part: { type?: string; text?: string }) => (part?.type === 'text' ? part.text ?? '' : ''))
+            .join(' ');
+        } else {
+          textContent = String(m.content ?? '');
+        }
+        return { role: m.role, content: textContent };
+      });
       const out = (await env.AI.run(MODELS.cfText as never, {
-        messages: b.messages.map((m) => ({ role: m.role, content: String(m.content ?? '') })),
+        messages: cleanMessages,
         max_tokens: base.max_tokens,
         temperature: base.temperature,
       } as never)) as { response?: string };

@@ -26,7 +26,10 @@ export function ErrorFallback({ onRetry, detail }: FallbackProps): React.JSX.Ele
         {t('errorBody')}
       </AppText>
       {detail ? (
-        <ScrollView style={styles.detailBox} contentContainerStyle={styles.detailContent}>
+        <ScrollView
+          style={[styles.detailBox, { backgroundColor: theme.colors.track, borderRadius: theme.radius.md }]}
+          contentContainerStyle={styles.detailContent}
+        >
           <AppText size="xs" color="danger">
             {detail}
           </AppText>
@@ -96,8 +99,6 @@ const styles = StyleSheet.create({
   detailBox: {
     maxHeight: 220,
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 8,
   },
   detailContent: {
     padding: 10,

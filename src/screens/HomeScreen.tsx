@@ -168,6 +168,7 @@ export function HomeScreen(): React.JSX.Element {
           <Pressable
             onPress={() => navigation.navigate('PlotDetail', { plotId: deadlineWarn.plotId })}
             accessibilityRole="button"
+            accessibilityLabel={t('deadlineSoon')}
             style={styles.warnChip}
           >
             <AppIcon name="today" size={18} color="danger" />
@@ -194,6 +195,7 @@ export function HomeScreen(): React.JSX.Element {
         <Pressable
           onPress={() => navigation.navigate('Cash', { scope: 'assets' })}
           accessibilityRole="button"
+          accessibilityLabel={t('totalBalance')}
           style={styles.hero}
         >
           <AppText size="overline" weight="semibold" color="textSecondary" uppercase>
@@ -341,6 +343,7 @@ export function HomeScreen(): React.JSX.Element {
                     key={p.id}
                     onPress={() => navigation.navigate('PlotDetail', { plotId: p.id })}
                     accessibilityRole="button"
+                    accessibilityLabel={p.name}
                     style={({ pressed }) => [styles.plotRow, i > 0 && styles.ruled, pressed && styles.pressed]}
                   >
                     <AppIcon name="plot" size={18} color="gold" />
@@ -360,15 +363,10 @@ export function HomeScreen(): React.JSX.Element {
                           .join(' · ')}
                       </AppText>
                     </View>
-    {(() => {
-                      const forSale = p.status === 'OWNED' && (p.sale_price ?? 0) > 0;
-                      return (
-                        <StageBadge
-                          tone={forSale ? 'accent' : p.status === 'OWNED' ? 'success' : 'primary'}
-                          label={t(forSale ? 'statusForSale' : p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
-                        />
-                      );
-                    })()}
+                    <StageBadge
+                      tone={p.status === 'OWNED' && (p.sale_price ?? 0) > 0 ? 'accent' : p.status === 'OWNED' ? 'success' : 'primary'}
+                      label={t(p.status === 'OWNED' && (p.sale_price ?? 0) > 0 ? 'statusForSale' : p.status === 'OWNED' ? 'plotOwned' : 'plotInProject')}
+                    />
                   </Pressable>
                 ))
               )}

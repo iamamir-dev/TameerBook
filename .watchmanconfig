@@ -1,3 +1,9 @@
 {
-  "ignore_dirs": ["server/ai-proxy/node_modules"]
+  "ignore_dirs": [
+    "android",
+    "ios",
+    ".git",
+    ".expo",
+    "server/ai-proxy/node_modules"
+  ]
 }

@@ -1,15 +1,14 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import React, { useState } from 'react';
+import { Image, Pressable, StyleSheet } from 'react-native';
 
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 
 import { AppButton } from './AppButton';
 import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
+import { PhotoSourceSheet } from './PhotoSourceSheet';
 
 interface ReceiptPhotoFieldProps {
   /** Current photo URI (null = none captured yet). */
@@ -20,17 +19,15 @@ interface ReceiptPhotoFieldProps {
 }
 
 /**
- * The one proof-of-payment photo field. Replaces the copy-pasted "capture a
- * receipt → thumbnail + remove, else a camera button" block that the plot,
- * sale and other money sheets each reimplemented. Captures via the shared
- * `captureReceipt` (camera + compress); drop it into a `MoneyEntrySheet`'s
- * `extra`.
+ * The unified proof-of-payment photo field. Gives users two clear options:
+ * Camera and Gallery. Used across all money entry sheets and screens.
  */
 export function ReceiptPhotoField({ uri, onChange, label }: ReceiptPhotoFieldProps): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
   const text = label ?? t('photoReceipt');
+  const [sourceSheet, setSourceSheet] = useState(false);
 
   if (uri) {
     return (
@@ -45,18 +42,20 @@ export function ReceiptPhotoField({ uri, onChange, label }: ReceiptPhotoFieldPro
   }
 
   return (
-    <AppButton
-      label={text}
-      icon="camera"
-      variant="secondary"
-      onPress={() => {
-        void captureReceipt()
-          .then((u) => {
-            if (u) onChange(u);
-          })
-          .catch(swallow('receipt:capture'));
-      }}
-    />
+    <>
+      <AppButton
+        label={text}
+        icon="camera"
+        variant="secondary"
+        onPress={() => setSourceSheet(true)}
+      />
+      <PhotoSourceSheet
+        visible={sourceSheet}
+        onClose={() => setSourceSheet(false)}
+        onSelect={onChange}
+        title={text}
+      />
+    </>
   );
 }
 

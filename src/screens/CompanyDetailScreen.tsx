@@ -14,6 +14,7 @@ import {
   AppText,
   ContactRow,
   SelectSheet,
+  PhotoSourceSheet,
   type IconKey,
   type SelectOption,
 } from '@/components/ui';
@@ -24,9 +25,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
-import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
-import { captureReceipt } from '@/utils/photo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -55,6 +54,7 @@ export function CompanyDetailScreen(): React.JSX.Element {
   const [owner, setOwner] = useState('');
   const [phone, setPhone] = useState('');
   const [switchOpen, setSwitchOpen] = useState(false);
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const { saving, run: runSave } = useSaveAction();
 
   const load = useCallback(async () => {
@@ -74,7 +74,7 @@ export function CompanyDetailScreen(): React.JSX.Element {
     if (!company || !name.trim()) return;
     const ok = await runSave(async () => {
       await updateCompany(company.id, {
-        name,
+        name: name.trim(),
         ownerName: owner.trim() || null,
         phone: phone.trim() || null,
       });
@@ -84,18 +84,19 @@ export function CompanyDetailScreen(): React.JSX.Element {
     setEditOpen(false);
   };
 
-  /** Tap the logo → replace it right away (no separate save step). */
+  /** Tap the logo → replace it via PhotoSourceSheet (Camera or Gallery). */
   const onChangeLogo = () => {
     if (!company) return;
-    void (async () => {
-      const uri = await captureReceipt().catch(swallow('company:logo'));
-      if (!uri) return;
-      const ok = await runSave(async () => {
-        await updateCompany(company.id, { logoUri: uri });
-        await hydrate();
-      });
-      if (ok) await reload();
-    })();
+    setPhotoSheetOpen(true);
+  };
+
+  const onLogoSelected = async (uri: string) => {
+    if (!company) return;
+    const ok = await runSave(async () => {
+      await updateCompany(company.id, { logoUri: uri });
+      await hydrate();
+    });
+    if (ok) await reload();
   };
 
   const NEW_COMPANY_ID = '__new__';
@@ -208,6 +209,13 @@ export function CompanyDetailScreen(): React.JSX.Element {
           if (o.id === NEW_COMPANY_ID) navigation.navigate('NewCompany');
           else void switchTo(o.id);
         }}
+      />
+
+      <PhotoSourceSheet
+        visible={photoSheetOpen}
+        onClose={() => setPhotoSheetOpen(false)}
+        onSelect={onLogoSelected}
+        title={t('companyLogo')}
       />
     </View>
   );

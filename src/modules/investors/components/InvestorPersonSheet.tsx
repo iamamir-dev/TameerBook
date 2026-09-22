@@ -11,6 +11,7 @@ import {
   AppText,
   Avatar,
   DateField,
+  PhotoSourceSheet,
 } from '@/components/ui';
 import {
   addInvestor,
@@ -25,7 +26,6 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import { todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 
 import { makeStyles } from '../styled/InvestorPersonSheet.styles';
 
@@ -102,10 +102,7 @@ export function InvestorPersonSheet({
       .catch(swallow('investorPersonSheet:load'));
   }, [visible, editing]);
 
-  const pickPhoto = async () => {
-    const uri = await captureReceipt().catch(swallow('investor:photo'));
-    if (uri) patch({ photoUri: uri });
-  };
+  const [photoSheet, setPhotoSheet] = useState(false);
 
   // Which account this investor's money sits in (stored as its name in bankInfo,
   // shown via the same shared picker used for the cash row below and everywhere).
@@ -169,12 +166,18 @@ export function InvestorPersonSheet({
       footer={<AppButton label={t('save')} icon="check" onPress={save} loading={saving} disabled={!canSave} />}
     >
       {/* Tap the photo itself to add/replace it — no separate button. */}
-      <Pressable onPress={pickPhoto} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.photoPicker}>
+      <Pressable onPress={() => setPhotoSheet(true)} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.photoPicker}>
         <Avatar uri={form.photoUri} name={form.name} />
         <View style={styles.cameraBadge}>
           <AppIcon name="camera" size={16} color="onAccent" />
         </View>
       </Pressable>
+      <PhotoSourceSheet
+        visible={photoSheet}
+        onClose={() => setPhotoSheet(false)}
+        onSelect={(uri) => patch({ photoUri: uri })}
+        title={t('photo')}
+      />
 
       <FloatingLabelInput label={t('personName')} value={form.name} onChangeText={(v) => patch({ name: v })} />
       <FloatingLabelInput label={t('phone')} value={form.phone} onChangeText={(v) => patch({ phone: v })} mask="phone" />

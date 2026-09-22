@@ -40,6 +40,13 @@ export async function pickDocumentImage(): Promise<string | null> {
 }
 
 /**
+ * Pick or capture a photo from either 'camera' or 'gallery', downscaled & compressed.
+ */
+export async function pickPhoto(source: 'camera' | 'gallery'): Promise<string | null> {
+  return source === 'camera' ? captureReceipt() : pickDocumentImage();
+}
+
+/**
  * Capture (camera) or pick (gallery) a signature photo, cropped by the user,
  * and return it as a base64 data URL ready to embed in a PDF. Offline; nothing
  * leaves the device.

@@ -40,11 +40,17 @@ const APP_VERSION: string = (require('../../app.json') as { expo: { version: str
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * Settings placeholder. The two live controls are the LANGUAGE picker (en /
- * Roman Urdu) and the DARK MODE switch  both write to `useSettingsStore`, so
- * flipping either re-themes / re-translates the whole app instantly. The
- * structure is RTL-ready: adding an Urdu-script dictionary + flipping
- * I18nManager is the only remaining step.
+ * Settings screen.
+ * Cleanly categorized into distinct cards:
+ * 1. Active Company / Workspace
+ * 2. Management Hubs (Accounts, Reports, Categories)
+ * 3. Preferences (Language, Dark Mode, Typography)
+ * 4. Financial & Sadaqah
+ * 5. Documents & Signatures
+ * 6. AI Assistant (collapsible when disabled)
+ * 7. Reminders
+ * 8. Home Screen customization
+ * 9. About & DevTools
  */
 export function SettingsScreen(): React.JSX.Element {
   const theme = useTheme();
@@ -82,6 +88,7 @@ export function SettingsScreen(): React.JSX.Element {
   const providerInfo = PROVIDERS[aiProvider];
   const currentKey = aiKeys[aiProvider] ?? '';
   const currentModel = aiModel[aiProvider] || providerInfo.defaultModel;
+
   // Which assistant text setting the sheet is editing (null = closed).
   type AiEdit = 'key' | 'model' | 'proxyUrl' | 'proxyToken' | 'customUrl' | 'groqVoiceKey';
   const [aiEdit, setAiEdit] = useState<AiEdit | null>(null);
@@ -90,8 +97,17 @@ export function SettingsScreen(): React.JSX.Element {
   const [replyLangSheet, setReplyLangSheet] = useState(false);
   const aiReplyLanguage = useSettingsStore((s) => s.aiReplyLanguage);
   const setAiReplyLanguage = useSettingsStore((s) => s.setAiReplyLanguage);
-  const REPLY_LANG_KEY: Record<ReplyLanguageSetting, TranslationKey> = { auto: 'aiReplyLangAuto', ur: 'aiReplyLangUr', roman: 'aiReplyLangRoman', en: 'aiReplyLangEn' };
-  const replyLangOptions: SelectOption[] = REPLY_LANGUAGE_SETTINGS.map((id) => ({ id, label: t(REPLY_LANG_KEY[id]), icon: 'language' as IconKey }));
+  const REPLY_LANG_KEY: Record<ReplyLanguageSetting, TranslationKey> = {
+    auto: 'aiReplyLangAuto',
+    ur: 'aiReplyLangUr',
+    roman: 'aiReplyLangRoman',
+    en: 'aiReplyLangEn',
+  };
+  const replyLangOptions: SelectOption[] = REPLY_LANGUAGE_SETTINGS.map((id) => ({
+    id,
+    label: t(REPLY_LANG_KEY[id]),
+    icon: 'language' as IconKey,
+  }));
   const [forgot, setForgot] = useState(false);
   const onForgetMemory = () =>
     Alert.alert(t('aiForgetLabel'), t('aiForgetConfirm'), [
@@ -151,7 +167,12 @@ export function SettingsScreen(): React.JSX.Element {
         setAiTestDetail(e instanceof Error ? e.message.slice(0, 80) : String(e));
       });
   };
-  const providerOptions: SelectOption[] = AI_PROVIDERS.map((id) => ({ id, label: PROVIDERS[id].label, subtitle: PROVIDERS[id].hint, icon: 'assistant' as IconKey }));
+  const providerOptions: SelectOption[] = AI_PROVIDERS.map((id) => ({
+    id,
+    label: PROVIDERS[id].label,
+    subtitle: PROVIDERS[id].hint,
+    icon: 'assistant' as IconKey,
+  }));
   const modelOptions: SelectOption[] = [
     ...providerInfo.models.map((m) => ({ id: m.id, label: m.id, subtitle: m.note, icon: 'assistant' as IconKey })),
     { id: '__custom__', label: t('aiModelCustom'), icon: 'edit' as IconKey },
@@ -275,51 +296,141 @@ export function SettingsScreen(): React.JSX.Element {
       <AppHeader title={t('settings')} onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* "Go to…" — navigation entries, separated from preferences below. */}
+        {/* 1. Active Workspace / Company */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('companyTitle')}
+        </AppText>
+        <AppCard compact>
+          <SettingRow
+            icon="projects"
+            label={activeCompany?.name ?? t('companyTitle')}
+            subtitle={t('switchCompany')}
+            value={activeCompany?.owner_name ?? undefined}
+            onPress={() => setCompanySheetOpen(true)}
+          />
+          <Divider />
+          <SettingRow
+            icon="settings"
+            label={t('companySetupTitle')}
+            subtitle={t('companyNameHint')}
+            onPress={() => navigation.navigate('CompanyDetail')}
+          />
+        </AppCard>
+
+        {/* 2. Management Hubs */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
           {t('goToSection')}
         </AppText>
         <AppCard compact>
-          {/* Company  the active workspace; switch or create another */}
-          <SettingRow
-            icon="projects"
-            label={t('companyTitle')}
-            value={activeCompany?.name ?? ''}
-            onPress={() => navigation.navigate('CompanyDetail')}
-          />
-
-          <Divider />
-
-          {/* Accounts  cash / bank / wallet balances. The single entry point
-              for account management (Udhaar lives in the Cash hub, not here). */}
           <SettingRow
             icon="balance"
             label={t('accountsTitle')}
             onPress={() => navigation.navigate('Accounts')}
           />
-
           <Divider />
-
-          {/* Reports hub */}
           <SettingRow
             icon="reports"
             label={t('reports')}
             onPress={() => navigation.navigate('Reports')}
           />
-
           <Divider />
-
-          {/* Categories & materials manager */}
           <SettingRow
             icon="ledger"
             label={t('manageCategories')}
             onPress={() => navigation.navigate('Categories')}
           />
+        </AppCard>
 
-
+        {/* 3. Preferences — language, theme, typography */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('preferencesSection')}
+        </AppText>
+        <AppCard compact>
+          <SettingRow
+            icon="language"
+            label={t('language')}
+            value={currentLanguageLabel}
+            onPress={() => setLangSheetOpen(true)}
+          />
           <Divider />
+          <SettingRow
+            icon="moon"
+            label={t('darkMode')}
+            trailing={
+              <AppToggle value={darkMode} onValueChange={setDarkMode} accessibilityLabel={t('darkMode')} />
+            }
+          />
+          <Divider />
+          <SettingRow
+            icon="font"
+            label={t('fontFamilyLabel')}
+            value={FONT_OPTIONS[fontFamily].label}
+            onPress={() => setFontSheetOpen(true)}
+          />
+          <Divider />
+          <SettingRow
+            icon="textSize"
+            label={t('fontSizeLabel')}
+            value={t(FONT_SIZE_LABEL[fontScale])}
+            onPress={() => setSizeSheetOpen(true)}
+          />
+        </AppCard>
 
-          {/* Authorized signature used on the purchase-order PDF. */}
+        {/* 4. Financial & Sadaqah */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('donationPctLabel')}
+        </AppText>
+        <AppCard compact>
+          <View style={styles.row}>
+            <View style={styles.iconChip}>
+              <AppIcon name="investor" size={22} color="primary" />
+            </View>
+            <View style={styles.rowLabelWrap}>
+              <AppText size="md" weight="semibold">
+                {t('donationPctLabel')}
+              </AppText>
+              <AppText size="xs" color="textSecondary">
+                {donationPct > 0 ? `${donationPct}% ${t('plotProfit')}` : t('donationNote')}
+              </AppText>
+            </View>
+            <View style={styles.stepper}>
+              <Pressable
+                onPress={() => setDonationPct(Math.max(0, donationPct - 1))}
+                hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="-1%"
+                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
+              >
+                <AppText size="lg" weight="bold" color="primary">
+                  −
+                </AppText>
+              </Pressable>
+              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
+                {donationPct}%
+              </AppText>
+              <Pressable
+                onPress={() => setDonationPct(Math.min(100, donationPct + 1))}
+                hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="+1%"
+                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
+              >
+                <AppText size="lg" weight="bold" color="primary">
+                  +
+                </AppText>
+              </Pressable>
+            </View>
+          </View>
+          <AppText size="xs" color="textSecondary" style={styles.note}>
+            {t('donationNote')}
+          </AppText>
+        </AppCard>
+
+        {/* 5. Documents & Signatures */}
+        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
+          {t('signaturesTitle')}
+        </AppText>
+        <AppCard compact>
           <SettingRow
             icon="agreement"
             label={t('signatureSetting')}
@@ -336,10 +447,7 @@ export function SettingsScreen(): React.JSX.Element {
                 : undefined
             }
           />
-
           <Divider />
-
-          {/* remove.bg API key (the user's own) for signature background removal. */}
           <SettingRow
             icon="key"
             label={t('removeBgKeyLabel')}
@@ -351,8 +459,7 @@ export function SettingsScreen(): React.JSX.Element {
           />
         </AppCard>
 
-        {/* Assistant (AI) — opt-in. Provider + key + model are the user's own;
-            nothing is bundled. Off by default so no data leaves the phone unasked. */}
+        {/* 6. Assistant (AI) — Collapsible when disabled */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
           {t('aiSectionTitle')}
         </AppText>
@@ -362,139 +469,113 @@ export function SettingsScreen(): React.JSX.Element {
             label={t('aiEnabledLabel')}
             trailing={<AppToggle value={aiEnabled} onValueChange={setAiEnabled} accessibilityLabel={t('aiEnabledLabel')} />}
           />
-          <Divider />
-          <SettingRow icon="settings" label={t('aiProviderLabel')} value={providerInfo.label} onPress={() => setProviderSheet(true)} />
-          <Divider />
-          {providerInfo.needsKey ? (
+          {aiEnabled ? (
             <>
+              <Divider />
+              <SettingRow icon="settings" label={t('aiProviderLabel')} value={providerInfo.label} onPress={() => setProviderSheet(true)} />
+              <Divider />
+              {providerInfo.needsKey ? (
+                <>
+                  <SettingRow
+                    icon="key"
+                    label={t('aiKeyLabel')}
+                    trailing={currentKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                    onPress={() => openAiEdit('key')}
+                  />
+                  <Divider />
+                </>
+              ) : null}
+              {aiProvider === 'proxy' ? (
+                <>
+                  <SettingRow
+                    icon="key"
+                    label={t('aiProxyUrlLabel')}
+                    trailing={aiProxyUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                    onPress={() => openAiEdit('proxyUrl')}
+                  />
+                  <Divider />
+                  <SettingRow
+                    icon="lock"
+                    label={t('aiProxyTokenLabel')}
+                    trailing={aiProxyToken ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                    onPress={() => openAiEdit('proxyToken')}
+                  />
+                  <Divider />
+                </>
+              ) : null}
+              {aiProvider === 'custom' ? (
+                <>
+                  <SettingRow
+                    icon="key"
+                    label={t('aiCustomUrlLabel')}
+                    trailing={aiCustomBaseUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                    onPress={() => openAiEdit('customUrl')}
+                  />
+                  <Divider />
+                </>
+              ) : null}
+              <SettingRow icon="edit" label={t('aiModelLabel')} value={currentModel} onPress={() => setModelSheet(true)} />
+              <Divider />
+              {!providerInfo.voice ? (
+                <>
+                  <SettingRow
+                    icon="mic"
+                    label={t('aiGroqKeyLabel')}
+                    trailing={aiKeys.groq ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
+                    onPress={() => openAiEdit('groqVoiceKey')}
+                  />
+                  <Divider />
+                </>
+              ) : null}
+              <SettingRow icon="language" label={t('aiReplyLangLabel')} value={t(REPLY_LANG_KEY[aiReplyLanguage])} onPress={() => setReplyLangSheet(true)} />
+              <Divider />
               <SettingRow
-                icon="key"
-                label={t('aiKeyLabel')}
-                trailing={currentKey ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-                onPress={() => openAiEdit('key')}
+                icon="speaker"
+                label={t('aiSpeakLabel')}
+                trailing={<AppToggle value={aiSpeak} onValueChange={setAiSpeak} accessibilityLabel={t('aiSpeakLabel')} />}
               />
               <Divider />
+              <SettingRow icon="trash" label={t('aiForgetLabel')} value={forgot ? t('aiForgotten') : undefined} onPress={onForgetMemory} />
+              <Divider />
+              <SettingRow
+                icon={aiTest === 'ok' ? 'checkCircle' : aiTest === 'fail' ? 'alert' : 'activity'}
+                label={t('aiTestLabel')}
+                value={aiTest === 'busy' ? '…' : aiTest === 'ok' ? t('aiTestOk') : aiTest === 'fail' ? aiTestDetail : undefined}
+                onPress={aiTest !== 'busy' ? runAiTest : undefined}
+              />
             </>
           ) : null}
-          {aiProvider === 'proxy' ? (
-            <>
-              <SettingRow
-                icon="key"
-                label={t('aiProxyUrlLabel')}
-                trailing={aiProxyUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-                onPress={() => openAiEdit('proxyUrl')}
-              />
-              <Divider />
-              <SettingRow
-                icon="lock"
-                label={t('aiProxyTokenLabel')}
-                trailing={aiProxyToken ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-                onPress={() => openAiEdit('proxyToken')}
-              />
-              <Divider />
-            </>
-          ) : null}
-          {aiProvider === 'custom' ? (
-            <>
-              <SettingRow
-                icon="key"
-                label={t('aiCustomUrlLabel')}
-                trailing={aiCustomBaseUrl ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-                onPress={() => openAiEdit('customUrl')}
-              />
-              <Divider />
-            </>
-          ) : null}
-          <SettingRow icon="edit" label={t('aiModelLabel')} value={currentModel} onPress={() => setModelSheet(true)} />
-          <Divider />
-          {!providerInfo.voice ? (
-            <>
-              <SettingRow
-                icon="mic"
-                label={t('aiGroqKeyLabel')}
-                trailing={aiKeys.groq ? <AppIcon name="checkCircle" size={20} color="accent" /> : undefined}
-                onPress={() => openAiEdit('groqVoiceKey')}
-              />
-              <Divider />
-            </>
-          ) : null}
-          <SettingRow icon="language" label={t('aiReplyLangLabel')} value={t(REPLY_LANG_KEY[aiReplyLanguage])} onPress={() => setReplyLangSheet(true)} />
-          <Divider />
-          <SettingRow
-            icon="bell"
-            label={t('aiSpeakLabel')}
-            trailing={<AppToggle value={aiSpeak} onValueChange={setAiSpeak} accessibilityLabel={t('aiSpeakLabel')} />}
-          />
-          <Divider />
-          <SettingRow icon="trash" label={t('aiForgetLabel')} value={forgot ? t('aiForgotten') : undefined} onPress={onForgetMemory} />
-          <Divider />
-          <SettingRow
-            icon={aiTest === 'ok' ? 'checkCircle' : aiTest === 'fail' ? 'alert' : 'activity'}
-            label={t('aiTestLabel')}
-            value={aiTest === 'busy' ? '…' : aiTest === 'ok' ? t('aiTestOk') : aiTest === 'fail' ? aiTestDetail : undefined}
-            onPress={aiEnabled && aiTest !== 'busy' ? runAiTest : undefined}
-          />
         </AppCard>
         <AppText size="xs" color="textSecondary" style={styles.sectionTitle}>
-          {[t('aiEnabledHint'), !providerInfo.voice ? t('aiGroqVoiceHint') : null, providerInfo.trainsOnData ? t('aiTrainsNote') : null].filter(Boolean).join(' ')}
+          {aiEnabled
+            ? [t('aiEnabledHint'), !providerInfo.voice ? t('aiGroqVoiceHint') : null, providerInfo.trainsOnData ? t('aiTrainsNote') : null].filter(Boolean).join(' ')
+            : t('aiEnabledHint')}
         </AppText>
 
-        {/* Preferences — language, theme, type, version. */}
+        {/* 7. Reminders */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
-          {t('preferencesSection')}
+          {t('reminders')}
         </AppText>
         <AppCard compact>
-          {/* Language  opens the big-row picker sheet */}
-          <SettingRow
-            icon="language"
-            label={t('language')}
-            value={currentLanguageLabel}
-            onPress={() => setLangSheetOpen(true)}
-          />
-
-          <Divider />
-
-          {/* Dark mode  structure ready, light is the default */}
-          <SettingRow
-            icon="moon"
-            label={t('darkMode')}
-            trailing={
-              <AppToggle value={darkMode} onValueChange={setDarkMode} accessibilityLabel={t('darkMode')} />
-            }
-          />
-
-          <Divider />
-
-          {/* Font family  re-themes every screen instantly */}
-          <SettingRow
-            icon="font"
-            label={t('fontFamilyLabel')}
-            value={FONT_OPTIONS[fontFamily].label}
-            onPress={() => setFontSheetOpen(true)}
-          />
-
-          <Divider />
-
-          {/* Text size  scales every size token app-wide */}
-          <SettingRow
-            icon="textSize"
-            label={t('fontSizeLabel')}
-            value={t(FONT_SIZE_LABEL[fontScale])}
-            onPress={() => setSizeSheetOpen(true)}
-          />
-
-          <Divider />
-
-          {/* Version  read-only */}
-          <SettingRow
-            icon="settings"
-            label={t('appVersion')}
-            value={appVersion}
-            onLongPress={() => navigation.navigate('DevTools')}
-          />
+          {REMINDER_ROWS.map((r, i) => (
+            <View key={r.key}>
+              {i > 0 ? <Divider /> : null}
+              <SettingRow
+                icon="bell"
+                label={t(r.labelKey)}
+                trailing={
+                  <AppToggle
+                    value={reminders[r.key]}
+                    onValueChange={(v) => onToggleReminder(r.key, v)}
+                    accessibilityLabel={t(r.labelKey)}
+                  />
+                }
+              />
+            </View>
+          ))}
         </AppCard>
 
-        {/* Home screen  choose which sections Home shows */}
+        {/* 8. Home Customization */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
           {t('homeSettingsTitle')}
         </AppText>
@@ -517,73 +598,18 @@ export function SettingsScreen(): React.JSX.Element {
           ))}
         </AppCard>
 
-        {/* Reminders */}
+        {/* 9. About & DevTools */}
         <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
-          {t('reminders')}
+          {t('appVersion')}
         </AppText>
         <AppCard compact>
-          {REMINDER_ROWS.map((r, i) => (
-            <View key={r.key}>
-              {i > 0 ? <Divider /> : null}
-              <SettingRow
-                icon="bell"
-                label={t(r.labelKey)}
-                trailing={
-                  <AppToggle
-                    value={reminders[r.key]}
-                    onValueChange={(v) => onToggleReminder(r.key, v)}
-                    accessibilityLabel={t(r.labelKey)}
-                  />
-                }
-              />
-            </View>
-          ))}
-        </AppCard>
-        {/* Sadaqah — charity % of profit (profit split itself is decided in
-            the Settle Up wizard, per project). */}
-        <AppText size="sm" weight="bold" color="textSecondary" style={styles.sectionTitle}>
-          {t('donationPctLabel')}
-        </AppText>
-        <AppCard compact>
-          {/* Donation %  charity share deducted from each profit */}
-          <View style={styles.row}>
-            <View style={styles.iconChip}>
-              <AppIcon name="investor" size={24} color="primary" />
-            </View>
-            <AppText size="md" weight="semibold" style={styles.rowLabel}>
-              {t('donationPctLabel')}
-            </AppText>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => setDonationPct(donationPct - 1)}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="-1%"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">
-                  −
-                </AppText>
-              </Pressable>
-              <AppText size="md" weight="bold" tabular style={styles.stepValue}>
-                {donationPct}%
-              </AppText>
-              <Pressable
-                onPress={() => setDonationPct(donationPct + 1)}
-                hitSlop={theme.touch.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="+1%"
-                style={({ pressed }) => [styles.stepBtn, pressed && styles.pressed]}
-              >
-                <AppText size="lg" weight="bold" color="primary">
-                  +
-                </AppText>
-              </Pressable>
-            </View>
-          </View>
-          <AppText size="xs" color="textSecondary" style={styles.note}>
-            {t('donationNote')}
-          </AppText>
+          <SettingRow
+            icon="info"
+            label={t('appVersion')}
+            value={`v${appVersion}`}
+            onLongPress={() => navigation.navigate('DevTools')}
+            accessibilityHint="Long press for DevTools"
+          />
         </AppCard>
       </ScrollView>
 
@@ -673,6 +699,7 @@ export function SettingsScreen(): React.JSX.Element {
           setAiTest('idle');
         }}
       />
+
       <SelectSheet
         visible={modelSheet}
         onClose={() => setModelSheet(false)}
@@ -686,6 +713,7 @@ export function SettingsScreen(): React.JSX.Element {
           setAiTest('idle');
         }}
       />
+
       <AppSheet
         visible={aiEdit !== null}
         onClose={() => setAiEdit(null)}
@@ -716,6 +744,7 @@ export function SettingsScreen(): React.JSX.Element {
 interface SettingRowProps {
   icon: IconKey;
   label: string;
+  subtitle?: string;
   /** Read-only value shown on the right (mutually exclusive with `trailing`). */
   value?: string;
   /** Custom trailing control (e.g. a Switch). */
@@ -723,16 +752,19 @@ interface SettingRowProps {
   onPress?: () => void;
   /** Hidden affordance (e.g. long-press app version to open Dev Tools). */
   onLongPress?: () => void;
+  accessibilityHint?: string;
 }
 
-/** One settings line: leading icon chip + label, optional value / control. */
+/** One settings line: leading icon chip + label with optional subtitle, optional value / control. */
 function SettingRow({
   icon,
   label,
+  subtitle,
   value,
   trailing,
   onPress,
   onLongPress,
+  accessibilityHint,
 }: SettingRowProps): React.JSX.Element {
   const theme = useTheme();
   const styles = makeStyles(theme);
@@ -740,11 +772,18 @@ function SettingRow({
   const body = (
     <View style={styles.row}>
       <View style={styles.iconChip}>
-        <AppIcon name={icon} size={24} color="primary" />
+        <AppIcon name={icon} size={22} color="primary" />
       </View>
-      <AppText size="md" weight="semibold" style={styles.rowLabel}>
-        {label}
-      </AppText>
+      <View style={styles.rowLabelWrap}>
+        <AppText size="md" weight="semibold">
+          {label}
+        </AppText>
+        {subtitle ? (
+          <AppText size="xs" color="textSecondary">
+            {subtitle}
+          </AppText>
+        ) : null}
+      </View>
       {trailing ? (
         trailing
       ) : (
@@ -754,7 +793,7 @@ function SettingRow({
               {value}
             </AppText>
           ) : null}
-          {onPress ? <AppIcon name="forward" size={22} color="textSecondary" /> : null}
+          {onPress ? <AppIcon name="forward" size={20} color="textSecondary" /> : null}
         </View>
       )}
     </View>
@@ -766,7 +805,8 @@ function SettingRow({
         onPress={onPress}
         onLongPress={onLongPress}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={`${label}${value ? `, ${value}` : ''}${subtitle ? `, ${subtitle}` : ''}`}
+        accessibilityHint={accessibilityHint}
         hitSlop={theme.touch.hitSlop}
         style={({ pressed }) => (pressed ? styles.pressed : undefined)}
       >
@@ -791,6 +831,7 @@ const makeStyles = (theme: Theme) =>
     },
     content: {
       padding: theme.spacing.lg,
+      paddingBottom: theme.spacing.xxl + 40,
       gap: theme.spacing.md,
     },
     sectionTitle: {
@@ -803,15 +844,16 @@ const makeStyles = (theme: Theme) =>
       gap: theme.spacing.md,
     },
     iconChip: {
-      width: 40,
-      height: 40,
+      width: 38,
+      height: 38,
       borderRadius: theme.radius.md,
       backgroundColor: theme.colors.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    rowLabel: {
+    rowLabelWrap: {
       flex: 1,
+      gap: 2,
     },
     valueWrap: {
       flexDirection: 'row',
@@ -844,6 +886,6 @@ const makeStyles = (theme: Theme) =>
     },
     note: {
       marginTop: theme.spacing.sm,
-      marginLeft: 52,
+      marginLeft: 50,
     },
   });

@@ -31,7 +31,7 @@ import {
   listCategories,
   listAllCompanyTransactions,
   listProjects,
-  resolveTxnModuleTarget,
+  batchResolveTxnModuleTargets,
   type AccountType,
   type AccountWithBalance,
   type CategoryRow,
@@ -168,8 +168,8 @@ export function CashScreen(): React.JSX.Element {
     setProjects(projs);
     setAssets(companyAssets);
     setLoaded(true);
-    const targets = await Promise.all(rows.map(async (x) => [x.id, await resolveTxnModuleTarget(x)] as const));
-    setTxnTarget(Object.fromEntries(targets.filter(([, tt]) => tt) as [string, TxnModuleTarget][]));
+    const targetMap = await batchResolveTxnModuleTargets(rows);
+    setTxnTarget(targetMap);
   }, [assetsMode]);
 
   useFocusReload(load);

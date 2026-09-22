@@ -4,11 +4,9 @@ import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { FloatingLabelInput } from '@/components/FloatingLabelInput';
-import { AmountInput, AppButton, AppHeader, AppIcon, AppText, StickyFooter } from '@/components/ui';
+import { AmountInput, AppButton, AppHeader, AppIcon, AppText, PhotoSourceSheet, StickyFooter } from '@/components/ui';
 import { createCompany } from '@/db';
 import { useTranslation } from '@/i18n';
-import { swallow } from '@/utils/log';
-import { captureReceipt } from '@/utils/photo';
 import type { RootStackParamList } from '@/navigation/types';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useTheme } from '@/theme';
@@ -29,11 +27,7 @@ export function NewCompanyScreen(): React.JSX.Element {
 
   const [name, setName] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
-
-  const pickLogo = async () => {
-    const uri = await captureReceipt().catch(swallow('newCompany:logo'));
-    if (uri) setLogoUri(uri);
-  };
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
   const [openingCash, setOpeningCash] = useState(0);
@@ -72,18 +66,25 @@ export function NewCompanyScreen(): React.JSX.Element {
             {t('companySetupBody')}
           </AppText>
           {/* Company logo — tap to add/replace (optional). */}
-          <Pressable onPress={pickLogo} accessibilityRole="button" accessibilityLabel={t('photo')} style={stylesLogo.picker}>
+          <Pressable onPress={() => setPhotoSheetOpen(true)} accessibilityRole="button" accessibilityLabel={t('photo')} style={styles.picker}>
             {logoUri ? (
-              <Image source={{ uri: logoUri }} style={stylesLogo.logo} />
+              <Image source={{ uri: logoUri }} style={styles.logo} />
             ) : (
-              <View style={stylesLogo.fallback}>
+              <View style={styles.fallback}>
                 <AppIcon name="projects" size={26} color="primary" />
               </View>
             )}
-            <View style={stylesLogo.badge}>
+            <View style={styles.badge}>
               <AppIcon name="camera" size={14} color="onAccent" />
             </View>
           </Pressable>
+
+          <PhotoSourceSheet
+            visible={photoSheetOpen}
+            onClose={() => setPhotoSheetOpen(false)}
+            onSelect={(uri) => setLogoUri(uri)}
+            title={t('companyLogo')}
+          />
 
           <FloatingLabelInput label={t('companyName')} value={name} onChangeText={setName} />
           <FloatingLabelInput label={t('ownerName')} value={ownerName} onChangeText={setOwnerName} />
@@ -122,29 +123,25 @@ const makeStyles = (theme: Theme) =>
     screen: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
     content: { padding: theme.spacing.lg, paddingHorizontal: theme.spacing.page, gap: theme.spacing.md },
+    picker: { alignSelf: 'center' },
+    logo: { width: 72, height: 72, borderRadius: 20 },
+    fallback: {
+      width: 72,
+      height: 72,
+      borderRadius: 20,
+      backgroundColor: theme.colors.track,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badge: {
+      position: 'absolute',
+      right: -4,
+      bottom: -4,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: theme.colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   });
-
-/** Shared look for the tappable company-logo picker (both create forms). */
-const stylesLogo = StyleSheet.create({
-  picker: { alignSelf: 'center' },
-  logo: { width: 72, height: 72, borderRadius: 20 },
-  fallback: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: 'rgba(127,127,127,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badge: {
-    position: 'absolute',
-    right: -4,
-    bottom: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#2E7D32',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

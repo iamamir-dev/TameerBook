@@ -38,6 +38,7 @@ export { AccountPickerRow } from './AccountPickerRow';
 export { LabelValueRow } from './LabelValueRow';
 export { MoneyEntrySheet } from './MoneyEntrySheet';
 export { ReceiptPhotoField } from './ReceiptPhotoField';
+export { PhotoSourceSheet, type PhotoSourceSheetProps } from './PhotoSourceSheet';
 export { AddPartySheet } from './AddPartySheet';
 export { ImageLightbox } from './ImageLightbox';
 export { ICONS, iconFor, type GlyphName, type IconKey } from './icons';

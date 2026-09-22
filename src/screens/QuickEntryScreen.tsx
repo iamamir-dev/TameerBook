@@ -333,7 +333,12 @@ function DraggableTile({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.tileWrap, { width: cellW, height: TILE_H }, animStyle]}>
+      <Animated.View
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[styles.tileWrap, { width: cellW, height: TILE_H }, animStyle]}
+      >
         <View style={styles.tile}>
           <View style={[styles.tileIcon, { backgroundColor: softToneColor(theme, tile.tone) }]}>
             <AppIcon name={tile.icon} size={30} color={tile.tone} />

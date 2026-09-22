@@ -756,4 +756,8 @@ export const ur: TranslationKeys = {
   aiNoPoFound: 'کوئی کھلا پرچیز آرڈر نہیں ملا۔ PO نمبر یا سپلائر بتائیں۔',
   aiNoSaleYet: 'اس پروجیکٹ کی فروخت ابھی طے نہیں۔ پہلے خریدار اور قیمت درج کریں۔',
   aiFillMissing: 'نیچے باقی تفصیل بھریں',
+  photoSourceTitle: 'تصویر شامل کریں',
+  photoFromCamera: 'کیمرہ سے تصویر لیں',
+  photoFromGallery: 'گیلری سے تصویر چنیں',
+  companyLogo: 'کمپنی لوگو',
 };

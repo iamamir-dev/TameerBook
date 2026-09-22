@@ -17,6 +17,7 @@ import {
   SelectSheet,
   StickyFooter,
   Toast,
+  PhotoSourceSheet,
   type IconKey,
   type MaterialSelection,
   type SelectOption,
@@ -42,7 +43,6 @@ import type { Theme } from '@/theme/theme';
 import { formatDisplayDate, todayISO } from '@/utils/date';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
-import { captureReceipt } from '@/utils/photo';
 import type { UnitDef } from '@/utils/units';
 import { PROVIDERS, billToMaterialPrefill, billToPurchaseOrderPrefill } from '@/ai';
 import { AI_ERROR_KEY, useBillReader } from '@/modules/assistant';
@@ -82,6 +82,7 @@ export function MaterialEntryScreen(): React.JSX.Element {
   const [partyId, setPartyId] = useState<string | null>(prefill?.partyId ?? null);
   const [date, setDate] = useState(prefill?.date ?? todayISO().slice(0, 10));
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [photoSheet, setPhotoSheet] = useState(false);
   // A prefilled total only when qty × rate can't produce it.
   const [totalOverride, setTotalOverride] = useState(prefill?.amount && !(prefill.qty && prefill.rate) ? prefill.amount : 0);
 
@@ -363,15 +364,20 @@ export function MaterialEntryScreen(): React.JSX.Element {
               ) : null}
             </>
           ) : (
-            <AppButton
-              label={t('billPhoto')}
-              icon="camera"
-              variant="secondary"
-              onPress={async () => {
-                const uri = await captureReceipt().catch(swallow('material:receipt'));
-                if (uri) setReceiptUri(uri);
-              }}
-            />
+            <>
+              <AppButton
+                label={t('billPhoto')}
+                icon="camera"
+                variant="secondary"
+                onPress={() => setPhotoSheet(true)}
+              />
+              <PhotoSourceSheet
+                visible={photoSheet}
+                onClose={() => setPhotoSheet(false)}
+                onSelect={(uri) => setReceiptUri(uri)}
+                title={t('billPhoto')}
+              />
+            </>
           )}
         </ScrollView>
 

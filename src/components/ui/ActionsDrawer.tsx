@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSheetAnimation } from '@/hooks';
+import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
@@ -28,49 +29,82 @@ interface ActionsDrawerProps {
 }
 
 /**
- * THE app-wide actions drawer: a bottom sheet listing a screen's money
- * actions as icon rows. Every detail screen opens it from a round green "+"
- * beside its history/ledger heading (see `AddActionButton`), replacing the
- * old stacks of full-width buttons that pushed content off screen.
+ * Modern app-wide actions drawer: a bottom sheet listing a screen's actions
+ * as polished icon rows with consistent touch feedback.
  */
 export function ActionsDrawer({ visible, onClose, title, actions }: ActionsDrawerProps): React.JSX.Element {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const styles = makeStyles(theme);
   const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(visible);
 
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={[styles.backdrop, backdropStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('cancel')}
+        />
       </Animated.View>
-      <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-        {/* Title + ✕ header, ruled off from the option rows (Vyapar-style). */}
-        <View style={styles.header}>
-          <AppText size="lg" weight="bold" numberOfLines={1} style={styles.flex}>
-            {title ?? ''}
-          </AppText>
-          <Pressable onPress={onClose} hitSlop={theme.touch.hitSlop} accessibilityRole="button" style={({ pressed }) => pressed && styles.dim}>
-            <AppIcon name="close" size={22} color="textSecondary" />
-          </Pressable>
-        </View>
-        {actions.map((a, i) => (
-          <Pressable
-            key={a.label}
-            onPress={() => {
-              onClose();
-              a.onPress();
-            }}
-            disabled={a.loading}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.row, i > 0 && styles.rowRule, (pressed || a.loading) && styles.dim]}
-          >
-            <AppIcon name={a.icon} size={20} color="textPrimary" />
-            <AppText size="md" weight="semibold" style={styles.flex}>
-              {a.label}
+      <Animated.View
+        onLayout={onSheetLayout}
+        style={[styles.sheet, sheetStyle, { paddingBottom: insets.bottom + theme.spacing.lg }]}
+      >
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('cancel')}
+          style={styles.grabberArea}
+        >
+          <View style={styles.grabber} />
+        </Pressable>
+
+        {title ? (
+          <View style={styles.header}>
+            <AppText size="lg" weight="bold" numberOfLines={1} style={styles.flex}>
+              {title}
             </AppText>
-          </Pressable>
-        ))}
+            <Pressable
+              onPress={onClose}
+              hitSlop={theme.touch.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel={t('cancel')}
+              style={({ pressed }) => pressed && styles.dim}
+            >
+              <AppIcon name="close" size={22} color="textSecondary" />
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.actionsList}>
+          {actions.map((a, i) => (
+            <Pressable
+              key={a.label}
+              onPress={() => {
+                onClose();
+                a.onPress();
+              }}
+              disabled={a.loading}
+              accessibilityRole="button"
+              accessibilityLabel={a.label}
+              style={({ pressed }) => [
+                styles.row,
+                (pressed || a.loading) && styles.rowPressed,
+              ]}
+            >
+              <View style={styles.iconCircle}>
+                <AppIcon name={a.icon} size={20} color="primary" />
+              </View>
+              <AppText size="md" weight="semibold" style={styles.flex}>
+                {a.label}
+              </AppText>
+              <AppIcon name="forward" size={16} color="textSecondary" />
+            </Pressable>
+          ))}
+        </View>
       </Animated.View>
     </Modal>
   );
@@ -111,31 +145,58 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: theme.radius.hero,
       borderTopRightRadius: theme.radius.hero,
+      borderTopWidth: 1,
+      borderColor: theme.colors.border,
       paddingHorizontal: theme.spacing.lg,
       ...theme.shadows.raised,
+    },
+    grabberArea: {
+      alignItems: 'center',
+      paddingVertical: theme.spacing.sm,
+      width: '100%',
+    },
+    grabber: {
+      width: 44,
+      height: 5,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.track,
     },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,
-      paddingTop: theme.spacing.lg,
+      paddingTop: theme.spacing.xs,
       paddingBottom: theme.spacing.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.colors.border,
+      marginBottom: theme.spacing.xs,
+    },
+    actionsList: {
+      gap: theme.spacing.xs,
+      marginTop: theme.spacing.xs,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,
       minHeight: theme.touch.minTarget,
-      paddingHorizontal: theme.spacing.xs,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.sm,
+      borderRadius: theme.radius.md,
     },
-    rowRule: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: theme.colors.border,
+    rowPressed: {
+      backgroundColor: theme.colors.track,
+      opacity: 0.8,
+    },
+    iconCircle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: theme.colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     dim: { opacity: 0.7 },
-    // Same look as the AppHeader action chip, so every "+" in the app matches.
     fab: {
       width: 40,
       height: 40,

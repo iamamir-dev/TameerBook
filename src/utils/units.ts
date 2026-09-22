@@ -41,12 +41,15 @@ export function toSecondaryQty(primaryQty: number, u: UnitDef): number {
  * Human quantity string in the primary unit, e.g. "50 kg". When a secondary
  * unit exists, append the equivalent: "50 kg (50,000 g)".
  */
-export function formatQty(primaryQty: number, u: UnitDef): string {
+export function formatUnitQty(primaryQty: number, u: UnitDef): string {
   const grp = (n: number) => n.toLocaleString('en-PK');
   const base = u.primary ? `${grp(primaryQty)} ${u.primary}` : grp(primaryQty);
   if (!hasSecondary(u)) return base;
   return `${base} (${grp(toSecondaryQty(primaryQty, u))} ${u.secondary})`;
 }
+
+/** @deprecated Use `formatUnitQty` to avoid collision with `money.ts#formatQty` */
+export const formatQty = formatUnitQty;
 
 const grpNum = (n: number): string => {
   const rounded = Math.round(n * 100) / 100;

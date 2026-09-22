@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatQty, formatSplitQty, hasSecondary, toPrimaryQty, toSecondaryQty, type UnitDef } from './units';
+import { formatSplitQty, formatUnitQty, hasSecondary, toPrimaryQty, toSecondaryQty, type UnitDef } from './units';
 
 const KG: UnitDef = { primary: 'kg', secondary: 'g', factor: 1000 };
 const BORI: UnitDef = { primary: 'bori', secondary: null, factor: null };
@@ -44,8 +44,8 @@ describe('units', () => {
   });
 
   it('formats qty with the equivalent secondary', () => {
-    expect(formatQty(50, KG)).toBe('50 kg (50,000 g)');
-    expect(formatQty(5, BORI)).toBe('5 bori');
-    expect(formatQty(3, NONE)).toBe('3');
+    expect(formatUnitQty(50, KG)).toBe('50 kg (50,000 g)');
+    expect(formatUnitQty(5, BORI)).toBe('5 bori');
+    expect(formatUnitQty(3, NONE)).toBe('3');
   });
 });

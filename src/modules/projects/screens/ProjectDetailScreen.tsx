@@ -13,6 +13,7 @@ import {
   AppIcon,
   AppText,
   LoadErrorState,
+  PhotoSourceSheet,
   type DrawerAction,
   type PhaseMetric,
 } from '@/components/ui';
@@ -34,7 +35,6 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useTheme } from '@/theme';
 import { swallow } from '@/utils/log';
 import { formatRupees } from '@/utils/money';
-import { captureReceipt } from '@/utils/photo';
 
 import { AddPlotSheet } from '../components/AddPlotSheet';
 import { PhaseCardsSection } from '../components/PhaseCardsSection';
@@ -72,6 +72,7 @@ export function ProjectDetailScreen(): React.JSX.Element {
   const [attachOpen, setAttachOpen] = useState(false);
   const [plotSheetOpen, setPlotSheetOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
 
   const project = summary?.project ?? null;
   const completed = project?.status === 'COMPLETED';
@@ -137,15 +138,15 @@ export function ProjectDetailScreen(): React.JSX.Element {
     await Promise.all([reload(), refreshProjects().catch(swallow('project:refresh'))]);
   };
 
+  const onPhotoSelected = async (uri: string) => {
+    await runSave(async () => {
+      await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
+      await reload();
+    });
+  };
+
   const onCapturePhoto = () => {
-    void (async () => {
-      const uri = await captureReceipt().catch(swallow('project:capture'));
-      if (!uri) return;
-      await runSave(async () => {
-        await addDocument({ entityType: 'site_photo', entityId: projectId, fileUri: uri, mime: 'image/jpeg' });
-        await reload();
-      });
-    })();
+    setPhotoSheetOpen(true);
   };
 
   const onSelectPlot = async (plotId: string) => {
@@ -346,6 +347,13 @@ export function ProjectDetailScreen(): React.JSX.Element {
           setPlotSheetOpen(false);
           navigation.navigate('NewPlot', { forProjectId: projectId });
         }}
+      />
+
+      <PhotoSourceSheet
+        visible={photoSheetOpen}
+        onClose={() => setPhotoSheetOpen(false)}
+        onSelect={onPhotoSelected}
+        title={t('todayPhotos')}
       />
     </View>
   );

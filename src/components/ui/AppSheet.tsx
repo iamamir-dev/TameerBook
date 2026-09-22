@@ -17,6 +17,7 @@ import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
 import type { Theme } from '@/theme/theme';
 
+import { AppIcon } from './AppIcon';
 import { AppText } from './AppText';
 
 interface AppSheetProps {
@@ -37,13 +38,8 @@ interface AppSheetProps {
 }
 
 /**
- * The one bottom-sheet shell for the whole app.
- *
- * Keyboard handling (precise, no gaps): the sheet is lifted to sit just above
- * the keyboard (`root` gets bottom padding = keyboard height) AND its max height
- * shrinks by the same amount, so the header stays pinned on screen, the footer
- * (Save) sits right above the keyboard, and the body scrolls between them —
- * with no empty space and nothing pushed off-screen.
+ * Universal bottom-sheet shell: guarantees that active inputs and action buttons
+ * are NEVER hidden behind the keyboard on both Android and iOS.
  */
 export function AppSheet({
   visible,
@@ -53,7 +49,7 @@ export function AppSheet({
   children,
   footer,
   scroll = true,
-  maxHeightRatio = 0.9,
+  maxHeightRatio = 0.88,
 }: AppSheetProps): React.JSX.Element {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -62,18 +58,23 @@ export function AppSheet({
   const styles = makeStyles(theme);
   const { mounted, backdropStyle, sheetStyle, onSheetLayout } = useSheetAnimation(visible);
 
-  // Keyboard lift is iOS-only: Android is configured with
-  // `softwareKeyboardLayoutMode: "resize"`, so the OS already shrinks the window
-  // above the keyboard. Also lifting manually there double-compensated and
-  // pushed tall sheets off the top of the screen.
+  // Cross-platform keyboard avoidance:
+  // On iOS, listen to `keyboardWillShow/Hide` for synced animation.
+  // On Android, listen to `keyboardDidShow/Hide` so React Native Modal Dialog windows
+  // reliably lift inputs and footers above the software keyboard.
   const [kb, setKb] = useState(0);
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    const show = Keyboard.addListener('keyboardWillShow', (e) => setKb(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKb(0));
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKb(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKb(0);
+    });
     return () => {
-      show.remove();
-      hide.remove();
+      showSub.remove();
+      hideSub.remove();
     };
   }, []);
 
@@ -82,6 +83,8 @@ export function AppSheet({
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="none"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       showsVerticalScrollIndicator={false}
       bounces={false}
     >
@@ -91,34 +94,58 @@ export function AppSheet({
     <View style={styles.staticBody}>{children}</View>
   );
 
-  // Keep the button clear of the bottom: the reported keyboard height excludes
-  // the Android nav-bar strip, so without this the button slightly overlaps the
-  // keyboard. `insets.bottom + md` lifts it clear (and is the safe gap when the
-  // keyboard is closed too).
   const footerPadBottom = insets.bottom + theme.spacing.md;
 
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <View style={[styles.root, { paddingBottom: kb }]}>
         <Animated.View style={[styles.backdrop, backdropStyle]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('cancel')} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('cancel')}
+          />
         </Animated.View>
 
-        <Animated.View onLayout={onSheetLayout} style={[styles.sheet, sheetStyle, { maxHeight: screenHeight * maxHeightRatio - kb }]}>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t('cancel')} style={styles.grabberArea}>
+        <Animated.View
+          onLayout={onSheetLayout}
+          style={[
+            styles.sheet,
+            sheetStyle,
+            { maxHeight: Math.max(200, screenHeight * maxHeightRatio - kb) },
+          ]}
+        >
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('cancel')}
+            style={styles.grabberArea}
+          >
             <View style={styles.grabber} />
           </Pressable>
 
           {title ? (
             <View style={styles.header}>
-              <AppText size="lg" weight="bold" center numberOfLines={1}>
-                {title}
-              </AppText>
-              {subtitle ? (
-                <AppText size="sm" color="textSecondary" center numberOfLines={1}>
-                  {subtitle}
+              <View style={styles.headerTextWrap}>
+                <AppText size="lg" weight="bold" numberOfLines={1}>
+                  {title}
                 </AppText>
-              ) : null}
+                {subtitle ? (
+                  <AppText size="xs" color="textSecondary" numberOfLines={1}>
+                    {subtitle}
+                  </AppText>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={theme.touch.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel={t('cancel')}
+                style={({ pressed }) => [styles.closeBtn, pressed && styles.dim]}
+              >
+                <AppIcon name="close" size={20} color="textSecondary" />
+              </Pressable>
             </View>
           ) : null}
 
@@ -143,12 +170,40 @@ const makeStyles = (theme: Theme) =>
       backgroundColor: theme.colors.card,
       borderTopLeftRadius: theme.radius.hero,
       borderTopRightRadius: theme.radius.hero,
+      borderTopWidth: 1,
+      borderColor: theme.colors.border,
       paddingHorizontal: theme.spacing.xl,
       ...theme.shadows.raised,
     },
-    grabberArea: { alignItems: 'center', paddingVertical: theme.spacing.sm },
-    grabber: { width: 40, height: 5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.track },
-    header: { alignItems: 'center', gap: 2, marginBottom: theme.spacing.md },
+    grabberArea: {
+      alignItems: 'center',
+      paddingVertical: theme.spacing.sm,
+      width: '100%',
+    },
+    grabber: {
+      width: 44,
+      height: 5,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.track,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingBottom: theme.spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+      marginBottom: theme.spacing.md,
+    },
+    headerTextWrap: {
+      flex: 1,
+      gap: 2,
+    },
+    closeBtn: {
+      padding: theme.spacing.xs,
+      marginLeft: theme.spacing.sm,
+    },
+    dim: { opacity: 0.6 },
     scroll: { flexGrow: 0, flexShrink: 1 },
     scrollContent: { gap: theme.spacing.md, paddingBottom: theme.spacing.sm },
     staticBody: { gap: theme.spacing.md },

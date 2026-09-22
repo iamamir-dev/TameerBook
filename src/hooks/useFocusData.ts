@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useFocusReload, type FocusReload } from './useFocusReload';
 
@@ -10,20 +10,23 @@ export interface FocusData<T> extends FocusReload {
 }
 
 /**
- * The standard list/detail data hook. Replaces the ubiquitous
- * `const [a,setA] = useState(); const [b,setB] = useState(); … load = () =>
- * Promise.all([...]).then(([a,b]) => { setA(a); setB(b); })` soup with a single
- * typed struct: build one `{ ... }` in the loader, get it back as `data`.
+ * The standard list/detail data hook. Replaces multi-state loader boilerplate
+ * with a single typed struct: build one `{ ... }` in the loader, get it back as `data`.
  *
- * `loader` MUST be a `useCallback` (its identity gates the focus/version effects
- * in `useFocusReload`). Returns everything `useFocusReload` does, plus `data`.
+ * Uses a ref for `loader` so passing inline closures will not cause infinite re-render loops.
  */
 export function useFocusData<T>(loader: () => Promise<T>, initial: T): FocusData<T> {
   const [data, setData] = useState<T>(initial);
+  const loaderRef = useRef(loader);
+
+  useEffect(() => {
+    loaderRef.current = loader;
+  }, [loader]);
 
   const load = useCallback(async () => {
-    setData(await loader());
-  }, [loader]);
+    const result = await loaderRef.current();
+    setData(result);
+  }, []);
 
   const focus = useFocusReload(load);
 
