@@ -76,7 +76,7 @@ export function forgetFacts(m: UserMemory): UserMemory {
 /** The "about this user" block for the system prompt ('' when there is nothing worth saying). */
 export function memoryBlock(m: UserMemory): string {
   const lines: string[] = [];
-  if (m.defaults.account) lines.push(`Usually pays from: ${m.defaults.account} (use it when the user names no account)`);
+  if (m.defaults.account) lines.push(`Usually pays from: ${m.defaults.account} (name it first when asking which account; never assume it)`);
   if (m.defaults.project) lines.push(`Working on lately: ${m.defaults.project} (assume it when a project is not named and only one fits)`);
   for (const f of m.facts) lines.push(`${f.text} (${f.at})`);
   return lines.length ? `ABOUT THIS USER (learned earlier; use quietly, never recite)\n- ${lines.join('\n- ')}` : '';

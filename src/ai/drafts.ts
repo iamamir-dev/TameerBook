@@ -278,6 +278,12 @@ const ref = <T extends Named>(q: string | undefined, list: readonly T[], unresol
   return { id: m.item.id, name: m.item.name };
 };
 
+/** The categories an entry can book against: the given type, minus headings (anything another category hangs under). */
+export function leafCategories(world: WorldNames, type: 'INCOME' | 'EXPENSE'): CategoryNamed[] {
+  const parents = new Set(world.categories.map((c) => c.parentId).filter(Boolean));
+  return world.categories.filter((c) => c.type === type && !parents.has(c.id));
+}
+
 /** Match every name in the draft to a real row; unknown names are reported, not guessed. */
 export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
   const unresolved: string[] = [];
@@ -285,8 +291,8 @@ export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
   switch (draft.kind) {
     case 'expense':
     case 'income': {
-      const cats = world.categories.filter((c) => c.type === (draft.kind === 'expense' ? 'EXPENSE' : 'INCOME'));
-      r.category = ref(draft.category, cats, unresolved);
+      // Only bookable leaves: a heading ("Materials") organises, it never holds an entry.
+      r.category = ref(draft.category, leafCategories(world, draft.kind === 'expense' ? 'EXPENSE' : 'INCOME'), unresolved);
       r.project = ref(draft.project, world.projects, unresolved);
       r.party = ref(draft.party, world.parties, unresolved);
       r.account = ref(draft.account, world.accounts, unresolved);
@@ -360,8 +366,7 @@ export function resolveDraft(draft: Draft, world: WorldNames): ResolvedDraft {
     case 'plotExpense': {
       r.plot = ref(draft.plot, world.plots, unresolved);
       r.account = ref(draft.account, world.accounts, unresolved);
-      const cats = world.categories.filter((c) => c.type === 'EXPENSE');
-      r.category = ref(draft.category, cats, []);
+      r.category = ref(draft.category, leafCategories(world, 'EXPENSE'), []);
       break;
     }
     case 'setSale':

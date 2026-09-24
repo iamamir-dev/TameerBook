@@ -20,7 +20,8 @@ import { useTheme } from '@/theme';
 import { AnswerCard } from '../components/AnswerCard';
 import { ChatWallpaper } from '../components/ChatWallpaper';
 import { Composer } from '../components/Composer';
-import { DraftCard } from '../components/DraftCard';
+import { DraftActions } from '../components/DraftActions';
+import { DraftSheet } from '../components/DraftSheet';
 import { InsightsCard } from '../components/InsightsCard';
 import { ChoiceList } from '../components/ChoiceList';
 import { MessageActions } from '../components/MessageActions';
@@ -31,7 +32,8 @@ import { useInsights } from '../hooks/useInsights';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { AI_ERROR_KEY } from '../utils/aiErrors';
 import { navigateToTarget } from '../utils/navigateTarget';
-import { openScreen } from '../utils/openScreen';
+import { isNo, isYes, pendingDraft } from '../utils/confirmWords';
+import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 import { turnToText } from '../utils/turnText';
 import { TurnPiece } from '../components/TurnPiece';
 import { speak, stopSpeaking } from '../utils/speech';
@@ -64,12 +66,17 @@ export function AssistantScreen(): React.JSX.Element {
   const configured = useSettingsStore((s) => aiConfigured(s));
   const ready = aiEnabled && configured;
 
-  const { turns, restoredIds, busy, working, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget } = useAssistant();
+  const { turns, restoredIds, busy, working, ask, clear, settle, retry, pick, echo, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
   // Replies that fetched several cards show one; the rest unfold on request.
   const [moreCards, setMoreCards] = useState<ReadonlySet<string>>(new Set());
+  // The write whose confirmation popup is open (Save button or a typed "haan").
+  const [confirm, setConfirm] = useState<{ turnId: string; index: number } | null>(null);
+  const confirmTurn = confirm ? turns.find((x) => x.id === confirm.turnId) : undefined;
+  const confirmDraft = confirmTurn && confirmTurn.role === 'assistant' && 'drafts' in confirmTurn ? confirmTurn.drafts[confirm!.index] : undefined;
+  const confirmLinkedPo = confirmTurn && confirmTurn.role === 'assistant' && 'drafts' in confirmTurn ? confirmTurn.drafts.slice(0, confirm!.index).map((_, k) => confirmTurn.settled?.[k]?.poId).filter(Boolean).pop() ?? null : null;
   const scroll = useRef<ScrollView>(null);
 
   // Photos queued for the next message (compressed by the shared photo utils).
@@ -148,6 +155,18 @@ export function AssistantScreen(): React.JSX.Element {
     const photos = attachments;
     setInput('');
     setAttachments([]);
+    // "haan" / "nahi" while a write waits for confirmation answers that write, no model call.
+    const pending = photos.length === 0 ? pendingDraft(turns) : null;
+    if (pending && isYes(text)) {
+      echo(text.trim());
+      setConfirm(pending);
+      return;
+    }
+    if (pending && isNo(text)) {
+      echo(text.trim());
+      settle(pending.turnId, pending.index, 'rejected');
+      return;
+    }
     if (photos.length === 0) {
       void ask(text);
       return;
@@ -218,25 +237,35 @@ export function AssistantScreen(): React.JSX.Element {
                   ) : null}
                   {/* Several actions from one message (a bill: order → delivery → payment) run one step at a time: the next card
                       appears only after the previous is accepted or rejected, because later steps depend on the earlier ones. */}
-                  {turn.drafts.map((d, di) => {
+                  {/* The message carries the details; only the question sits under it. A settled write leaves nothing behind:
+                      its outcome is a message of its own. */}
+                  {turn.drafts.map((_, di) => {
                     const previousSettled = turn.drafts.slice(0, di).every((_, k) => !!turn.settled?.[k]);
-                    if (!previousSettled) return null;
-                    // The order created / touched by an earlier accepted step, so delivery and payment hit the same one.
-                    const linkedPo = turn.drafts.slice(0, di).map((_, k) => turn.settled?.[k]?.poId).filter(Boolean).pop() ?? null;
+                    if (!previousSettled || turn.settled?.[di]) return null;
                     return (
                       <View key={`${turn.id}-dw${di}`} style={styles.replyPiece}>
-                      <DraftCard
-                        key={`${turn.id}-d${di}`}
-                        resolved={d}
-                        settled={turn.settled?.[di]}
-                        step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
-                        poId={linkedPo}
-                        onSettled={(status, message, poId, used) => settle(turn.id, di, status, message, poId, used)}
-                        onDone={showToast}
-                      />
+                        <DraftActions
+                          step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
+                          disabled={busy}
+                          onSave={() => setConfirm({ turnId: turn.id, index: di })}
+                          onReject={() => settle(turn.id, di, 'rejected')}
+                        />
                       </View>
                     );
                   })}
+                  {turn.links?.length ? (
+                    <View style={styles.replyPiece}>
+                      {turn.links.map((screen) => (
+                        <Pressable key={screen} onPress={() => openScreen(navigation, screen)} accessibilityRole="button" style={({ pressed }) => [styles.linkRow, pressed && styles.chipPressed]}>
+                          <AppIcon name="add" size={16} color="accent" />
+                          <AppText size="sm" weight="bold" color="accent">
+                            {t(OPEN_SCREEN_LABEL[screen])}
+                          </AppText>
+                          <AppIcon name="forward" size={14} color="accent" />
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
                   {turn.open ? <OpenBubble screen={turn.open} /> : null}
                   </View>
                   <BubbleTail side="left" color={theme.colors.card} />
@@ -405,6 +434,18 @@ export function AssistantScreen(): React.JSX.Element {
           setAttachSheet(false);
           addPhoto(o.id as 'camera' | 'gallery');
         }}
+      />
+      <DraftSheet
+        visible={confirm !== null && !!confirmDraft}
+        onClose={() => setConfirm(null)}
+        resolved={confirmDraft ?? null}
+        step={confirmTurn && confirmTurn.role === 'assistant' && 'drafts' in confirmTurn && confirmTurn.drafts.length > 1 ? { index: confirm!.index + 1, total: confirmTurn.drafts.length } : undefined}
+        poId={confirmLinkedPo}
+        onSettled={(status, message, poId, used, receipt) => {
+          if (confirm) settle(confirm.turnId, confirm.index, status, message, poId, used, receipt);
+          setConfirm(null);
+        }}
+        onDone={showToast}
       />
       <Toast message={toast} />
     </View>

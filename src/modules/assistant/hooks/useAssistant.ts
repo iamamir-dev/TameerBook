@@ -24,6 +24,7 @@ import {
   type ResolvedDraft,
 } from '@/ai';
 import { loadSettings, saveSetting } from '@/db';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { todayISO } from '@/utils/date';
 import { reportError, swallow } from '@/utils/log';
@@ -50,6 +51,8 @@ export type Turn =
       options: string[];
       /** Which option the user tapped (kept so the list shows the choice). */
       picked?: string;
+      /** Screens the reply pointed at (Add buttons under the message). */
+      links?: OpenScreen[];
       /** Per-draft outcome, by index (survives restarts). */
       /** Per draft: outcome, message, and the purchase order it created / touched (later steps reuse it). */
       settled?: Record<number, { status: 'accepted' | 'rejected'; message?: string; poId?: string }>;
@@ -140,6 +143,7 @@ function normalizeTurn(raw: unknown): Turn | null {
     open: typeof t.open === 'string' ? (t.open as OpenScreen) : legacyKind === 'open' && typeof t.screen === 'string' ? (t.screen as OpenScreen) : undefined,
     suggestions: Array.isArray(t.suggestions) ? (t.suggestions as string[]) : [],
     options: Array.isArray(t.options) ? (t.options as string[]) : [],
+    links: Array.isArray(t.links) ? (t.links as OpenScreen[]) : undefined,
     picked: typeof t.picked === 'string' ? t.picked : undefined,
     settled,
     usage: t.usage && typeof t.usage === 'object' && typeof (t.usage as AiUsage).inputTokens === 'number' ? (t.usage as AiUsage) : undefined,
@@ -171,8 +175,12 @@ export interface AssistantApi extends State {
   onOpen: React.MutableRefObject<((screen: OpenScreen) => void) | null>;
   /** Fires when an answer asks to be opened right away (a report / PDF). */
   onOpenTarget: React.MutableRefObject<((target: AnswerTarget) => void) | null>;
-  /** Record that a draft card was accepted or rejected (`used` = account / project chosen in the card). */
-  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => void;
+  /** Record that a write was accepted or rejected (`used` = account / project chosen in the popup; `receipt` = the message to show). */
+  settle: (turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }, receipt?: string) => void;
+  /** A plain assistant line with no model call. */
+  note: (text: string) => void;
+  /** The user's words as their bubble, when the app answers without the model. */
+  echo: (text: string) => void;
   /** Re-run the prompt behind a failed reply (replaces the error bubble). */
   retry: (turnId: string) => Promise<void>;
   /** The user tapped one of the offered choices: remember it and send it. */
@@ -266,7 +274,7 @@ export function useAssistant(): AssistantApi {
       let mem = noteLanguage(memory, guess.strong ? guess.language : null);
       for (const f of r.learned) mem = addFact(mem, f, todayISO());
       if (mem !== memory) void saveMemory(mem).catch(swallow('assistant:memory'));
-      dispatch({ type: 'push', turn: { id: turnId, role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options, usage: r.usage, at: new Date().toISOString() } });
+      dispatch({ type: 'push', turn: { id: turnId, role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options, links: r.links.length ? r.links : undefined, usage: r.usage, at: new Date().toISOString() } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);
@@ -321,7 +329,18 @@ export function useAssistant(): AssistantApi {
     void saveSetting(CHAT_KEY, '').catch(swallow('assistant:clear'));
   }, []);
 
-  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => {
+  /** A plain line from the assistant with no model call: a receipt after a save, "nothing saved" after a reject. */
+  const note = useCallback((text: string) => {
+    dispatch({ type: 'push', turn: { id: nextId(), role: 'assistant', text, cards: [], drafts: [], suggestions: [], options: [], at: new Date().toISOString() } });
+    onSpeak.current?.(text);
+  }, []);
+
+  /** What the user typed, shown as their bubble, when the app answers it without the model (a "haan" to a pending write). */
+  const echo = useCallback((text: string) => {
+    dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text, at: new Date().toISOString() } });
+  }, []);
+
+  const settle = useCallback((turnId: string, index: number, status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }, receipt?: string) => {
     // The model learns what the user did with its proposal; an accepted write also teaches the usual account / project.
     exchanges.current = recordOutcome(exchanges.current, turnId, index, status, message);
     if (status === 'accepted') {
@@ -334,7 +353,9 @@ export function useAssistant(): AssistantApi {
       }
     }
     dispatch({ type: 'settle', turnId, index, status, message, poId });
-  }, []);
+    // The strip under the message goes away; the outcome is a message of its own.
+    note(status === 'accepted' ? receipt || `✅ ${message ?? t('aiSaved')}` : t('aiNotSaved'));
+  }, [note]);
 
-  return { ...state, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget };
+  return { ...state, ask, clear, settle, retry, pick, note, echo, onSpeak, onOpen, onOpenTarget };
 }

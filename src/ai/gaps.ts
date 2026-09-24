@@ -1,4 +1,5 @@
-import type { Draft, ResolvedDraft } from './drafts';
+import { leafCategories, type Draft, type ResolvedDraft } from './drafts';
+import type { OpenScreen } from './intents';
 import { dominantScript } from './language';
 import { normalizeName } from './match';
 import type { World } from './prompts';
@@ -20,10 +21,9 @@ import type { World } from './prompts';
  * Fields that name a real thing in the user's books. If the user did not say
  * it, the assistant must not pick one: filing a purchase against the wrong
  * site is a silent, expensive error, and the model does reach for a plausible
- * name when left to itself. Account is absent on purpose (it legitimately
- * defaults to the last used one) and so is party, which may be brand new.
+ * name when left to itself. Party is absent on purpose: it may be brand new.
  */
-const GROUNDED_FIELDS = ['project', 'plot', 'worker', 'investor'] as const;
+const GROUNDED_FIELDS = ['project', 'plot', 'worker', 'investor', 'account', 'category'] as const;
 
 /** Words worth matching on: ignore the short connectives in a name. */
 const tokens = (text: string): string[] => normalizeName(text).split(' ').filter((w) => w.length >= 3);
@@ -60,7 +60,12 @@ export interface Gap {
   mustCreate: boolean;
   /** Names the user could pick from, when there are few enough to offer. */
   choices?: string[];
+  /** The screen where the user adds what is missing (the app draws an Add button under the reply). */
+  link?: OpenScreen;
 }
+
+/** Money entries book against a category, like the Entry form: the user names one or picks one. */
+const NEEDS_CATEGORY: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>(['expense', 'income', 'plotExpense']);
 
 /** Money tools: the amount is the whole point of the entry. */
 const NEEDS_AMOUNT: ReadonlySet<Draft['kind']> = new Set<Draft['kind']>([
@@ -106,6 +111,19 @@ export function draftGaps(resolved: ResolvedDraft, world: World): Gap[] {
 
   if (NEEDS_NAME.has(d.kind) && !('name' in d && d.name)) {
     gaps.push({ what: `a name for the new ${d.kind.replace('create', '').toLowerCase()}`, mustCreate: false });
+  }
+
+  // Category: the saved leaves of this type are the only answers; a word that
+  // matches none is said so, with the nearest choices and a way to add it.
+  if (NEEDS_CATEGORY.has(d.kind) && !resolved.category) {
+    const leaves = leafCategories(world, d.kind === 'income' ? 'INCOME' : 'EXPENSE');
+    const said = 'category' in d ? d.category : undefined;
+    gaps.push({
+      what: said ? `a saved category: none is called "${said}"` : 'which category this goes under',
+      mustCreate: false,
+      choices: names(leaves),
+      link: 'Categories',
+    });
   }
 
   // With exactly one project there is nothing to ask: it is the only answer,
@@ -176,26 +194,41 @@ export function draftGaps(resolved: ResolvedDraft, world: World): Gap[] {
   if (world.accounts.length === 0 && (NEEDS_AMOUNT.has(d.kind) || d.kind === 'material')) {
     gaps.push({ what: 'an account for the money to move through, and there are none yet', mustCreate: true });
   }
+  // Which account the money moves through is the user's call, never a guess:
+  // with one account there is nothing to ask, with several it is a question.
+  if (d.kind !== 'transfer' && (NEEDS_AMOUNT.has(d.kind) || d.kind === 'material') && !resolved.account && world.accounts.length >= 2) {
+    gaps.push({ what: 'which account the money moves through', mustCreate: false, choices: names(world.accounts) });
+  }
 
   return gaps;
 }
 
 /** The instruction handed back to the model when a write is not ready. */
 export function gapPrompt(gaps: readonly Gap[]): string {
-  // Only the first gap is asked about: one question per turn beats a checklist,
-  // and the rest come back on the next pass once this one is answered.
-  const first = gaps[0];
-  const choices = first.choices ?? [];
+  // Everything missing is asked in ONE message, as a checklist the user answers
+  // in one reply ("Paint, cash, Park View"), the way a good assistant takes an
+  // order: never one question per turn.
+  const create = gaps.find((g) => g.mustCreate);
+  const items = gaps.map((g, i) => `${i + 1}. ${g.what}${g.choices?.length ? ` (the ONLY choices: ${g.choices.join(' | ')})` : ''}`);
+  const single = gaps.length === 1 ? gaps[0] : null;
+  const link = gaps.find((g) => g.link)?.link;
   return [
-    `Not saved yet: this still needs ${first.what}.`,
+    `Not saved yet: this still needs ${gaps.length === 1 ? gaps[0].what : `${gaps.length} things`}.`,
     'Do NOT call this tool again yet, do not tell the user to open a screen, and do not tell them what is missing from the app.',
-    'Reply with ONE line repeating what you already understood (with the figure), then ONE short question for this.',
-    first.mustCreate
-      ? 'They have none of these, so do not point that out: simply offer to make it ("Kya main bana doon?") and, once they agree, call the matching add_ tool and then redo this write.'
-      : 'Ask for it in one short question.',
-    choices.length > 0
-      ? `The ONLY options are these, copied exactly onto an OPTIONS line: ${choices.join(' | ')}`
-      : 'There is nothing to choose from, so write no OPTIONS line at all.',
+    'Reply with ONE line repeating what you already understood (with the figure), then ask for what is missing:',
+    ...items,
+    gaps.length > 1
+      ? 'Ask for ALL of them in this one message as a numbered list, one per line, each with its emoji, its choices written into the line ("🏦 Account: Cash in Hand ya Meezan 1?"), and end with one line inviting them to answer in one message. Write no OPTIONS line.'
+      : single?.choices?.length
+        ? `Ask it in one short question and put the choices, copied exactly, on an OPTIONS line: ${single.choices.join(' | ')}`
+        : 'Ask it in one short question; write no OPTIONS line.',
+    'Also state the date you will use (today unless they said otherwise) so they can correct it.',
+    create
+      ? 'For anything they have none of, do not point that out: simply offer to make it ("Kya main bana doon?") and, once they agree, call the matching add_ tool and then redo this write.'
+      : '',
+    link
+      ? `If the one they want is not saved yet, they can add it themselves: say so in a warm, professional line ("aap yahan se nayi category add kar sakte hain") and end the reply with the line LINK: ${link} (exactly that), which the app turns into an Add button. Never describe a screen, a menu or a path.`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');

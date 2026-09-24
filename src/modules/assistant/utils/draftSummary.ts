@@ -310,3 +310,34 @@ function statusLabel(t: T, status: string): string {
   const key = STATUS_KEYS[status];
   return key ? t(key) : status;
 }
+
+/** The marker for a receipt line, by what the label means. */
+export function fieldEmoji(label: string, t: T): string {
+  const is = (...keys: TranslationKey[]) => keys.some((k) => t(k) === label);
+  if (is('amount', 'rateLabel', 'aiWage', 'openingBalance')) return '💰';
+  if (is('category')) return '🏷️';
+  if (is('projectLabel', 'projectName')) return '🏗️';
+  if (is('plotLabel', 'society', 'plotNo')) return '🏠';
+  if (is('accountLabel', 'fromAccount', 'toAccount')) return '🏦';
+  if (is('party', 'supplier', 'seller', 'investor', 'udhaar')) return '🤝';
+  if (is('laborTitle', 'markAttendance')) return '👷';
+  if (is('date')) return '📅';
+  if (is('note')) return '📝';
+  if (is('material', 'size', 'poLabelShort', 'paymentType')) return '📦';
+  if (is('name')) return '👤';
+  if (is('sellerPhone')) return '📞';
+  return '•';
+}
+
+/**
+ * The message the chat shows once a write has landed: a headline, then one
+ * line per saved fact with its marker, the same shape the model uses for the
+ * confirmation, so the two read as question and answer.
+ */
+export function receiptText(r: ResolvedDraft, t: T, extra: DraftField[], added: boolean): string {
+  const amount = draftAmount(r);
+  const lines = [`✅ ${draftTitle(r, t)} ${added ? t('aiAddedOk') : t('aiSavedOk')} 🎉`];
+  if (amount != null) lines.push(`💰 ${t('amount')}: **${formatRupees(amount)}**`);
+  for (const f of [...draftFields(r, t), ...extra]) lines.push(`${fieldEmoji(f.label, t)} ${f.label}: **${f.value}**`);
+  return lines.join('\n');
+}

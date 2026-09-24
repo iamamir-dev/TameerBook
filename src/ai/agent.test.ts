@@ -114,23 +114,32 @@ describe('splitSuggestions', () => {
       text: 'Cash: Rs 1,00,000.',
       suggestions: ['Is mahine ka kharcha', 'Akram ko kitna dena hai', 'Pending orders'],
       options: [],
+      links: [],
     });
   });
   it('leaves plain answers alone and caps at three', () => {
-    expect(splitSuggestions('Salam!')).toEqual({ text: 'Salam!', suggestions: [], options: [] });
+    expect(splitSuggestions('Salam!')).toEqual({ text: 'Salam!', suggestions: [], options: [], links: [] });
     expect(splitSuggestions('x\nSUGGEST: a | b | c | d').suggestions).toHaveLength(3);
-    expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [], options: [] });
+    expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [], options: [], links: [] });
   });
   it('keeps a spaced em dash as a separator and turns glued dashes into hyphens', () => {
     expect(splitSuggestions('**Kharcha** — Rs 5 lakh\nplot—cost and 2–3 din\nSUGGEST: Pay Akram — now')).toEqual({
       text: '**Kharcha** — Rs 5 lakh\nplot-cost and 2-3 din',
       suggestions: ['Pay Akram — now'],
       options: [],
+      links: [],
     });
+  });
+  it('lifts a LINK marker out as a screen and never shows the word', () => {
+    const r = splitSuggestions('"Paint" naam ki koi category nahi hai. Aap yahan se add kar sakte hain.\nLINK: Categories\nOPTIONS: Fuel | Cement');
+    expect(r.links).toEqual(['Categories']);
+    expect(r.options).toEqual(['Fuel', 'Cement']);
+    expect(r.text).not.toMatch(/LINK/);
+    expect(splitSuggestions('x\nLINK: Nowhere').links).toEqual([]);
   });
   it('peels OPTIONS (choices) as well, in either order', () => {
     const r = splitSuggestions('Kaunsa plot?\nOPTIONS: Plot A | Plot B\nSUGGEST: Cancel');
-    expect(r).toEqual({ text: 'Kaunsa plot?', options: ['Plot A', 'Plot B'], suggestions: ['Cancel'] });
+    expect(r).toEqual({ text: 'Kaunsa plot?', options: ['Plot A', 'Plot B'], suggestions: ['Cancel'], links: [] });
   });
 });
 

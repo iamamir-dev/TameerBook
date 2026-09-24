@@ -29,19 +29,19 @@ import { formatRupees } from '@/utils/money';
 
 import { makeStyles } from '../styled/DraftCard.styles';
 import { applyDraft, draftNeeds, type Applied, type DraftChoices } from '../utils/applyDraft';
-import { draftAmount, draftDirection, draftFields, draftTitle, type DraftField } from '../utils/draftSummary';
+import { draftAmount, draftDirection, draftFields, draftTitle, receiptText, type DraftField } from '../utils/draftSummary';
 import { navigateToTarget } from '../utils/navigateTarget';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-interface DraftCardProps {
+export interface DraftCardProps {
   /** "Step 2 of 3" when this card is one of several dependent actions from one message. */
   step?: { index: number; total: number };
   resolved: ResolvedDraft;
   /** Restored outcome (the conversation is persisted across restarts). */
   settled?: { status: 'accepted' | 'rejected'; message?: string };
   /** Fires when the user accepts (message = what was saved) or rejects. */
-  onSettled?: (status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }) => void;
+  onSettled?: (status: 'accepted' | 'rejected', message?: string, poId?: string, used?: { account?: string; project?: string }, receipt?: string) => void;
   /** Purchase order created or touched by an earlier step in the same message: later steps act on it. */
   poId?: string | null;
   /** Toast after the write lands. */
@@ -219,10 +219,13 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
       try {
         const a = await applyDraft(target, choices);
         setApplied(a);
-        onSettled?.('accepted', a.message, a.target && 'poId' in a.target ? a.target.poId : undefined, {
-          account: account?.name ?? resolved.account?.name,
-          project: project?.name ?? part?.projectName ?? resolved.project?.name,
-        });
+        onSettled?.(
+          'accepted',
+          a.message,
+          a.target && 'poId' in a.target ? a.target.poId : undefined,
+          { account: account?.name ?? resolved.account?.name, project: project?.name ?? part?.projectName ?? resolved.project?.name },
+          receiptText(target, t, pickedFields(), isCreate)
+        );
         onDone?.(a.message);
       } catch (e) {
         // Repository guards throw readable reasons ("No sale is set for this
@@ -276,17 +279,15 @@ export function DraftCard({ resolved, settled, onSettled, onDone, step, poId: li
   if (needs.account) asked.add(t('accountLabel'));
   if (needs.project || needs.workerProject) asked.add(t('projectLabel'));
   if (needs.plot || blocked) asked.add(t('plotLabel'));
-  // Once settled, what the user picked in the card is shown like any other field.
-  const picked: DraftField[] = done
-    ? [
-        ...(needs.category && category ? [{ label: t('category'), value: catName(category) }] : []),
-        ...((needs.project || needs.workerProject) && project ? [{ label: t('projectLabel'), value: project.name }] : []),
-        ...(needs.participation && part ? [{ label: t('projectLabel'), value: part.projectName }] : []),
-        ...((needs.plot || blocked) && plot ? [{ label: t('plotLabel'), value: plot.name }] : []),
-        ...(needs.account && account ? [{ label: t('accountLabel'), value: account.name }] : []),
-      ]
-    : [];
-  const shownFields = [...fields.filter((f) => !asked.has(f.label)), ...picked];
+  // What the user picked in the card, shown like any other field once settled and in the receipt.
+  const pickedFields = (): DraftField[] => [
+    ...(needs.category && category ? [{ label: t('category'), value: catName(category) }] : []),
+    ...((needs.project || needs.workerProject) && project ? [{ label: t('projectLabel'), value: project.name }] : []),
+    ...(needs.participation && part ? [{ label: t('projectLabel'), value: part.projectName }] : []),
+    ...((needs.plot || blocked) && plot ? [{ label: t('plotLabel'), value: plot.name }] : []),
+    ...(needs.account && account ? [{ label: t('accountLabel'), value: account.name }] : []),
+  ];
+  const shownFields = [...fields.filter((f) => !asked.has(f.label)), ...(done ? pickedFields() : [])];
   const statusText = done
     ? applied
       ? t('aiSaved')

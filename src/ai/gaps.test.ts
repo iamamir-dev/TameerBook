@@ -10,7 +10,10 @@ const base: World = {
   projects: [],
   plots: [],
   accounts: [{ id: 'a1', name: 'Cash in Hand' }],
-  categories: [{ id: 'c1', name: 'Cement', type: 'EXPENSE', unit: 'bori', parentId: 'c0' }],
+  categories: [
+    { id: 'c1', name: 'Cement', type: 'EXPENSE', unit: 'bori', parentId: 'c0' },
+    { id: 'c2', name: 'Fuel', type: 'EXPENSE', unit: null, parentId: null },
+  ],
   parties: [{ id: 'p1', name: 'Akram Traders' }],
   workers: [],
   investors: [],
@@ -36,11 +39,12 @@ describe('groundNames', () => {
     const d = { kind: 'payWorker', worker: 'Bilal', amount: 2000 } as const;
     expect(groundNames(d, 'بلال کو دو ہزار دیے').worker).toBe('Bilal');
   });
-  it('leaves the account and a brand-new supplier alone', () => {
+  it('drops an account the user never named, but leaves a brand-new supplier alone', () => {
     const d = { kind: 'expense', amount: 3000, account: 'Cash in Hand', party: 'Naya Traders' } as const;
     const out = groundNames(d, 'diesel pe 3 hazar kharch');
-    expect(out.account).toBe('Cash in Hand');
+    expect(out.account).toBeUndefined();
     expect(out.party).toBe('Naya Traders');
+    expect(groundNames(d, 'diesel pe 3 hazar cash se').account).toBe('Cash in Hand');
   });
 });
 
@@ -48,7 +52,18 @@ describe('draftGaps', () => {
   it('is empty when everything essential is known', () => {
     const w = world({ projects: [{ id: 'pr1', name: 'Gulberg House' }] });
     expect(gaps({ kind: 'material', item: 'Cement', qty: 50, rate: 1250, project: 'Gulberg House' }, w)).toEqual([]);
-    expect(gaps({ kind: 'expense', amount: 3000, note: 'diesel' }, w)).toEqual([]);
+    expect(gaps({ kind: 'expense', amount: 3000, category: 'fuel', note: 'diesel' }, w)).toEqual([]);
+  });
+
+  it('asks for a category, offering the saved ones and a way to add one', () => {
+    const w = world();
+    const none = gaps({ kind: 'expense', amount: 3000, note: 'diesel' }, w);
+    expect(none[0].what).toContain('category');
+    expect(none[0].choices).toEqual(['Cement', 'Fuel']);
+    expect(none[0].link).toBe('Categories');
+    const unknown = gaps({ kind: 'expense', amount: 3000, category: 'Paint' }, w);
+    expect(unknown[0].what).toContain('"Paint"');
+    expect(gapPrompt(unknown)).toContain('LINK: Categories');
   });
 
   it('asks for the amount rather than showing a card with a blank figure', () => {
@@ -118,12 +133,23 @@ describe('draftGaps', () => {
     expect(p).toContain('do not tell the user to open a screen');
     expect(p).toContain('do not tell them what is missing from the app');
   });
-  it('asks about one thing only, even when several are missing', () => {
+  it('asks for everything missing in one checklist, choices written into the lines', () => {
     const p = gapPrompt([
       { what: 'the amount in rupees', mustCreate: false },
       { what: 'which project this belongs to', mustCreate: false, choices: ['A', 'B'] },
     ]);
-    expect(p).toContain('the amount in rupees');
-    expect(p).not.toContain('which project');
+    expect(p).toContain('1. the amount in rupees');
+    expect(p).toContain('2. which project this belongs to (the ONLY choices: A | B)');
+    expect(p).toContain('Write no OPTIONS line');
+    // A single gap with choices still gets tappable options.
+    expect(gapPrompt([{ what: 'which project', mustCreate: false, choices: ['A', 'B'] }])).toContain('OPTIONS line: A | B');
+  });
+
+  it('asks which account when the user has several and named none', () => {
+    const w = world({ accounts: [{ id: 'a1', name: 'Cash in Hand' }, { id: 'a2', name: 'Meezan' }] });
+    const g = gaps({ kind: 'expense', amount: 3000, category: 'fuel' }, w);
+    expect(g.map((x) => x.what)).toEqual(['which account the money moves through']);
+    expect(g[0].choices).toEqual(['Cash in Hand', 'Meezan']);
+    expect(gaps({ kind: 'expense', amount: 3000, category: 'fuel', account: 'Meezan' }, w)).toEqual([]);
   });
 });

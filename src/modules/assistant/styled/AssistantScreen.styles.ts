@@ -69,6 +69,8 @@ export const makeStyles = (theme: Theme) =>
     /** A card or list inside the bubble sits under a hairline, never in its own box. */
     replyPiece: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.track },
     moreCards: { alignItems: 'flex-end', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.track },
+    /** "+ Manage categories ›": the Add button a reply points at. */
+    linkRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, minHeight: theme.touch.minTarget - theme.spacing.sm },
     sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
     setup: {
       margin: theme.spacing.page,

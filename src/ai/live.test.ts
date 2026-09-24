@@ -335,7 +335,7 @@ describe('eval suite shape', () => {
     for (const c of EVAL_CASES) expect(Boolean(c.tools || c.draft || c.noTool || c.asks)).toBe(true);
   });
   it('judges a clean reply as a pass and a wrong-language one as a fail', () => {
-    const base = { text: '', cards: [], drafts: [], suggestions: [], options: [], memory: '', toolLog: ['get_account_balance({}) → Rs 1,000'], draftLines: [], learned: [], calls: 2 };
+    const base = { text: '', cards: [], drafts: [], suggestions: [], options: [], links: [], memory: '', toolLog: ['get_account_balance({}) → Rs 1,000'], draftLines: [], learned: [], calls: 2 };
     expect(judge({ id: 'x', text: 'cash kitna hai', tools: ['get_account_balance'], lang: 'roman' }, { ...base, text: 'Aap ke paas **Rs 1,000** hain.' }).passed).toBe(true);
     expect(judge({ id: 'x', text: 'cash kitna hai', tools: ['get_account_balance'], lang: 'roman' }, { ...base, text: 'You have Rs 1,000 in the account.' }).passed).toBe(false);
     expect(judge({ id: 'x', text: 'hi', noTool: true }, { ...base, text: 'Salam.' }).passed).toBe(false);

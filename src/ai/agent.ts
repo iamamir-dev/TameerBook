@@ -1,4 +1,5 @@
 import { resolveDraft, type Draft, type ResolvedDraft } from './drafts';
+import { OPEN_SCREENS } from './intents';
 import { draftGaps, gapPrompt, groundNames } from './gaps';
 import type { Intent, OpenScreen } from './intents';
 import type { ReplyLanguage } from './language';
@@ -33,6 +34,8 @@ export interface AgentResult {
   suggestions: string[];
   /** Choices the model asked the user to pick from (rendered as a selectable list). */
   options: string[];
+  /** Screens the model pointed at (LINK: marker): drawn as Add buttons under the reply. */
+  links: OpenScreen[];
   /** Compact gist of this turn for the conversation history. */
   memory: string;
   /** Tools that ran, with arguments and a one-line result ("get_spend_summary({…}) → …"). */
@@ -85,11 +88,18 @@ const splitPipes = (raw: string, max: number): string[] =>
  *   "…\nOPTIONS: a | b | c"  → choices the user should pick from (≤ 8)
  *   "…\nSUGGEST: a | b | c"  → follow-ups the user can tap (≤ 3)
  */
-export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[]; options: string[] } {
+export function splitSuggestions(raw: string | null | undefined): { text: string; suggestions: string[]; options: string[]; links: OpenScreen[] } {
   let text = cleanDashes((raw ?? '').trim());
-  if (!text) return { text: '', suggestions: [], options: [] };
+  if (!text) return { text: '', suggestions: [], options: [], links: [] };
   let suggestions: string[] = [];
   let options: string[] = [];
+  // "LINK: Categories" → an Add button; anywhere in the text, any case, and never shown.
+  const links: OpenScreen[] = [];
+  text = text.replace(/(?:^|\n|\s)\**LINK\**\s*:\s*([A-Za-z]+)\**\s*/g, (_m, name: string) => {
+    const hit = OPEN_SCREENS.find((s) => s.toLowerCase() === name.toLowerCase());
+    if (hit && !links.includes(hit)) links.push(hit);
+    return '\n';
+  });
   // Markers may land mid-line ("…kya tha? OPTIONS: a | b"); accept them anywhere.
   const sug = text.match(/(?:^|\n|\s)\**SUGGEST\**\s*:\s*(.+)\s*$/i);
   if (sug) {
@@ -109,12 +119,22 @@ export function splitSuggestions(raw: string | null | undefined): { text: string
     return '';
   });
   text = text
-    .replace(/(?:^|\n)\s*\**(?:OPTIONS|SUGGEST)\**\s*:.*$/gim, '')
+    .replace(/(?:^|\n)\s*\**(?:OPTIONS|SUGGEST|LINK)\**\s*:.*$/gim, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\s+([,.:;?!])/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  return { text, suggestions, options };
+  return { text, suggestions, options, links };
+}
+
+/**
+ * An entry that names no account goes on the only account the user has; with
+ * several, which one is a question for the user (see draftGaps), never a guess.
+ */
+function withDefaultAccount(r: ResolvedDraft, world: World): ResolvedDraft {
+  if (r.account || r.draft.kind === 'transfer' || !('account' in r.draft) || world.accounts.length !== 1) return r;
+  const only = world.accounts[0];
+  return { ...r, account: { id: only.id, name: only.name } };
 }
 
 /** "get_spend_summary({"period":{"kind":"month"}})" — compact, for the history. */
@@ -143,7 +163,7 @@ export function describeDraft(r: ResolvedDraft): string {
  * and the app's own arithmetic. Only present facts are listed, so the model
  * has nothing to invent and nothing to call missing.
  */
-export function willSaveFacts(r: ResolvedDraft, total: number | undefined): Record<string, string> {
+export function willSaveFacts(r: ResolvedDraft, total: number | undefined, today?: string): Record<string, string> {
   const d = r.draft as Record<string, unknown> & { kind: string };
   const out: Record<string, string> = {};
   const put = (k: string, v: unknown) => {
@@ -166,7 +186,7 @@ export function willSaveFacts(r: ResolvedDraft, total: number | undefined): Reco
   put('account', r.accountTo && r.account ? `${r.account.name} → ${r.accountTo.name}` : r.account?.name);
   put('order', d.po);
   put('paymentType', d.payType);
-  put('date', typeof d.date === 'string' ? d.date : 'today');
+  put('date', typeof d.date === 'string' && d.date !== today ? d.date : 'today');
   put('note', d.note);
   if (d.kind === 'attendance') put('attendance', d.allPresent ? 'everyone present' : r.marks.map((m) => `${m.worker?.name ?? m.mark.worker}: ${m.mark.status.toLowerCase()}`).join(', '));
   return out;
@@ -236,7 +256,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   // Writes proposed so far this turn (a bill: order → delivery → payment). The
   // model is told each one is queued and asked to continue, so every action in
   // the user's message becomes a step before the turn ends.
-  const queued: { tc: ToolCall; draft: Draft }[] = [];
+  const queued: { tc: ToolCall; draft: Draft; resolved: ResolvedDraft }[] = [];
 
   const base = (call: number, extraMemory: string[] = []) => ({
     toolLog,
@@ -247,7 +267,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   });
 
   const finishWrites = async (content: string | null, call: number): Promise<AgentResult> => {
-    const drafts = queued.map((q) => resolveDraft(q.draft, world));
+    const drafts = queued.map((q) => q.resolved);
     let answer = splitSuggestions(content).text;
     if (!answer) {
       // Tool-only replies carry no words. Non-technical users need a plain
@@ -264,6 +284,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       drafts,
       suggestions: [],
       options: [],
+      links: [],
       draftLines,
       ...base(call, [answer ? `assistant: ${answer}` : '', ...draftLines.map((l) => `assistant proposed ${l} (awaiting user confirmation)`)].filter(Boolean)),
     };
@@ -275,7 +296,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
 
     if (res.toolCalls.length === 0) {
       if (queued.length > 0) return finishWrites(res.content, call);
-      const { text: answer, suggestions, options } = splitSuggestions(res.content);
+      const { text: answer, suggestions, options, links } = splitSuggestions(res.content);
       if (!answer && cards.length === 0) {
         // An empty turn: the MWAPI gateway has been seen returning `content: []`
         // with stop_reason tool_use, and the same request repeats it. A user
@@ -291,9 +312,9 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
       if (!answer) {
         // Tools ran but the model added nothing: use the cards' own sentences.
         const fallback = cards.map((c) => c.speak).join(' ');
-        return { text: fallback, cards, drafts: [], suggestions, options, draftLines: [], ...base(call, [`assistant: ${fallback}`]) };
+        return { text: fallback, cards, drafts: [], suggestions, options, links, draftLines: [], ...base(call, [`assistant: ${fallback}`]) };
       }
-      return { text: answer, cards, drafts: [], suggestions, options, draftLines: [], ...base(call, [`assistant: ${answer}`]) };
+      return { text: answer, cards, drafts: [], suggestions, options, links, draftLines: [], ...base(call, [`assistant: ${answer}`]) };
     }
 
     const actions = res.toolCalls.map((tc) => ({ tc, action: interpretToolCall(tc) }));
@@ -303,6 +324,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
         text: splitSuggestions(res.content).text,
         cards,
         drafts: [],
+        links: [],
         open: open.action.screen,
         suggestions: [],
         options: [],
@@ -321,7 +343,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
         // A name the user never said is a guess, not an argument: drop it so
         // the gap check below turns it into a question.
         const draft = groundNames(action.draft, heardFromUser);
-        const resolved = resolveDraft(draft, world);
+        const resolved = withDefaultAccount(resolveDraft(draft, world), world);
         // A card is a receipt, not a form. If anything essential is still
         // unknown, nothing is shown: the model asks in the chat instead, and
         // offers to create what the user does not have yet.
@@ -335,7 +357,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
           messages.push({ role: 'tool', toolCallId: tc.id, name: tc.name, content });
           continue;
         }
-        queued.push({ tc, draft });
+        queued.push({ tc, draft, resolved });
         // The next call only writes the confirmation sentence: let it vary.
         sawResults = true;
         const total = draftTotal(draft);
@@ -344,7 +366,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
           step: queued.length,
           // The figures the app will actually save, so the sentence states them
           // rather than arithmetic of the model's own.
-          willSave: willSaveFacts(resolved, total),
+          willSave: willSaveFacts(resolved, total, world.today),
           note: `Ready for the user to confirm, not saved yet. If the user's message describes more actions (delivery received, payment made, more bill lines), call those tools now, in order; later steps may refer to this order by supplier name. When nothing is left, stop calling tools and write the confirmation, in ${languageName(lang)}: a lead line asking them to check, then one line per fact in willSave (emoji, label, value in bold), then one question asking whether to save. Use ONLY the facts in willSave, copied exactly: never multiply, add or restate an amount, never add a fact that is not there, never say what is missing.`,
         });
       } else if (action.kind === 'read') {
@@ -377,7 +399,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   // Out of calls: fall back to the cards' own sentences.
   const fallback = cards.map((c) => c.speak).join(' ');
   if (!fallback) throw new AiError('unparseable', 'agent loop exhausted');
-  return { text: fallback, cards, drafts: [], suggestions: [], options: [], draftLines: [], ...base(maxCalls, [`assistant: ${fallback}`]) };
+  return { text: fallback, cards, drafts: [], suggestions: [], options: [], links: [], draftLines: [], ...base(maxCalls, [`assistant: ${fallback}`]) };
 }
 
 /**

@@ -803,6 +803,9 @@ export interface TranslationKeys {
   aiToFix: string;
   aiNeedName: string;
   aiNeedAmount: string;
+  aiSavedOk: string;
+  aiAddedOk: string;
+  aiNotSaved: string;
   settingsCompanySub: string;
   settingsPrefsSub: string;
   settingsAiSub: string;
