@@ -3,17 +3,21 @@ import { draftGaps, gapPrompt, groundNames } from './gaps';
 import type { Intent, OpenScreen } from './intents';
 import type { ReplyLanguage } from './language';
 import { languageName } from './language';
-import { agentSystemPrompt, confirmationSystemPrompt, type PromptContext, type World } from './prompts';
+import { AGENT_CORE, agentSystemPrompt, confirmationSystemPrompt, type PromptContext, type World } from './prompts';
 import type { Answer } from './runner';
 import { interpretToolCall, summarizeAnswerForModel, TOOLS } from './tools';
-import { AiError, type AiChatMessage, type AiTransport, type ToolCall } from './types';
+import { addUsage, AiError, type AiChatMessage, type AiTransport, type AiUsage, type ToolCall } from './types';
 
 /**
  * THE AGENT LOOP. One user utterance → the model may call read tools (we run
  * them and feed the numbers back) until it writes a final answer; write tools
  * become drafts the user confirms; open_screen navigates; remember_fact feeds
- * the user's memory. Max 6 model calls per turn. Transport, world and intent
+ * the user's memory. Max 8 model calls per turn. Transport, world and intent
  * runner are injected so the loop is unit-testable.
+ *
+ * Built for Claude: the static head of the system prompt is flagged as a
+ * cacheable prefix, tool results for one turn go back together, and no
+ * synthetic turns are ever appended (an empty assistant message is rejected).
  */
 
 export interface AgentResult {
@@ -39,6 +43,8 @@ export interface AgentResult {
   learned: string[];
   /** How many model calls it took. */
   calls: number;
+  /** Tokens the turn cost, summed over its calls (when the provider reports them). */
+  usage?: AiUsage;
 }
 
 export interface AgentDeps {
@@ -56,9 +62,12 @@ export interface AgentDeps {
   images?: string[];
 }
 
-/** The UI never shows em/en dashes: " — " reads as a comma, a bare "—" as a hyphen. */
+/**
+ * A spaced em dash is the separator the reply style uses ("**Kharcha** — is mahine");
+ * it stays. An unspaced dash glued to words reads as a hyphen, an en dash likewise.
+ */
 export function cleanDashes(s: string): string {
-  return s.replace(/\s+[—–]\s+/g, ', ').replace(/[—–]/g, '-');
+  return s.replace(/\s+–\s+/g, ' — ').replace(/(\S)[—–](\S)/g, '$1-$2').replace(/–/g, '-');
 }
 
 /** Devanagari (Hindi script) never belongs in this app's UI; Roman Urdu or Urdu script only. */
@@ -129,6 +138,41 @@ export function describeDraft(r: ResolvedDraft): string {
 }
 
 /**
+ * The facts of a proposed write, in words, for the confirmation message: what
+ * the app will actually save, with matched names (never the user's spelling)
+ * and the app's own arithmetic. Only present facts are listed, so the model
+ * has nothing to invent and nothing to call missing.
+ */
+export function willSaveFacts(r: ResolvedDraft, total: number | undefined): Record<string, string> {
+  const d = r.draft as Record<string, unknown> & { kind: string };
+  const out: Record<string, string> = {};
+  const put = (k: string, v: unknown) => {
+    if (v === undefined || v === null || v === '' || v === false) return;
+    out[k] = typeof v === 'number' ? (k === 'amount' || k === 'rate' || k === 'wage' || k === 'price' ? `Rs ${v.toLocaleString('en-IN')}` : String(v)) : String(v);
+  };
+  put('amount', total !== undefined ? total : typeof d.amount === 'number' ? d.amount : undefined);
+  if (d.kind === 'material') put('item', `${r.category?.name ?? String(d.item)}${d.qty ? ` ${d.qty}${d.unit ? ` ${String(d.unit)}` : ''}` : ''}${d.rate ? ` @ Rs ${Number(d.rate).toLocaleString('en-IN')}` : ''}`);
+  if (Array.isArray(d.items)) put('items', (d.items as { item: string; qty: number; unit?: string; rate: number }[]).map((i) => `${i.item} ${i.qty}${i.unit ? ` ${i.unit}` : ''} @ Rs ${i.rate.toLocaleString('en-IN')}`).join('; '));
+  put('category', r.category?.name ?? (d.kind !== 'material' ? d.category : undefined));
+  put('name', d.name);
+  put('phone', d.phone);
+  put('wage', d.wage);
+  put('price', d.price ?? d.dealPrice ?? d.openingBalance);
+  put('party', r.party?.name ?? d.party ?? d.supplier ?? d.buyer ?? d.seller ?? d.person);
+  put('worker', r.worker?.name);
+  put('investor', r.investor?.name);
+  put('project', r.project?.name);
+  put('plot', r.plot?.name);
+  put('account', r.accountTo && r.account ? `${r.account.name} → ${r.accountTo.name}` : r.account?.name);
+  put('order', d.po);
+  put('paymentType', d.payType);
+  put('date', typeof d.date === 'string' ? d.date : 'today');
+  put('note', d.note);
+  if (d.kind === 'attendance') put('attendance', d.allPresent ? 'everyone present' : r.marks.map((m) => `${m.worker?.name ?? m.mark.worker}: ${m.mark.status.toLowerCase()}`).join(', '));
+  return out;
+}
+
+/**
  * The money a proposed write moves, as the APP computes it. The model must
  * never multiply qty by rate itself: on device it wrote "Rs 1,25,000" for
  * 50 bori at Rs 1,250 while the card correctly showed Rs 62,500.
@@ -167,10 +211,12 @@ const TEMP_COMPOSE = 0.35;
 
 export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResult> {
   const { transport, world, runIntent } = deps;
-  const maxCalls = deps.maxCalls ?? 6;
+  const maxCalls = deps.maxCalls ?? 8;
   const lang: ReplyLanguage = deps.prompt?.language ?? (world.language === 'ur' ? 'ur' : 'en');
+  const system = agentSystemPrompt(world, deps.prompt);
   const messages: AiChatMessage[] = [
-    { role: 'system', content: agentSystemPrompt(world, deps.prompt) },
+    // The core never changes between turns: providers that cache a prefix cache it (and the tools ahead of it).
+    { role: 'system', content: system, ...(system.startsWith(AGENT_CORE) ? { cachePrefixChars: AGENT_CORE.length } : {}) },
     ...(deps.history ?? []),
     // The language line rides with the user's own message too: it is the last
     // thing the model reads, and short follow-ups ("aur pichle mahine?") were
@@ -186,6 +232,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
   const learned: string[] = [];
   let nudged = false;
   let sawResults = false;
+  let usage: AiUsage | undefined;
   // Writes proposed so far this turn (a bill: order → delivery → payment). The
   // model is told each one is queued and asked to continue, so every action in
   // the user's message becomes a step before the turn ends.
@@ -195,6 +242,7 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
     toolLog,
     learned,
     calls: call,
+    usage,
     memory: [...toolLog.map((l) => `tool ${l}`), ...extraMemory].join('\n'),
   });
 
@@ -223,16 +271,19 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
 
   for (let call = 1; call <= maxCalls; call++) {
     const res = await transport.chatTools(messages, TOOLS, { temperature: sawResults ? TEMP_COMPOSE : TEMP_FIRST });
+    usage = addUsage(usage, res.usage);
 
     if (res.toolCalls.length === 0) {
       if (queued.length > 0) return finishWrites(res.content, call);
       const { text: answer, suggestions, options } = splitSuggestions(res.content);
       if (!answer && cards.length === 0) {
-        // An empty turn (reasoning-only output, truncated completion): nudge once.
+        // An empty turn: the MWAPI gateway has been seen returning `content: []`
+        // with stop_reason tool_use, and the same request repeats it. A user
+        // nudge changes the request (never an empty assistant turn, which
+        // Claude rejects), so the retry actually differs.
         if (!nudged && call < maxCalls) {
           nudged = true;
-          messages.push({ role: 'assistant', content: '' });
-          messages.push({ role: 'user', content: 'Your reply was empty. Either call the right tool now or answer in text (1–3 sentences).' });
+          messages.push({ role: 'user', content: 'Your reply was empty. Call the right tool now, or answer in text (1 to 3 sentences).' });
           continue;
         }
         throw new AiError('unparseable', 'no text and no tool call');
@@ -293,16 +344,8 @@ export async function runAgent(text: string, deps: AgentDeps): Promise<AgentResu
           step: queued.length,
           // The figures the app will actually save, so the sentence states them
           // rather than arithmetic of the model's own.
-          willSave: {
-            ...(total !== undefined ? { amount: `Rs ${total.toLocaleString('en-IN')}` } : {}),
-            ...(resolved.account ? { account: resolved.account.name } : {}),
-            ...(resolved.project ? { project: resolved.project.name } : {}),
-            ...(resolved.party ? { party: resolved.party.name } : {}),
-            ...(resolved.worker ? { worker: resolved.worker.name } : {}),
-            ...(resolved.plot ? { plot: resolved.plot.name } : {}),
-            ...(resolved.unresolved.length ? { notSavedYet: resolved.unresolved } : {}),
-          },
-          note: `Ready for the user to confirm, not saved yet. Never use the words queue, step, card or confirm in your reply. If the user's message describes more actions (delivery received, payment made, more bill lines), call those tools now, in order; later steps may refer to this order by supplier name. When nothing is left, stop calling tools and write ONE short sentence, in ${languageName(lang)}, saying in your own words what is about to happen. Use ONLY the figures in willSave: never multiply, add or restate an amount yourself. Do not label fields and do not repeat the user's sentence.`,
+          willSave: willSaveFacts(resolved, total),
+          note: `Ready for the user to confirm, not saved yet. If the user's message describes more actions (delivery received, payment made, more bill lines), call those tools now, in order; later steps may refer to this order by supplier name. When nothing is left, stop calling tools and write the confirmation, in ${languageName(lang)}: a lead line asking them to check, then one line per fact in willSave (emoji, label, value in bold), then one question asking whether to save. Use ONLY the facts in willSave, copied exactly: never multiply, add or restate an amount, never add a fact that is not there, never say what is missing.`,
         });
       } else if (action.kind === 'read') {
         try {

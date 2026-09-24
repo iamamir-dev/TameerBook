@@ -57,6 +57,8 @@ export interface DraftChoices {
   plotId?: string | null;
   accountId?: string | null;
   projectId?: string | null;
+  /** expense / income / plot expense: category picked in the sheet when none was named. */
+  categoryId?: string | null;
   /** Purchase order from an earlier step of the same message (order → delivery → payment). */
   poId?: string | null;
   /** payWorker: which participation (project) the payment settles. */
@@ -68,6 +70,8 @@ export interface DraftNeeds {
   amount: boolean;
   account: boolean;
   project: boolean;
+  /** Money entries book against a category; the sheet offers the list when none matched. */
+  category: boolean;
   participation: boolean;
   /** add_* drafts without a name. */
   name: boolean;
@@ -79,11 +83,11 @@ export interface DraftNeeds {
 
 export function draftNeeds(r: ResolvedDraft): DraftNeeds {
   const d = r.draft;
-  const none: DraftNeeds = { amount: false, account: false, project: false, participation: false, name: false, plot: false, workerProject: false };
+  const none: DraftNeeds = { amount: false, account: false, project: false, category: false, participation: false, name: false, plot: false, workerProject: false };
   switch (d.kind) {
     case 'expense':
     case 'income':
-      return { ...none, amount: !d.amount, account: !r.account };
+      return { ...none, amount: !d.amount, account: !r.account, category: !r.category };
     case 'material':
       return { ...none, amount: !(d.amount ?? (d.qty && d.rate)), account: !r.account, project: !r.project };
     case 'payWorker':
@@ -109,8 +113,9 @@ export function draftNeeds(r: ResolvedDraft): DraftNeeds {
     case 'payPurchaseOrder':
       return { ...none, amount: !d.amount, account: !r.account };
     case 'plotPayment':
-    case 'plotExpense':
       return { ...none, amount: !d.amount, account: !r.account };
+    case 'plotExpense':
+      return { ...none, amount: !d.amount, account: !r.account, category: !r.category };
     case 'saleReceipt':
     case 'saleCost':
       return { ...none, amount: !d.amount, account: !r.account, project: !r.project };
@@ -166,6 +171,8 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       const projectId = r.project?.id ?? null;
       const amount = needAmount(d.amount ?? c.amount);
+      // Every entry books against a category, the same rule the Entry form keeps.
+      const categoryId = need(r.category?.id ?? c.categoryId, 'category');
       await addTransaction({
         direction: d.kind === 'expense' ? 'OUT' : 'IN',
         amount,
@@ -173,7 +180,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
         accountId,
         projectId,
         phase: projectId ? 'CONSTRUCTION' : 'GENERAL',
-        categoryId: r.category?.id ?? null,
+        categoryId,
         partyId: r.party?.id ?? null,
         counterpartyName: !r.party && d.party ? d.party : null,
         description: d.note ?? null,
@@ -359,7 +366,7 @@ export async function applyDraft(r: ResolvedDraft, c: DraftChoices): Promise<App
       const accountId = need(r.account?.id ?? c.accountId, 'account');
       const amount = needAmount(d.amount ?? c.amount);
       // Category: the matched one, else the first plot-expense category (never invent one).
-      let categoryId = r.category?.id;
+      let categoryId = r.category?.id ?? c.categoryId ?? undefined;
       if (!categoryId) {
         const cats = await listCategories('EXPENSE');
         const plotSection = cats.find((x) => x.name_en === 'Plot' && !x.parent_id);

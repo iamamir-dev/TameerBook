@@ -1,16 +1,20 @@
 /** AI layer barrel — transports, tools, agent loop, drafts, runner. */
 export {
+  addUsage,
   AiError,
   isAiError,
   type AiChatMessage,
   type AiErrorCode,
   type AiTransport,
+  type AiUsage,
   type AudioFile,
   type ChatToolsResult,
   type ToolCall,
   type ToolSpec,
 } from './types';
-export { AI_PROVIDERS, GROQ_WHISPER, MAX_OUTPUT_TOKENS, PROVIDERS, type AiProviderId, type ModelPreset, type ProviderInfo } from './providers';
+export { AI_PROVIDERS, aiConfigured, MAX_OUTPUT_TOKENS, MWAPI_BASE_URL, PROVIDERS, type AiConfigFields, type AiProviderId, type ModelPreset, type ProviderInfo } from './providers';
+export { lostToolCall, parseOpenAiResponse, toOpenAiBody, toOpenAiMessages } from './openai';
+export { anthropicHeaders, parseAnthropicResponse, toAnthropicBody, toAnthropicMessages, toAnthropicTools } from './anthropic';
 export { aiAvailability, chatJson, extractJson, getAiTransport, testConnection, type AiAvailability } from './client';
 export { matchName, findNamesIn, normalizeName, type Named } from './match';
 export {

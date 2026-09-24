@@ -52,8 +52,8 @@ export function assistantGist(e: Exchange, max = 450): string {
  * the static part of the prompt stays cacheable ahead of it).
  */
 export function compactHistory(exchanges: readonly Exchange[], opts: CompactOptions = {}): { summary: string; messages: AiChatMessage[] } {
-  const recentN = opts.recent ?? 4;
-  const summaryChars = opts.summaryChars ?? 900;
+  const recentN = opts.recent ?? 6;
+  const summaryChars = opts.summaryChars ?? 1400;
   const older = exchanges.slice(0, Math.max(0, exchanges.length - recentN));
   const recent = exchanges.slice(-recentN);
 
@@ -66,7 +66,7 @@ export function compactHistory(exchanges: readonly Exchange[], opts: CompactOpti
 
   const messages: AiChatMessage[] = [];
   for (const e of recent) {
-    messages.push({ role: 'user', content: clip(e.user, 300) });
+    messages.push({ role: 'user', content: clip(e.user, 500) });
     // Some providers reject an empty assistant message, and a blank turn tells
     // the model nothing; say plainly that the turn produced no answer.
     messages.push({ role: 'assistant', content: assistantGist(e) || '(no answer)' });

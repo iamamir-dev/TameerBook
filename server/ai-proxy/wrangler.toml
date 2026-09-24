@@ -2,10 +2,6 @@ name = "tameerbook-ai"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 
-# Workers AI (free: 10,000 neurons/day) — the fallback when Groq is rate-limited.
-[ai]
-binding = "AI"
-
 # Per-device quota: 60 requests per minute per x-device-id. Tune to taste.
 [[unsafe.bindings]]
 name = "RATE_LIMITER"
@@ -14,7 +10,10 @@ namespace_id = "1001"
 simple = { limit = 60, period = 60 }
 
 # Secrets (never in this file):
-#   wrangler secret put GROQ_API_KEY   # from console.groq.com (free)
-#   wrangler secret put APP_TOKEN      # any long random string; paste the same in the app's Settings
+#   wrangler secret put ANTHROPIC_API_KEY   # the Claude gateway key (MWAPI, or an Anthropic key)
+#   wrangler secret put OPENAI_API_KEY      # optional: GPT-5 engine + voice (speech to text)
+#   wrangler secret put APP_TOKEN           # any long random string; paste the same in the app's Settings
 [vars]
 ALLOWED_ORIGINS = ""
+# Optional: another Anthropic-shaped gateway. Default is https://api.mwapi.dev/v1
+# ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"

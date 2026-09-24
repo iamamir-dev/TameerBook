@@ -64,6 +64,8 @@ function statusTone(cell: string): 'success' | 'gold' | 'danger' | undefined {
 const TEXT_MIN = 76;
 
 const NUMERIC = /^[+−\-]?\s*(rs\.?|₨)?\s*[\d,.]+\s*(%|k|l|cr|lakh|crore)?$/i;
+/** A line that opens with an emoji marker ("💰 **Kharcha** — is mahine"): the emoji gets its own column so wrapped text lines up. */
+const EMOJI_LEAD = /^([\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}][\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]*)\s+(\S.*)$/u;
 
 export function RichText({ text }: { text: string }): React.JSX.Element {
   const theme = useTheme();
@@ -75,6 +77,8 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
         if (b.kind === 'table') return <Table key={i} rows={b.rows} />;
         const line = b.text;
         if (!line) return <View key={i} style={styles.gap} />;
+        // A markdown rule (---, ***, ___) is a section break: a hairline, never the dashes themselves.
+        if (/^([-*_])\1{2,}$/.test(line.replace(/\s+/g, ''))) return <View key={i} style={styles.rule} />;
         const marker = /^([-•*]|\d+[.)])\s+/.exec(line);
         // A heading is a short label ("Cost:", "Needs attention:"), not a sentence that happens to end in a colon.
         const heading = /^#{1,3}\s+/.test(line) || (/[:：]$/.test(line) && line.length <= 32 && line.split(/\s+/).length <= 4 && !marker);
@@ -90,6 +94,19 @@ export function RichText({ text }: { text: string }): React.JSX.Element {
           );
         }
         if (!marker) {
+          const emoji = EMOJI_LEAD.exec(line);
+          if (emoji) {
+            return (
+              <View key={i} style={styles.bulletRow}>
+                <AppText size="sm" style={styles.emoji}>
+                  {emoji[1]}
+                </AppText>
+                <AppText size="sm" selectable style={styles.bulletText}>
+                  {renderInline(emoji[2])}
+                </AppText>
+              </View>
+            );
+          }
           return (
             <AppText key={i} size="sm" selectable>
               {renderInline(line)}

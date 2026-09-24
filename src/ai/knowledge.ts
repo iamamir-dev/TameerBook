@@ -1,8 +1,8 @@
 /**
  * DOMAIN KNOWLEDGE — what the assistant knows about TameerBook itself.
  *
- * Two layers, because every model call re-sends the system prompt and Groq's
- * free tier allows ~8K tokens per minute:
+ * Two layers, because every model call re-sends the system prompt (cached
+ * as a prefix, but still paid for on a miss):
  *   CORE     — the formulas, rules and vocabulary that matter on every turn
  *              (compact, always in the system prompt)
  *   MODULES  — one deep section per module, fetched on demand through the
@@ -20,6 +20,7 @@ export const CORE_KNOWLEDGE = `APP MODEL (how TameerBook keeps the books; explai
 - Purchase order = material booked from a supplier: qty booked vs delivered, total vs paid; closed when both settle.
 - Udhaar = money lent (GIVEN) or borrowed (TAKEN); balance = given − returned.
 - Investors (Musharakah): pledge → received → staked in projects. Profit splits by the rule chosen at settlement; loss always by capital ratio. Standing = invested + profit − paid out.
+- WHAT IS KEPT: every entry has a date (never a time of day), amount, account, project + phase, category, party, note, quantity, receipt photo. NOT kept: time of day, tax or GST split, hours worked (only FULL / HALF / ABSENT days), prices per supplier over time beyond the entries themselves. Say so plainly when asked, then offer the nearest thing.
 - Rupees are grouped Pakistani style: 25,00,000 = 25 lakh; 1 crore = 100 lakh.`;
 
 export const KNOWLEDGE_TOPICS = [
@@ -124,7 +125,7 @@ export const MODULE_KNOWLEDGE: Record<KnowledgeTopic, string> = {
   settings: `SETTINGS
 - Company (multiple companies/workspaces; every list is scoped to the active one), Accounts, Reports, Categories, Signature (draw or photo; used on PDFs), remove.bg key for signature background.
 - Preferences: language English / Urdu (RTL), dark mode, font family (incl. Urdu faces), text size, Home sections (plots / labour / loans), Quick Entry tile order, reminders (daily 8 pm, transfer deadlines, loans weekly, buyer dues weekly), charity %.
-- Assistant (AI): provider (Groq / Gemini / OpenAI / OpenRouter / own server / custom), key, model, voice, connection test. Off by default.`,
+- Assistant (AI): provider (Claude through a gateway, OpenAI, or the user's own server), key, model, voice (OpenAI), connection test. Off by default.`,
 
   assistant: `ASSISTANT (this chat)
 - Reads the ledger through tools and answers with real figures; prepares entries that the user confirms on an inline card (Accept / Reject); opens screens or PDF reports on request. Voice via hold-to-talk; receipts can be read from a photo on the Material entry form.

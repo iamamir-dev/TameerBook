@@ -268,7 +268,8 @@ const makeStyles = (theme: Theme) =>
     rowDisabled: {
       opacity: 0.38,
     },
-    dot: { width: 14, height: 14, borderRadius: 7 },
+    /** Hairline outline so a pale swatch (a white wallpaper) still reads on the sheet. */
+    dot: { width: 14, height: 14, borderRadius: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
     selectedDot: {
       width: 10,
       height: 10,

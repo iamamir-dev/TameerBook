@@ -4,9 +4,9 @@ import { agentSystemPrompt, confirmationSystemPrompt, type World } from './promp
 import { TOOLS } from './tools';
 
 /**
- * Token budget guard. Groq's free tier meters ~8K tokens per minute, and a
- * turn makes 2–4 calls, so the fixed part of every call has to stay small.
- * 1 token ≈ 3.6 chars for this mix of English, names and JSON.
+ * Token budget guard. The fixed part of every call (rules + tool schemas)
+ * is what Claude caches as a prefix and what a cache miss costs; keep it
+ * from creeping. 1 token ≈ 3.6 chars for this mix of English, names and JSON.
  */
 const world: World = {
   today: '2026-09-19',
@@ -26,21 +26,21 @@ const world: World = {
 };
 
 describe('prompt budget', () => {
-  // The app targets OpenAI (gpt-5-mini), so there is no 8K-per-minute ceiling
-  // to dodge any more. What the fixed part of every call costs now is money and
-  // latency: it is re-sent on each of the 2-4 calls a turn makes, and only the
-  // static prefix is cached. These caps are generous enough for a rule that
+  // The app targets Claude (claude-sonnet-4-6), so there is no per-minute
+  // token ceiling to dodge. What the fixed part of every call costs now is money
+  // and latency: it is re-sent on each of the 2-4 calls a turn makes, and only
+  // the static prefix is served from cache. These caps are generous enough for a rule that
   // earns its place and tight enough that nobody dumps prose in here.
   // ~3.6 chars per token for this mix of English, names and JSON.
   const TOKENS = (chars: number) => Math.round(chars / 3.6);
 
   it('keeps the fixed part of a call affordable', () => {
     const sys = agentSystemPrompt(world, { language: 'roman', memory: 'ABOUT THIS USER\n- Usually pays from: Cash in Hand', summary: '' });
-    expect(TOKENS(sys.length + JSON.stringify(TOOLS).length)).toBeLessThan(9_000);
+    expect(TOKENS(sys.length + JSON.stringify(TOOLS).length)).toBeLessThan(9_500);
   });
   it('keeps each half from creeping', () => {
     const sys = agentSystemPrompt(world, { language: 'roman' });
-    expect(TOKENS(sys.length)).toBeLessThan(3_800);
+    expect(TOKENS(sys.length)).toBeLessThan(4_600);
     expect(TOKENS(JSON.stringify(TOOLS).length)).toBeLessThan(4_800);
   });
   it('keeps the confirmation prompt small', () => {

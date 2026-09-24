@@ -1,15 +1,21 @@
 /**
  * Provider catalogue — everything Settings needs to let the user pick a
- * provider, paste its key and choose a model. ONE place to bump when a free
- * model is renamed. Free-tier facts as of Sept 2026; re-check the linked
- * consoles when something 404s.
+ * provider, paste its key and choose a model. Two model families only:
+ *
+ *   claude   Claude through an Anthropic-shaped gateway (MWAPI by default,
+ *            the same gateway and model SubscribAI runs on). Best tool
+ *            choice, follows the whole system prompt, reads images.
+ *   openai   GPT-5 family. Also the ONLY voice engine: Claude has no audio
+ *            endpoint, so transcription always goes to OpenAI.
+ *   proxy    The user's own Cloudflare Worker (server/ai-proxy) holding the
+ *            keys for both, so the phone ships none.
  */
-export const AI_PROVIDERS = ['groq', 'gemini', 'openai', 'openrouter', 'proxy', 'custom'] as const;
+export const AI_PROVIDERS = ['claude', 'openai', 'proxy'] as const;
 export type AiProviderId = (typeof AI_PROVIDERS)[number];
 
 export interface ModelPreset {
   id: string;
-  /** Short human label ("fast", "best Urdu"). */
+  /** Short human label ("best", "fastest"). */
   note: string;
 }
 
@@ -20,68 +26,52 @@ export interface ProviderInfo {
   hint: string;
   /** Where to get a key. */
   consoleUrl?: string;
-  /** OpenAI-compatible base URL (null for Gemini native / proxy / custom). */
+  /** Default base URL (null for the proxy, whose URL the user types). */
   baseUrl: string | null;
   defaultModel: string;
   models: ModelPreset[];
-  /** Whisper / native audio available. */
+  /** Transcribes audio itself. */
   voice: boolean;
-  /** Image input available on the default model. */
-  vision: boolean;
   /** Needs an API key from the user. */
   needsKey: boolean;
   /** Needs a base URL from the user. */
   needsUrl: boolean;
-  /** Does the free tier train on your data? */
-  trainsOnData: boolean;
+  /** The base URL may be overridden in Settings (a different gateway). */
+  urlEditable: boolean;
 }
 
+/** The gateway SubscribAI uses; any Anthropic-shaped endpoint works (api.anthropic.com too). */
+export const MWAPI_BASE_URL = 'https://api.mwapi.dev/v1';
+export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+export const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5-mini';
+
 export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
-  groq: {
-    id: 'groq',
-    label: 'Groq',
-    hint: 'Free · fast · no training on your data · voice',
-    consoleUrl: 'https://console.groq.com',
-    baseUrl: 'https://api.groq.com/openai/v1',
-    defaultModel: 'openai/gpt-oss-120b',
+  claude: {
+    id: 'claude',
+    label: 'Claude',
+    hint: 'Best answers · same model as SubscribAI · reads bills',
+    consoleUrl: 'https://mwapi.dev',
+    baseUrl: MWAPI_BASE_URL,
+    defaultModel: CLAUDE_DEFAULT_MODEL,
     models: [
-      { id: 'openai/gpt-oss-120b', note: 'best reasoning + tools' },
-      { id: 'qwen/qwen3.8-27b', note: 'good Urdu · vision' },
-      { id: 'qwen/qwen3.6-27b', note: 'older Qwen · vision' },
-      { id: 'openai/gpt-oss-20b', note: 'fastest' },
-      { id: 'llama-3.3-70b-versatile', note: 'Llama 3.3' },
+      { id: 'claude-sonnet-4-6', note: 'best · recommended' },
+      { id: 'claude-haiku-4-5-20251001', note: 'fastest · cheapest' },
+      { id: 'claude-opus-4-6', note: 'deepest reasoning' },
     ],
-    voice: true,
-    vision: true,
+    voice: false,
     needsKey: true,
     needsUrl: false,
-    trainsOnData: false,
-  },
-  gemini: {
-    id: 'gemini',
-    label: 'Google Gemini',
-    hint: 'Free · best Urdu · voice + vision · trains on data',
-    consoleUrl: 'https://aistudio.google.com/apikey',
-    baseUrl: null,
-    defaultModel: 'gemini-2.5-flash',
-    models: [
-      { id: 'gemini-2.5-flash', note: 'balanced' },
-      { id: 'gemini-2.5-flash-lite', note: 'fastest · higher free limits' },
-      { id: 'gemini-3.5-flash', note: 'newest (check availability)' },
-    ],
-    voice: true,
-    vision: true,
-    needsKey: true,
-    needsUrl: false,
-    trainsOnData: true,
+    urlEditable: true,
   },
   openai: {
     id: 'openai',
-    label: 'OpenAI (paid)',
-    hint: 'GPT-5 family · most precise · pay per use · voice + vision',
+    label: 'OpenAI',
+    hint: 'GPT-5 family · voice + bills · pay per use',
     consoleUrl: 'https://platform.openai.com/api-keys',
-    baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5-mini',
+    baseUrl: OPENAI_BASE_URL,
+    defaultModel: OPENAI_DEFAULT_MODEL,
     models: [
       { id: 'gpt-5-mini', note: 'best value' },
       { id: 'gpt-5', note: 'most capable' },
@@ -89,70 +79,51 @@ export const PROVIDERS: Record<AiProviderId, ProviderInfo> = {
       { id: 'gpt-4o-mini', note: 'older · fast' },
     ],
     voice: true,
-    vision: true,
     needsKey: true,
     needsUrl: false,
-    trainsOnData: false,
-  },
-  openrouter: {
-    id: 'openrouter',
-    label: 'OpenRouter',
-    hint: 'Free models (50/day, 1000 after $10) · no voice',
-    consoleUrl: 'https://openrouter.ai/keys',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'google/gemma-4-31b-it:free',
-    models: [
-      { id: 'google/gemma-4-31b-it:free', note: 'Gemma 4 · good Urdu' },
-      { id: 'z-ai/glm-5.2:free', note: 'GLM 5.2' },
-      { id: 'nvidia/nemotron-3-super-120b:free', note: 'Nemotron' },
-    ],
-    voice: false,
-    vision: true,
-    needsKey: true,
-    needsUrl: false,
-    trainsOnData: true,
+    urlEditable: false,
   },
   proxy: {
     id: 'proxy',
     label: 'My server (Cloudflare Worker)',
-    hint: 'Keys stay on your server · Groq + Workers AI · voice',
+    hint: 'Keys stay on your server · Claude + OpenAI · voice',
     baseUrl: null,
-    defaultModel: 'openai/gpt-oss-120b',
+    defaultModel: CLAUDE_DEFAULT_MODEL,
     models: [
-      { id: 'openai/gpt-oss-120b', note: 'via Groq' },
-      { id: 'qwen/qwen3.8-27b', note: 'via Groq · vision' },
+      { id: 'claude-sonnet-4-6', note: 'Claude · best' },
+      { id: 'claude-haiku-4-5-20251001', note: 'Claude · fastest' },
+      { id: 'gpt-5-mini', note: 'OpenAI' },
     ],
     voice: true,
-    vision: true,
     needsKey: false,
     needsUrl: true,
-    trainsOnData: false,
-  },
-  custom: {
-    id: 'custom',
-    label: 'Custom (OpenAI-compatible)',
-    hint: 'Any /v1/chat/completions endpoint · Ollama, Together, Mistral…',
-    baseUrl: null,
-    defaultModel: 'gpt-4o-mini',
-    models: [],
-    voice: false,
-    vision: false,
-    needsKey: true,
-    needsUrl: true,
-    trainsOnData: false,
+    urlEditable: false,
   },
 };
 
-/** Whisper model on Groq (the voice fallback for providers without audio). */
-export const GROQ_WHISPER = 'whisper-large-v3-turbo';
-/** Keep prompts + answers small: Groq's free tier is 8K tokens per minute. */
-export const MAX_OUTPUT_TOKENS = 700;
-/** Tool turns need room for reasoning + a JSON call + the final answer. */
-export const TOOL_MAX_TOKENS = 1400;
-/** Vision-capable Groq models, best first (the id list doubles as the fallback chain). */
-export const GROQ_VISION_MODELS = ['qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'] as const;
-/** Text fallbacks on Groq when the chosen model is capped or fails. */
-export const GROQ_TEXT_FALLBACKS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'] as const;
+/** A model id that must be routed to the Messages API rather than chat completions. */
+export const isClaudeModel = (model: string): boolean => model.startsWith('claude');
+
+/** OpenAI's transcription model (Whisper's successor; takes a vocabulary prompt + language). */
+export const OPENAI_TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+/** Room for a full report with tables: the same budget SubscribAI runs on. */
+export const MAX_OUTPUT_TOKENS = 4096;
+/** Tool turns: a call plus the sentence after it fit comfortably. */
+export const TOOL_MAX_TOKENS = 4096;
 /** Give up on a provider call after this long (React Native fetch has no timeout of its own). */
-export const REQUEST_TIMEOUT_MS = 60_000;
-export const IMAGE_REQUEST_TIMEOUT_MS = 90_000;
+export const REQUEST_TIMEOUT_MS = 90_000;
+export const IMAGE_REQUEST_TIMEOUT_MS = 120_000;
+
+/** The subset of Settings that decides whether the assistant can be called. */
+export interface AiConfigFields {
+  aiProvider: AiProviderId;
+  aiKeys: Partial<Record<AiProviderId, string>>;
+  aiProxyUrl: string | null;
+}
+
+/** True when the chosen provider has what it needs (key / URL). Pure; shared by every screen. */
+export function aiConfigured(s: AiConfigFields): boolean {
+  const info = PROVIDERS[s.aiProvider] ?? PROVIDERS.claude;
+  const key = s.aiKeys[s.aiProvider] ?? '';
+  return (!info.needsKey || !!key) && (!info.needsUrl || !!s.aiProxyUrl);
+}

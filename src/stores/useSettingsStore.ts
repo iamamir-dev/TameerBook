@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { loadSettings, saveSetting } from '@/db/repositories/settings';
+import { CHAT_WALLPAPERS, DEFAULT_CHAT_WALLPAPER, type ChatWallpaperId } from '@/modules/assistant/wallpapers';
 import { uuid } from '@/db/uuid';
 import { REPLY_LANGUAGE_SETTINGS, type ReplyLanguageSetting } from '@/ai/language';
 import { AI_PROVIDERS, type AiProviderId } from '@/ai/providers';
@@ -76,6 +77,8 @@ interface SettingsState {
   fontFamily: FontKey;
   /** App-wide text-size step (multiplies every size token). */
   fontScale: FontScaleKey;
+  /** Assistant chat wallpaper (see src/modules/assistant/wallpapers.ts). */
+  chatWallpaper: ChatWallpaperId;
   /** Which Home sections are visible. */
   homeSections: HomeSectionPrefs;
   /** User's Quick Entry tile order (labelKeys). */
@@ -104,7 +107,7 @@ interface SettingsState {
   aiProxyUrl: string | null;
   /** Shared app token the proxy expects (optional). */
   aiProxyToken: string | null;
-  /** Base URL for the "custom" OpenAI-compatible provider. */
+  /** Claude gateway base URL override (null = MWAPI, the gateway SubscribAI uses). */
   aiCustomBaseUrl: string | null;
   /** Stable anonymous id for per-device quotas at the proxy (generated once). */
   aiDeviceId: string;
@@ -115,6 +118,7 @@ interface SettingsState {
   toggleDarkMode: () => void;
   setFontFamily: (fontFamily: FontKey) => void;
   setFontScale: (fontScale: FontScaleKey) => void;
+  setChatWallpaper: (id: ChatWallpaperId) => void;
   setHomeSection: (key: HomeSectionKey, value: boolean) => void;
   setQuickOrder: (order: string[]) => void;
   setReminder: (key: ReminderKey, value: boolean) => void;
@@ -144,6 +148,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   darkMode: false, // Light mode is the default per the design spec.
   fontFamily: 'rounded',
   fontScale: 'normal',
+  chatWallpaper: DEFAULT_CHAT_WALLPAPER,
   homeSections: DEFAULT_HOME_SECTIONS,
   quickOrder: [...DEFAULT_QUICK_ORDER],
   reminders: { daily: true, deadline: true, udhaar: true, buyer: true },
@@ -155,7 +160,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   aiReplyLanguage: 'auto',
   // OpenAI is the target provider for this app (gpt-5-mini): the others stay
   // selectable, but the defaults and the prompt budget assume this one.
-  aiProvider: 'openai',
+  aiProvider: 'claude',
   aiKeys: {},
   aiModel: {},
   aiProxyUrl: null,
@@ -185,7 +190,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (s.aiProxyUrl) patch.aiProxyUrl = s.aiProxyUrl;
       if (s.aiProxyToken) patch.aiProxyToken = s.aiProxyToken;
       if (s.aiCustomBaseUrl) patch.aiCustomBaseUrl = s.aiCustomBaseUrl;
-      if (s.aiProvider && (AI_PROVIDERS as readonly string[]).includes(s.aiProvider)) patch.aiProvider = s.aiProvider as AiProviderId;
+      // A provider from an older build (groq, gemini, openrouter, custom) is gone: Claude takes over.
+      if (s.aiProvider) patch.aiProvider = (AI_PROVIDERS as readonly string[]).includes(s.aiProvider) ? (s.aiProvider as AiProviderId) : 'claude';
       if (s.aiKeys) {
         try {
           patch.aiKeys = JSON.parse(s.aiKeys) as Partial<Record<AiProviderId, string>>;
@@ -193,8 +199,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           /* ignore malformed */
         }
       }
-      // Older builds stored a single Groq key — carry it into the per-provider map.
-      if (s.aiGroqKey && !patch.aiKeys?.groq) patch.aiKeys = { ...(patch.aiKeys ?? {}), groq: s.aiGroqKey };
       if (s.aiModel) {
         try {
           patch.aiModel = JSON.parse(s.aiModel) as Partial<Record<AiProviderId, string>>;
@@ -212,6 +216,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       }
       if (s.fontFamily && s.fontFamily in FONT_OPTIONS) patch.fontFamily = s.fontFamily as FontKey;
       if (s.fontScale && s.fontScale in FONT_SCALES) patch.fontScale = s.fontScale as FontScaleKey;
+      if (s.chatWallpaper && (CHAT_WALLPAPERS as readonly string[]).includes(s.chatWallpaper)) patch.chatWallpaper = s.chatWallpaper as ChatWallpaperId;
       if (s.homeSections) {
         try {
           patch.homeSections = { ...DEFAULT_HOME_SECTIONS, ...JSON.parse(s.homeSections) };
@@ -261,6 +266,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setFontScale: (fontScale) => {
     set({ fontScale });
     persist('fontScale', fontScale);
+  },
+  setChatWallpaper: (chatWallpaper) => {
+    set({ chatWallpaper });
+    persist('chatWallpaper', chatWallpaper);
   },
   setHomeSection: (key, value) => {
     const homeSections = { ...get().homeSections, [key]: value };

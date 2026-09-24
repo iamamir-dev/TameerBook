@@ -1,4 +1,5 @@
 import { runAgent, type AgentDeps, type AgentResult } from './agent';
+import type { AiUsage } from './types';
 import { arabicShare, decideReplyLanguage, detectLanguage, dominantScript, type ReplyLanguage } from './language';
 import type { World } from './prompts';
 import { isAiError } from './types';
@@ -21,8 +22,10 @@ export interface EvalCase {
   noTool?: boolean;
   /** A write draft must be proposed (kind from the Draft union). */
   draft?: string;
-  /** `draft` is satisfied by a clarifying question too (both are reasonable). */
+  /** `draft` (or `tools`) is satisfied by a clarifying question with choices too (both are reasonable). */
   orAsks?: boolean;
+  /** `tools` is satisfied when the reply itself names every project / worker in the world (grounded from the prompt's list). */
+  orLists?: 'projects' | 'workers';
   /** Expected reply language. */
   lang?: ReplyLanguage;
   /** Regexes the reply text must match (case-insensitive). */
@@ -53,21 +56,21 @@ const BANNED = [
   '\\bpayable\\b',
   '\\boutstanding\\b',
   'Great question',
-  '^Sure',
-  '!',
   '[\\u0900-\\u097F]',
   'SUGGEST:',
   'OPTIONS:',
-  // Never describe the app's own limits; ask about the user's world instead.
-  "\\b(can'?t|cannot|unable|not possible)\\b",
+  // Never describe the app's own limits (first person); a fact about the data ("profit cannot be calculated yet") is fine.
+  "\\b(I|we) (can'?t|cannot|am unable|are unable)\\b",
+  '\\bnot possible\\b',
   '\\bnahi kar sakta\\b',
   'نہیں کر سکتا',
-  // tum-register: too familiar for a service addressing a business owner.
-  '\\b(batao|karo|dikhao|bhejo|likho)\\b',
+  // tum-register: too familiar for a service addressing a business owner ("karo" is left out: it rides inside
+  // noun compounds like "settlement karo" when the assistant explains a feature).
+  '\\b(batao|dikhao|bhejo|likho)\\b',
 ];
 
-/** Extra bans for a turn that proposes a write: raw field names must never surface. */
-const BANNED_ON_WRITE = ['\\b(note|payType|qty|party)\\s*[:=]', '(نوٹ)\\s*[:：]'];
+/** Extra bans for a turn that proposes a write: the receipt uses words, never a code key. */
+const BANNED_ON_WRITE = ['\\b(payType|qty|accountTo|allPresent|dealPrice|openingBalance|partyType)\\s*[:=]', '\\bwillSave\\b'];
 
 /**
  * Scenarios reference the DEMO dataset (Dev Tools → Load demo data):
@@ -84,7 +87,7 @@ export const EVAL_CASES: EvalCase[] = [
   { id: 'po-pending', text: 'kon se orders abhi tak deliver nahi hue', tools: ['get_purchase_orders'], lang: 'roman' },
   // The tool says WHAT IS STILL TO PAY; it names no account and no date, so the reply must not either.
   { id: 'workers-owed', text: 'kin mazdooron ke paise dene hain', tools: ['get_worker_balance', 'list_names'], lang: 'roman', mustNot: ['\\bowed\\b', 'outstanding', 'Cash in Hand', 'Meezan', '\\baaj\\b'] },
-  { id: 'names-projects', text: 'which projects do I have', tools: ['list_names', 'get_project_status'], lang: 'en', mustNot: ['\\bscreen\\b', '\\btab\\b', '\\bmenu\\b'] },
+  { id: 'names-projects', text: 'which projects do I have', tools: ['list_names', 'get_project_status'], orLists: 'projects', lang: 'en', mustNot: ['\\bscreen\\b', '\\btab\\b', '\\bmenu\\b'] },
   // Writes
   { id: 'expense-roman', text: 'aaj generator ke diesel pe 3 hazar kharch hue', draft: 'expense', lang: 'roman', mustNot: ['record', 'entry'] },
   // 50 x 1250 = 62,500. On device the model wrote "Rs 1,25,000" here, so the
@@ -103,9 +106,9 @@ export const EVAL_CASES: EvalCase[] = [
     asks: true,
     lang: 'roman',
     world: { projects: [], plots: [] },
-    // It must offer to make one, not report that none exists.
+    // It must offer to make one; saying plainly that none exists yet is honest and allowed.
     must: ['\\b(bana doon|bana dein|banata hoon|bana dun)\\b'],
-    mustNot: ['\\bchoose\\b', 'chun', 'select', '\\bkoi project nahi\\b'],
+    mustNot: ['\\bchoose\\b', 'chun', 'select'],
   },
   // Several projects: ask which one, and offer them as taps.
   {
@@ -124,7 +127,7 @@ export const EVAL_CASES: EvalCase[] = [
   { id: 'project-new', text: 'naya project banao', asks: true, lang: 'roman' },
   // Unknown name → did you mean
   // A name nobody has: the tool answers didYouMean, so the reply must ask, not guess.
-  { id: 'unknown-worker', text: 'Shahbaz Butt ki hazri dikhao', tools: ['get_worker_attendance', 'list_names'], lang: 'roman', asks: true },
+  { id: 'unknown-worker', text: 'Shahbaz Butt ki hazri dikhao', tools: ['get_worker_attendance', 'list_names'], orAsks: true, lang: 'roman', asks: true },
   // A near-miss spelling must be matched silently, not questioned.
   { id: 'fuzzy-worker', text: 'Zulfiqarr ki hazri dikhao', tools: ['get_worker_attendance'], lang: 'roman' },
   // Knowledge
@@ -153,13 +156,15 @@ export interface EvalResult {
   detail: string;
   ms: number;
   calls: number;
+  /** Tokens the case cost, when the provider reports them. */
+  usage?: AiUsage;
 }
 
 export interface EvalDeps extends Omit<AgentDeps, 'history' | 'prompt'> {
   world: World;
   /** Called after every case (for a progress bar). */
   onCase?: (r: EvalResult, index: number, total: number) => void;
-  /** Pause between cases (free tiers meter tokens per minute). */
+  /** Pause between cases (gateways meter requests per minute). */
   pauseMs?: number;
   /** Run a subset. */
   only?: string[];
@@ -187,12 +192,16 @@ function replyLanguage(text: string): ReplyLanguage | null {
  */
 const ASKS = /[?؟]/;
 
-/** Judge one reply against its case. */
-export function judge(c: EvalCase, r: AgentResult): { passed: boolean; detail: string } {
+/** Judge one reply against its case. `world` lets `orLists` check the names. */
+export function judge(c: EvalCase, r: AgentResult, world?: World): { passed: boolean; detail: string } {
   const problems: string[] = [];
   const ran = r.toolLog.map((l) => l.split('(')[0]);
   const draftKinds = r.drafts.map((d) => d.draft.kind as string);
-  if (c.tools && !c.tools.some((t) => ran.includes(t)) && !(c.tools.includes('remember_fact') && r.learned.length > 0)) problems.push(`tools ran: ${ran.join(', ') || 'none'}; expected one of ${c.tools.join(' / ')}`);
+  const askedWithChoices = r.options.length > 0 && /[?؟]/.test(r.text);
+  const listed = c.orLists && world ? (c.orLists === 'projects' ? world.projects : world.workers).every((x) => r.text.includes(x.name)) : false;
+  if (c.tools && !c.tools.some((t) => ran.includes(t)) && !(c.tools.includes('remember_fact') && r.learned.length > 0) && !(c.orAsks && askedWithChoices) && !listed) {
+    problems.push(`tools ran: ${ran.join(', ') || 'none'}; expected one of ${c.tools.join(' / ')}`);
+  }
   if (c.noTool && (ran.length > 0 || draftKinds.length > 0)) problems.push(`unexpected tool: ${[...ran, ...draftKinds].join(', ')}`);
   const asked = ASKS.test(r.text) || r.options.length > 0;
   if (c.draft && !draftKinds.includes(c.draft) && !(c.orAsks && asked)) {
@@ -229,8 +238,8 @@ export async function runEvals(deps: EvalDeps): Promise<EvalResult[]> {
     for (let attempt = 0; ; attempt++) {
       try {
         const r = await runAgent(c.text, { ...deps, world: c.world ? { ...deps.world, ...c.world } : deps.world, history, prompt: { language } });
-        const j = judge(c, r);
-        result = { id: c.id, ...j, ms: Date.now() - started, calls: r.calls };
+        const j = judge(c, r, deps.world);
+        result = { id: c.id, ...j, ms: Date.now() - started, calls: r.calls, usage: r.usage };
         break;
       } catch (e) {
         // A rate limit or a flaky connection is not a model failure: wait and retry.

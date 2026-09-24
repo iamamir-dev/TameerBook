@@ -4,15 +4,18 @@ import * as Clipboard from 'expo-clipboard';
 import React from 'react';
 import { Image, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 import type { AiErrorCode, OpenScreen } from '@/ai';
 import { AppIcon, AppText } from '@/components/ui';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useTheme } from '@/theme';
 import { swallow } from '@/utils/log';
 
 import { useEnter } from '../utils/motion';
+import { resolveWallpaper } from '../wallpapers';
 import { makeStyles } from '../styled/MessageBubble.styles';
 import { AI_ERROR_KEY, SETTINGS_FIXABLE } from '../utils/aiErrors';
 import { RichText } from './RichText';
@@ -20,11 +23,33 @@ import { OPEN_SCREEN_LABEL, openScreen } from '../utils/openScreen';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+/**
+ * The little pointer at a bubble's TOP corner, the way WhatsApp draws it: a
+ * curved triangle in the bubble's own colour, sweeping out of the side that
+ * faces the sender. Absolutely positioned; the bubble keeps that corner square.
+ */
+export function BubbleTail({ side, color }: { side: 'left' | 'right'; color: string }): React.JSX.Element {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View pointerEvents="none" style={[styles.tail, side === 'left' ? styles.tailLeft : styles.tailRight]}>
+      <Svg width={18} height={22} viewBox="0 0 18 22">
+        {/* The bubble's top edge sweeps out into a point. */}
+        <Path d={side === 'left' ? 'M18 22 L18 0 L0 0 C8 2 14 8 18 22 Z' : 'M0 22 L0 0 L18 0 C10 2 4 8 0 22 Z'} fill={color} />
+      </Svg>
+    </View>
+  );
+}
+
 /** What the user said — right-aligned, on the brand color, with its own copy action. */
 export function UserBubble({ text, imageUris, onCopied }: { text: string; imageUris?: string[]; onCopied?: () => void }): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const styles = makeStyles(theme);
+  const wp = resolveWallpaper(
+    useSettingsStore((s) => s.chatWallpaper),
+    theme
+  );
   return (
     <Animated.View entering={useEnter()} style={styles.userWrap}>
       {imageUris?.length ? (
@@ -35,10 +60,13 @@ export function UserBubble({ text, imageUris, onCopied }: { text: string; imageU
         </View>
       ) : null}
       {text ? (
-        <View style={styles.user}>
-          <AppText size="sm" color="onPrimary" selectable>
-            {text}
-          </AppText>
+        <View style={styles.userWithTail}>
+          <View style={[styles.user, { backgroundColor: wp.outgoing }]}>
+            <AppText size="sm" style={{ color: wp.outgoingText }} selectable>
+              {text}
+            </AppText>
+          </View>
+          <BubbleTail side="right" color={wp.outgoing} />
         </View>
       ) : null}
       {text ? (

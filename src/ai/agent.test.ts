@@ -33,7 +33,8 @@ function fake(script: ChatToolsResult[]): AiTransport & { seen: AiChatMessage[][
       return '';
     },
     async chatTools(messages, t) {
-      seen.push(messages);
+      // A copy: the loop mutates its array between calls.
+      seen.push([...messages]);
       tools.push(t);
       return script.shift() ?? { content: 'done', toolCalls: [] };
     },
@@ -120,10 +121,10 @@ describe('splitSuggestions', () => {
     expect(splitSuggestions('x\nSUGGEST: a | b | c | d').suggestions).toHaveLength(3);
     expect(splitSuggestions(null)).toEqual({ text: '', suggestions: [], options: [] });
   });
-  it('removes em dashes everywhere', () => {
-    expect(splitSuggestions('Cost so far — Rs 5 lakh — is high.\nSUGGEST: Pay Akram — now')).toEqual({
-      text: 'Cost so far, Rs 5 lakh, is high.',
-      suggestions: ['Pay Akram, now'],
+  it('keeps a spaced em dash as a separator and turns glued dashes into hyphens', () => {
+    expect(splitSuggestions('**Kharcha** — Rs 5 lakh\nplot—cost and 2–3 din\nSUGGEST: Pay Akram — now')).toEqual({
+      text: '**Kharcha** — Rs 5 lakh\nplot-cost and 2-3 din',
+      suggestions: ['Pay Akram — now'],
       options: [],
     });
   });
@@ -235,15 +236,26 @@ describe('runAgent', () => {
     expect(t.seen[0].map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
   });
 
-  it('nudges once after an empty reply, then answers', async () => {
+  it('nudges once after an empty reply with a user turn, never an empty assistant turn', async () => {
     const t = fake([{ content: '', toolCalls: [] }, { content: 'Theek hai.', toolCalls: [] }]);
     const r = await runAgent('?', { transport: t, world, runIntent: async () => poAnswer });
     expect(r.text).toBe('Theek hai.');
     expect(r.calls).toBe(2);
+    expect(t.seen[1]).toHaveLength(t.seen[0].length + 1);
     expect(t.seen[1].at(-1)).toMatchObject({ role: 'user' });
+    expect(t.seen[1].some((m) => m.role === 'assistant' && !m.content)).toBe(false);
   });
 
-  it('throws unparseable when the model stays empty after the nudge', async () => {
+  it('flags the static core as a cacheable prefix on the system message', async () => {
+    const t = fake([{ content: 'Salam.', toolCalls: [] }]);
+    await runAgent('salam', { transport: t, world, runIntent: async () => poAnswer });
+    const sys = t.seen[0][0] as { role: string; content: string; cachePrefixChars?: number };
+    expect(sys.role).toBe('system');
+    expect(sys.cachePrefixChars).toBeGreaterThan(1000);
+    expect(sys.content.slice(0, sys.cachePrefixChars)).toContain('PRINCIPLES');
+  });
+
+  it('throws unparseable when the model stays empty after the retry', async () => {
     const t = fake([{ content: '', toolCalls: [] }, { content: '', toolCalls: [] }]);
     await expect(runAgent('?', { transport: t, world, runIntent: async () => poAnswer })).rejects.toMatchObject({ code: 'unparseable' });
   });

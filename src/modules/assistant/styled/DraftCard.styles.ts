@@ -5,35 +5,21 @@ import type { Theme } from '@/theme/theme';
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     /**
-     * The inline approval card: a soft tinted surface (no shadow, no outline)
-     * with a header (icon · title · amount), hairline-ruled detail rows on the
-     * same surface (one colour, nothing inset), and a compact Reject / Accept footer.
-     */
-    /**
-     * Neutral surface on purpose: DESIGN_GUIDELINES reserve green for money IN,
-     * and every draft used to be tinted green, including expenses. Direction is
-     * carried by the amount (colour + sign), not by the whole card.
+     * The confirmation, in the reply bubble's own colour: the whole reply is
+     * ONE surface (the user's rule), so the card adds no fill, no outline and
+     * no shadow. Header (icon · title · state), the amount as a headline, the
+     * details as hairline-ruled rows, then what still needs fixing and the two
+     * buttons.
      */
     card: {
       alignSelf: 'stretch',
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.card,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      overflow: 'hidden',
-    },
-    /** Awaiting a decision: a thin accent edge says "your turn" without tinting
-        the whole card a colour that would read as a direction. */
-    cardPending: { borderLeftWidth: 3, borderLeftColor: theme.colors.accent },
-    cardDone: { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primarySoft },
-    head: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
+      backgroundColor: 'transparent',
       paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-      paddingBottom: theme.spacing.sm,
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.sm,
     },
+    cardRejected: { opacity: 0.6 },
+    head: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
     iconChip: {
       width: theme.icon.box,
       height: theme.icon.box,
@@ -45,95 +31,77 @@ export const makeStyles = (theme: Theme) =>
     /** The one place a direction colour belongs at a glance. */
     iconChipOut: { backgroundColor: theme.colors.dangerSoft },
     iconChipIn: { backgroundColor: theme.colors.successSoft },
-    iconChipDone: { backgroundColor: 'transparent' },
+    iconChipDone: { backgroundColor: theme.colors.successSoft },
     iconChipMuted: { backgroundColor: theme.colors.track },
-    headText: { flex: 1, minWidth: 0, gap: 1 },
-    headAmount: { maxWidth: '45%', textAlign: 'right' },
-    /** Saved / Rejected state, shown as a small pill under the title. */
-    statusPill: {
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.xs,
-      height: 20,
+    headText: { flex: 1, minWidth: 0, gap: theme.spacing.xxs },
+    /** "1/3" when a message carries several dependent actions. */
+    stepPill: {
+      height: 22,
+      paddingHorizontal: theme.spacing.sm,
       borderRadius: theme.radius.pill,
-      backgroundColor: 'transparent',
-      paddingHorizontal: 0,
-      marginTop: theme.spacing.xxs,
+      backgroundColor: theme.colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    statusPillMuted: {},
-    /** White panel holding the detail rows while the card awaits a decision. */
-    panel: {
-      marginHorizontal: theme.spacing.sm,
-      backgroundColor: 'transparent',
-    },
-    /** Settled: the rows sit directly on the message-coloured card, nothing raised. */
-    panelDone: { backgroundColor: 'transparent' },
+    /** The figure the whole card is about. */
+    amount: { marginTop: theme.spacing.xxs, marginBottom: theme.spacing.xxs },
+    /** The detail rows, on the same surface, hairline-ruled top and bottom. */
+    panel: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
     /** Field rows: label left, value right, hairline between rows. */
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
-      paddingHorizontal: theme.spacing.md,
-      minHeight: 38,
+      paddingHorizontal: theme.spacing.xs,
+      minHeight: 40,
       paddingVertical: theme.spacing.xs,
     },
-    /** A row the user can tap (choose account / project / plot) is a full touch target. */
-    rowTap: { minHeight: theme.touch.minTarget },
+    /** A row the user can tap (choose account / project / category) is a full touch target. */
+    rowTap: { minHeight: theme.touch.minTarget - theme.spacing.sm },
     rowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border },
-    /** Label keeps at most ~45% and ellipsizes; the value takes the rest. */
-    label: { flexShrink: 0, maxWidth: '45%' },
+    /** Label keeps at most ~42% and ellipsizes; the value takes the rest. */
+    label: { flexShrink: 0, maxWidth: '42%' },
     value: { flex: 1, textAlign: 'right' },
-    /** A row that still needs a choice: the value reads as a link. */
-    pick: {},
-    inputs: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
+    /** Typed-in fields (name, amount, wage) when the sentence left them out. */
+    inputs: { gap: theme.spacing.sm },
+    /** What still blocks Accept, one line each. */
+    checks: { gap: theme.spacing.xs, paddingHorizontal: theme.spacing.xs },
+    check: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+    checkText: { flex: 1, minWidth: 0 },
+    /** Why the last Accept failed (a repository guard), kept where the user is looking. */
     warn: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
-      marginHorizontal: theme.spacing.sm,
-      marginTop: theme.spacing.sm,
-      backgroundColor: theme.colors.goldSoft,
+      backgroundColor: theme.colors.dangerSoft,
       borderRadius: theme.radius.sm,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.xs,
     },
     warnText: { flex: 1, minWidth: 0 },
-    /** Reject (ghost) · Accept (filled): compact, right-aligned like a dialog footer. */
-    actions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.sm,
-    },
-    /** Accept and Reject commit real money, so they take the full 56px target. */
+    /** Reject (outlined) · Accept (filled): two pills sharing the row, Accept wider. */
+    actions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginTop: theme.spacing.xxs },
     btn: {
-      minHeight: theme.touch.minTarget,
-      paddingHorizontal: theme.spacing.lg,
+      minHeight: theme.touch.minTarget - theme.spacing.sm,
       borderRadius: theme.radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'row',
       gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
     },
-    btnAccept: { backgroundColor: theme.colors.accent, paddingHorizontal: theme.spacing.xl },
-    btnAcceptDisabled: { backgroundColor: theme.colors.track, paddingHorizontal: theme.spacing.xl },
-    btnReject: { backgroundColor: 'transparent' },
+    btnReject: { flex: 1, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: 'transparent' },
+    btnAccept: { flex: 2, backgroundColor: theme.colors.accent },
+    btnAcceptDisabled: { flex: 2, backgroundColor: theme.colors.track },
     pressed: { opacity: 0.8 },
-    editLink: { alignItems: 'center', paddingBottom: theme.spacing.sm },
-    /** Footer after saving: "Saved · View ›" */
+    editLink: { alignItems: 'center', paddingTop: theme.spacing.xxs },
+    /** Footer after saving: "Saved · Rs 39,000 · View ›" */
     doneRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      minHeight: theme.touch.minTarget,
-      marginTop: theme.spacing.xs,
+      minHeight: 40,
+      paddingHorizontal: theme.spacing.xs,
     },
     doneText: { flex: 1 },
-    /** Breathing room under the panel when there is no footer. */
-    panelGap: { height: theme.spacing.md },
   });

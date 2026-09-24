@@ -2,42 +2,40 @@
  * TameerBook AI proxy — a Cloudflare Worker (free plan) that holds the
  * provider keys so the app never ships one. Three routes, all POST:
  *
- *   /v1/chat/completions   OpenAI chat body (tools supported)              → OpenAI response
- *   /v1/audio/transcriptions  multipart: file, language?, prompt?           → { text }
- *   /v1/vision      { image (base64 jpeg), prompt, json?, maxTokens? }     → { content }
+ *   /v1/messages              Anthropic Messages body (tools, images)  → Claude via the gateway
+ *   /v1/chat/completions      OpenAI chat body (tools)                 → OpenAI
+ *   /v1/audio/transcriptions  multipart: file, language?, prompt?     → OpenAI transcription → { text }
  *
- * Provider order: Groq (free, no training on data) → Workers AI (free
- * neurons, no training on data). Each device is rate-limited via the
- * RATE_LIMITER binding; an optional shared APP_TOKEN raises the bar for
- * casual abuse. No request bodies are logged or stored.
+ * Claude answers text and tools; OpenAI is the second engine and the only
+ * voice engine (Claude has no audio endpoint). Each device is rate-limited
+ * via the RATE_LIMITER binding; an optional shared APP_TOKEN raises the bar
+ * for casual abuse. No request bodies are logged or stored.
  */
 
 export interface Env {
-  GROQ_API_KEY: string;
+  /** Key for the Claude gateway (MWAPI or api.anthropic.com). */
+  ANTHROPIC_API_KEY: string;
+  /** Anthropic-shaped base URL; defaults to MWAPI, the gateway SubscribAI uses. */
+  ANTHROPIC_BASE_URL?: string;
+  /** Optional: enables /v1/chat/completions and voice. */
+  OPENAI_API_KEY?: string;
   /** Optional shared secret the app sends as `x-app-token`. */
   APP_TOKEN?: string;
-  /** Workers AI binding (fallback). */
-  AI?: Ai;
   /** Rate limiting binding (per device id). */
   RATE_LIMITER?: RateLimit;
   /** Comma-separated allowed origins for CORS (optional; mobile apps send none). */
   ALLOWED_ORIGINS?: string;
 }
 
-const GROQ = 'https://api.groq.com/openai/v1';
-const MODELS = {
-  text: 'openai/gpt-oss-120b',
-  textFallback: 'qwen/qwen3.8-27b',
-  vision: 'qwen/qwen3.8-27b',
-  whisper: 'whisper-large-v3-turbo',
-  cfText: '@cf/google/gemma-4-26b-a4b-it',
-  cfVision: '@cf/meta/llama-3.2-11b-vision-instruct',
-  cfWhisper: '@cf/openai/whisper-large-v3-turbo',
-} as const;
+const MWAPI = 'https://api.mwapi.dev/v1';
+const OPENAI = 'https://api.openai.com/v1';
+const ANTHROPIC_VERSION = '2023-06-01';
+const TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
 
 const MAX_BODY_BYTES = 6 * 1024 * 1024; // audio + images stay small (the app compresses)
-// Tool turns on reasoning models spend tokens thinking before the call; give them room.
-const MAX_OUTPUT_TOKENS = 1600;
+/** Hard ceiling on what one call may generate; the app asks for 4,096. */
+const MAX_OUTPUT_TOKENS = 8192;
+const UPSTREAM_TIMEOUT_MS = 90_000;
 
 type Json = Record<string, unknown>;
 
@@ -58,23 +56,22 @@ export default {
     const cors = corsHeaders(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
+      const url = new URL(req.url);
+      if (url.pathname === '/health') return json({ ok: true }, 200, cors);
       if (req.method !== 'POST') throw new HttpError(405, 'POST only');
       await authorize(req, env);
-      const url = new URL(req.url);
       const len = Number(req.headers.get('content-length') ?? 0);
       if (len > MAX_BODY_BYTES) throw new HttpError(413, 'body too large');
 
       switch (url.pathname) {
+        case '/v1/messages':
+          return withCors(await claude(req, env), cors);
         case '/v1/chat':
         case '/v1/chat/completions':
-          return json(await chat(req, env), 200, cors);
+          return withCors(await openaiChat(req, env), cors);
         case '/v1/transcribe':
         case '/v1/audio/transcriptions':
           return json(await transcribe(req, env), 200, cors);
-        case '/v1/vision':
-          return json(await vision(req, env), 200, cors);
-        case '/health':
-          return json({ ok: true }, 200, cors);
         default:
           throw new HttpError(404, 'not found');
       }
@@ -99,168 +96,97 @@ async function authorize(req: Request, env: Env): Promise<void> {
   }
 }
 
-function corsHeaders(req: Request, env: Env): HeadersInit {
+function corsHeaders(req: Request, env: Env): Record<string, string> {
   const origin = req.headers.get('origin');
   const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!origin || allowed.length === 0 || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'POST, OPTIONS',
-    'access-control-allow-headers': 'content-type, x-app-token, x-device-id',
+    'access-control-allow-headers': 'content-type, x-app-token, x-device-id, anthropic-version',
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Groq                                                                      */
-/* -------------------------------------------------------------------------- */
+const withCors = (res: Response, cors: Record<string, string>): Response => {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
+};
 
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: unknown;
-}
-
-interface OaChoice {
-  message?: { content?: string | null; tool_calls?: unknown[] };
-}
-
-async function groqRaw(env: Env, body: Json): Promise<{ choices?: OaChoice[] }> {
-  const res = await fetch(`${GROQ}/chat/completions`, {
+/**
+ * Forward a JSON body upstream and hand the reply back with the status the
+ * app expects: 429 stays 429 (quota), a server-side auth failure becomes 502
+ * (the key is the server's problem, not the user's), everything else passes.
+ */
+async function forward(url: string, headers: HeadersInit, body: Json): Promise<Response> {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { authorization: `Bearer ${env.GROQ_API_KEY}`, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
-  if (!res.ok) throw new HttpError(res.status === 429 ? 429 : 502, `groq ${res.status}`);
-  const data = (await res.json()) as { choices?: OaChoice[] };
-  if (!data.choices?.[0]?.message) throw new HttpError(502, 'empty completion');
-  return data;
+  if (res.status === 401 || res.status === 403) throw new HttpError(502, 'server key rejected upstream');
+  const text = await res.text();
+  return new Response(text, { status: res.ok ? 200 : res.status, headers: { 'content-type': 'application/json' } });
 }
 
-async function groqCompletion(env: Env, body: Json): Promise<string> {
-  const data = await groqRaw(env, body);
-  const content = data.choices?.[0]?.message?.content;
-  if (typeof content !== 'string') throw new HttpError(502, 'empty completion');
-  return content;
-}
+/* -------------------------------------------------------------------------- */
+/*  Claude (Messages API)                                                     */
+/* -------------------------------------------------------------------------- */
 
-async function chat(req: Request, env: Env): Promise<Json> {
-  const b = (await req.json()) as {
-    messages?: ChatMessage[];
-    json?: boolean;
-    model?: string;
-    max_tokens?: number;
-    maxTokens?: number;
-    temperature?: number;
-    tools?: unknown[];
-    tool_choice?: unknown;
-    response_format?: unknown;
-    reasoning_effort?: unknown;
-    reasoning_format?: unknown;
-  };
+async function claude(req: Request, env: Env): Promise<Response> {
+  if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, 'claude not configured');
+  const b = (await req.json()) as Json;
   if (!Array.isArray(b.messages) || b.messages.length === 0) throw new HttpError(400, 'messages required');
-  const base = {
-    messages: b.messages,
-    temperature: clamp(b.temperature ?? 0.2, 0, 1),
-    max_tokens: clamp(b.max_tokens ?? b.maxTokens ?? MAX_OUTPUT_TOKENS, 1, MAX_OUTPUT_TOKENS),
-    ...(b.json || b.response_format ? { response_format: b.response_format ?? { type: 'json_object' } } : {}),
-    ...(Array.isArray(b.tools) && b.tools.length ? { tools: b.tools, tool_choice: b.tool_choice ?? 'auto' } : {}),
-    ...(typeof b.reasoning_effort === 'string' ? { reasoning_effort: b.reasoning_effort } : {}),
-    ...(typeof b.reasoning_format === 'string' ? { reasoning_format: b.reasoning_format } : {}),
+  const model = typeof b.model === 'string' && b.model.startsWith('claude') ? b.model : 'claude-sonnet-4-6';
+  const body: Json = {
+    ...b,
+    model,
+    max_tokens: clamp(Number(b.max_tokens ?? 4096), 1, MAX_OUTPUT_TOKENS),
+    stream: false,
   };
-  const model = b.model && (b.model.startsWith('openai/') || b.model.startsWith('qwen/') || b.model.startsWith('llama')) ? b.model : MODELS.text;
-  // The app speaks the OpenAI shape end-to-end, so return it as-is (tool_calls included).
-  try {
-    return await groqRaw(env, { ...base, model });
-  } catch (first) {
-    // Per-model daily caps on the free tier: try the second Groq model, then Workers AI (text only).
-    try {
-      return await groqRaw(env, { ...base, model: MODELS.textFallback });
-    } catch {
-      if (!env.AI) throw first;
-      const cleanMessages = b.messages.map((m) => {
-        let textContent = '';
-        if (typeof m.content === 'string') {
-          textContent = m.content;
-        } else if (Array.isArray(m.content)) {
-          textContent = m.content
-            .map((part: { type?: string; text?: string }) => (part?.type === 'text' ? part.text ?? '' : ''))
-            .join(' ');
-        } else {
-          textContent = String(m.content ?? '');
-        }
-        return { role: m.role, content: textContent };
-      });
-      const out = (await env.AI.run(MODELS.cfText as never, {
-        messages: cleanMessages,
-        max_tokens: base.max_tokens,
-        temperature: base.temperature,
-      } as never)) as { response?: string };
-      if (typeof out.response !== 'string') throw new HttpError(502, 'empty completion');
-      return { choices: [{ message: { content: out.response } }] };
-    }
-  }
+  const base = (env.ANTHROPIC_BASE_URL || MWAPI).replace(/\/+$/, '');
+  return forward(`${base}/messages`, { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': ANTHROPIC_VERSION }, body);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  OpenAI                                                                    */
+/* -------------------------------------------------------------------------- */
+
+async function openaiChat(req: Request, env: Env): Promise<Response> {
+  if (!env.OPENAI_API_KEY) throw new HttpError(503, 'openai not configured');
+  const b = (await req.json()) as Json;
+  if (!Array.isArray(b.messages) || b.messages.length === 0) throw new HttpError(400, 'messages required');
+  const model = typeof b.model === 'string' && /^(gpt-|o\d)/.test(b.model) ? b.model : 'gpt-5-mini';
+  const body: Json = { ...b, model, stream: false };
+  if (typeof b.max_tokens === 'number') body.max_tokens = clamp(b.max_tokens, 1, MAX_OUTPUT_TOKENS);
+  if (typeof b.max_completion_tokens === 'number') body.max_completion_tokens = clamp(b.max_completion_tokens, 1, MAX_OUTPUT_TOKENS);
+  return forward(`${OPENAI}/chat/completions`, { authorization: `Bearer ${env.OPENAI_API_KEY}` }, body);
 }
 
 async function transcribe(req: Request, env: Env): Promise<Json> {
+  if (!env.OPENAI_API_KEY) throw new HttpError(503, 'voice not configured');
   const form = await req.formData();
   const file = form.get('file');
   if (!(file instanceof File)) throw new HttpError(400, 'file required');
   const upstream = new FormData();
   upstream.append('file', file, file.name || 'speech.m4a');
-  upstream.append('model', MODELS.whisper);
+  upstream.append('model', TRANSCRIBE_MODEL);
   upstream.append('response_format', 'json');
-  upstream.append('temperature', '0');
   const language = form.get('language');
   const prompt = form.get('prompt');
   if (typeof language === 'string' && language) upstream.append('language', language.slice(0, 5));
   if (typeof prompt === 'string' && prompt) upstream.append('prompt', prompt.slice(0, 1000));
 
-  const res = await fetch(`${GROQ}/audio/transcriptions`, {
+  const res = await fetch(`${OPENAI}/audio/transcriptions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${env.GROQ_API_KEY}` },
+    headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
     body: upstream,
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
-  if (res.ok) {
-    const data = (await res.json()) as { text?: string };
-    return { text: (data.text ?? '').trim() };
-  }
-  if (!env.AI) throw new HttpError(res.status === 429 ? 429 : 502, `groq ${res.status}`);
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const out = (await env.AI.run(MODELS.cfWhisper as never, { audio: Array.from(bytes) } as never)) as { text?: string };
-  return { text: (out.text ?? '').trim() };
-}
-
-async function vision(req: Request, env: Env): Promise<Json> {
-  const b = (await req.json()) as { image?: string; prompt?: string; json?: boolean; maxTokens?: number };
-  if (!b.image || !b.prompt) throw new HttpError(400, 'image and prompt required');
-  const body = {
-    model: MODELS.vision,
-    temperature: 0.1,
-    max_tokens: clamp(b.maxTokens ?? MAX_OUTPUT_TOKENS, 1, MAX_OUTPUT_TOKENS),
-    ...(b.json ? { response_format: { type: 'json_object' } } : {}),
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: b.prompt },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b.image}` } },
-        ],
-      },
-    ],
-  };
-  try {
-    return { content: await groqCompletion(env, body) };
-  } catch (first) {
-    if (!env.AI) throw first;
-    const bytes = Uint8Array.from(atob(b.image), (c) => c.charCodeAt(0));
-    const out = (await env.AI.run(MODELS.cfVision as never, {
-      prompt: b.prompt,
-      image: Array.from(bytes),
-      max_tokens: body.max_tokens,
-    } as never)) as { description?: string; response?: string };
-    const content = out.response ?? out.description;
-    if (typeof content !== 'string') throw new HttpError(502, 'empty completion');
-    return { content };
-  }
+  if (!res.ok) throw new HttpError(res.status === 429 ? 429 : 502, `openai ${res.status}`);
+  const data = (await res.json()) as { text?: string };
+  return { text: (data.text ?? '').trim() };
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : lo));

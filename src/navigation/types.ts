@@ -21,11 +21,15 @@ export type TabParamList = {
   Investors: undefined;
 };
 
+/** The areas of Settings, each on its own page under the hub. */
+export type SettingsSectionId = 'company' | 'preferences' | 'assistant' | 'reminders' | 'home' | 'money' | 'documents' | 'about';
+
 /** Root stack: the tabs plus full-screen/modal destinations. */
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   QuickEntry: undefined;
   Settings: undefined;
+  SettingsSection: { section: SettingsSectionId };
   NewCompany: undefined;
   DevTools: undefined;
   // Cash flow. 'assets' (from the Home hero) widens the page to the full

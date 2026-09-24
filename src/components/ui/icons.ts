@@ -62,6 +62,7 @@ import {
   Settings,
   Share2,
   Sparkles,
+  WandSparkles,
   Stamp,
   Tag,
   Trash2,
@@ -172,7 +173,8 @@ export const ICONS = {
   copy: Copy,
   retry: RotateCcw,
   speaker: Volume2,
-  assistant: Sparkles,
+  assistant: WandSparkles,
+  sparkles: Sparkles,
 } satisfies Record<string, LucideIcon>;
 
 /** Type-safe semantic icon keys. */

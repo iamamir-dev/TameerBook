@@ -6,17 +6,13 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     bubble: {
       alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.spacing.sm,
+      justifyContent: 'center',
       backgroundColor: theme.colors.primarySoft,
       borderRadius: theme.radius.lg,
       borderBottomLeftRadius: theme.radius.sm,
       paddingHorizontal: theme.spacing.md,
       minHeight: 36,
-      maxWidth: '92%',
     },
-    dots: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 16 },
-    dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.accent },
-    status: { flexShrink: 1 },
+    dots: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 16 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.textSecondary },
   });

@@ -4,13 +4,18 @@ import { EVAL_CASES, judge, runEvals, type EvalResult } from './evals';
 import { matchName, suggestNames } from './match';
 import type { Answer } from './runner';
 import type { World } from './prompts';
+import { anthropicHeaders, parseAnthropicResponse, toAnthropicBody } from './anthropic';
+import { lostToolCall, parseOpenAiResponse, toOpenAiBody } from './openai';
+import { CLAUDE_DEFAULT_MODEL, MWAPI_BASE_URL, OPENAI_BASE_URL, OPENAI_DEFAULT_MODEL } from './providers';
 import type { AiChatMessage, AiTransport, ChatOptions, ChatToolsResult, ToolCall, ToolSpec } from './types';
 import { AiError } from './types';
 
 /**
  * LIVE EVALS — the behaviour suite against a REAL model, from the laptop.
  *
- *   TAMEERBOOK_AI_KEY=sk-... npm test -- src/ai/live.test.ts
+ *   TAMEERBOOK_AI_KEY=sk-... npx vitest run src/ai/live.test.ts --reporter=verbose   (Claude via MWAPI)
+ *   (without --reporter=verbose a fully passing run prints no per-case table)
+ *   TAMEERBOOK_AI_PROVIDER=openai TAMEERBOOK_AI_KEY=sk-... npm test -- src/ai/live.test.ts
  *
  * Skipped without a key, so `npm test` stays offline and free. The ledger is
  * stubbed (see `fakeIntent`), so this measures exactly what the prompt and
@@ -18,14 +23,18 @@ import { AiError } from './types';
  * it answers in, and HOW it writes. The on-device runner (Dev Tools →
  * Assistant eval) covers the same cases against real data.
  *
- * Env: TAMEERBOOK_AI_KEY (required), TAMEERBOOK_AI_MODEL, TAMEERBOOK_AI_BASE,
- * TAMEERBOOK_AI_ONLY (comma-separated case ids).
+ * Env: TAMEERBOOK_AI_KEY (required), TAMEERBOOK_AI_PROVIDER (claude | openai,
+ * default claude), TAMEERBOOK_AI_MODEL, TAMEERBOOK_AI_BASE, TAMEERBOOK_AI_ONLY
+ * (comma-separated case ids).
  */
 
 const KEY = process.env.TAMEERBOOK_AI_KEY ?? '';
-const MODEL = process.env.TAMEERBOOK_AI_MODEL ?? 'openai/gpt-oss-120b';
-const BASE = process.env.TAMEERBOOK_AI_BASE ?? 'https://api.groq.com/openai/v1';
+const PROVIDER = process.env.TAMEERBOOK_AI_PROVIDER === 'openai' ? 'openai' : 'claude';
+const MODEL = process.env.TAMEERBOOK_AI_MODEL ?? (PROVIDER === 'openai' ? OPENAI_DEFAULT_MODEL : CLAUDE_DEFAULT_MODEL);
+const BASE = process.env.TAMEERBOOK_AI_BASE ?? (PROVIDER === 'openai' ? OPENAI_BASE_URL : MWAPI_BASE_URL);
 const ONLY = (process.env.TAMEERBOOK_AI_ONLY ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+/** TAMEERBOOK_AI_DEBUG=1 prints every raw reply (to see what an empty completion actually was). */
+const DEBUG = !!process.env.TAMEERBOOK_AI_DEBUG;
 
 /** A world shaped like the demo dataset (Dev Tools → Load demo data). */
 const world: World = {
@@ -119,31 +128,67 @@ function fakeIntent(intent: { type: string } & Record<string, unknown>): Answer 
   }
 }
 
-/** OpenAI's newer models rename the token cap, fix the temperature and think inside the budget. */
+/** GPT-5 / o-series rename the token cap, fix the temperature and think inside the budget. */
 const isOpenAiReasoning = (model: string): boolean => /^(gpt-5|o\d)/.test(model);
-/** Models that accept `reasoning_effort` at all. */
-const takesReasoningEffort = (model: string): boolean => isOpenAiReasoning(model) || model.startsWith('openai/gpt-oss') || model.startsWith('qwen/');
 
-/** Minimal OpenAI-compatible transport (no react-native, no expo). */
-function liveTransport(): AiTransport {
+const failFor = (status: number, text: string): AiError =>
+  new AiError(status === 429 ? 'quota' : status === 401 || status === 403 ? 'badkey' : 'failed', `${status} ${text.slice(0, 160)}`);
+
+/** Claude through the same wire code the app uses (no react-native, no expo), including the gateway fallback. */
+function claudeTransport(): AiTransport {
+  const compat = async (messages: AiChatMessage[], opts: ChatOptions, tools: ToolSpec[]): Promise<ChatToolsResult> => {
+    const body = toOpenAiBody(messages, { model: MODEL, maxTokens: opts.maxTokens ?? 4096, temperature: opts.temperature, tools, json: opts.json });
+    const res = await fetch(`${BASE}/chat/completions`, { method: 'POST', headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw failFor(res.status, await res.text().catch(() => ''));
+    const data: unknown = await res.json();
+    if (DEBUG) console.log(`[live-raw compat] ${JSON.stringify(data).slice(0, 1500)}`);
+    const r = parseOpenAiResponse(data);
+    if (!r) throw new AiError('failed', 'empty completion');
+    return r;
+  };
+  const call = async (messages: AiChatMessage[], opts: ChatOptions, tools?: ToolSpec[]): Promise<ChatToolsResult> => {
+    const body = toAnthropicBody(messages, { model: MODEL, maxTokens: opts.maxTokens ?? 4096, temperature: opts.temperature, tools, json: opts.json });
+    const res = await fetch(`${BASE}/messages`, { method: 'POST', headers: anthropicHeaders(KEY), body: JSON.stringify(body) });
+    if (!res.ok) throw failFor(res.status, await res.text().catch(() => ''));
+    const data: unknown = await res.json();
+    if (DEBUG) console.log(`[live-raw] ${JSON.stringify(data).slice(0, 1500)}`);
+    const parsed = parseAnthropicResponse(data);
+    if (tools && lostToolCall(parsed)) return compat(messages, opts, tools);
+    return parsed;
+  };
+  return {
+    kind: 'live-claude',
+    async chat(messages, opts: ChatOptions = {}) {
+      return (await call(messages, { temperature: 0.2, ...opts })).content ?? '';
+    },
+    chatTools(messages, tools, opts: ChatOptions = {}) {
+      return call(messages, { temperature: 0, ...opts }, tools);
+    },
+    async transcribe() {
+      return '';
+    },
+    async vision() {
+      return '';
+    },
+  };
+}
+
+/** Minimal OpenAI transport (no react-native, no expo). */
+function openAiTransport(): AiTransport {
   const post = async (body: Record<string, unknown>): Promise<Record<string, unknown>> => {
     const b: Record<string, unknown> = { model: MODEL, ...body };
     if (isOpenAiReasoning(MODEL)) {
-      // Reasoning tokens come out of the same budget, so give them room.
       b.max_completion_tokens = Math.max(Number(b.max_tokens ?? 0), 6000);
       delete b.max_tokens;
       delete b.temperature;
+      b.reasoning_effort = 'low';
     }
-    if (!takesReasoningEffort(MODEL)) delete b.reasoning_effort;
     const res = await fetch(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify(b),
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new AiError(res.status === 429 ? 'quota' : res.status === 401 ? 'badkey' : 'failed', `${res.status} ${text.slice(0, 160)}`);
-    }
+    if (!res.ok) throw failFor(res.status, await res.text().catch(() => ''));
     return (await res.json()) as Record<string, unknown>;
   };
   const toOa = (messages: AiChatMessage[]): unknown[] =>
@@ -160,9 +205,9 @@ function liveTransport(): AiTransport {
     });
   const pick = (data: Record<string, unknown>) => (data.choices as { message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[])?.[0]?.message;
   return {
-    kind: 'live',
+    kind: 'live-openai',
     async chat(messages, opts: ChatOptions = {}) {
-      const msg = pick(await post({ messages: toOa(messages), temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 700, reasoning_effort: 'low' }));
+      const msg = pick(await post({ messages: toOa(messages), temperature: opts.temperature ?? 0.2, max_tokens: opts.maxTokens ?? 4096 }));
       return typeof msg?.content === 'string' ? msg.content : '';
     },
     async chatTools(messages, tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
@@ -170,10 +215,9 @@ function liveTransport(): AiTransport {
         await post({
           messages: toOa(messages),
           temperature: opts.temperature ?? 0,
-          max_tokens: opts.maxTokens ?? 1400,
+          max_tokens: opts.maxTokens ?? 4096,
           tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
           tool_choice: 'auto',
-          reasoning_effort: 'low',
         })
       );
       const toolCalls: ToolCall[] = (msg?.tool_calls ?? [])
@@ -190,6 +234,8 @@ function liveTransport(): AiTransport {
   };
 }
 
+const liveTransport = (): AiTransport => (PROVIDER === 'openai' ? openAiTransport() : claudeTransport());
+
 const safeArgs = (raw: unknown): Record<string, unknown> => {
   if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
   if (typeof raw === 'string' && raw.trim()) {
@@ -204,7 +250,7 @@ const safeArgs = (raw: unknown): Record<string, unknown> => {
 };
 
 const table = (results: EvalResult[]): string =>
-  results.map((r) => `${r.passed ? 'PASS' : 'FAIL'}  ${r.id.padEnd(22)} ${String(r.calls)} calls ${String(Math.round(r.ms / 100) / 10).padStart(5)}s  ${r.detail}`).join('\n');
+  results.map((r) => `${r.passed ? 'PASS' : 'FAIL'}  ${r.id.padEnd(22)} ${String(r.calls)} calls ${String(Math.round(r.ms / 100) / 10).padStart(5)}s ${r.usage ? `${String(r.usage.inputTokens).padStart(6)} in ${String(r.usage.outputTokens).padStart(5)} out` : ''}  ${r.detail}`).join('\n');
 
 describe.skipIf(!KEY)('live assistant evals', () => {
   it(
@@ -216,7 +262,7 @@ describe.skipIf(!KEY)('live assistant evals', () => {
         runIntent: async (intent) => fakeIntent(intent as never),
         only: ONLY,
         pauseMs: 3_000,
-        onCase: (r) => console.log(`[live-eval] ${r.passed ? 'PASS' : 'FAIL'} ${r.id} · ${r.calls} calls · ${r.ms}ms · ${r.detail}`),
+        onCase: (r) => console.log(`[live-eval] ${r.passed ? 'PASS' : 'FAIL'} ${r.id} · ${r.calls} calls · ${r.ms}ms${r.usage ? ` · ${r.usage.inputTokens} in / ${r.usage.outputTokens} out` : ''} · ${r.detail}`),
       });
       const failed = results.filter((r) => !r.passed);
       console.log(`\n${table(results)}\n\n${results.length - failed.length}/${results.length} passed\n`);

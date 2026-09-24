@@ -26,9 +26,10 @@ import {
   type StressPreset,
   type StressProgress,
   type StressReport,
+  saveSetting,
   type TestResult,
 } from '@/db';
-import { buildWorld, getAiTransport, runEvals, runIntent, type EvalResult } from '@/ai';
+import { buildWorld, getAiTransport, resolveDraft, runEvals, runIntent, type Draft, type EvalResult } from '@/ai';
 import { useCompanyStore } from '@/stores/useCompanyStore';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { RootStackParamList } from '@/navigation/types';
@@ -40,7 +41,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** Which long-running job holds the screen. `null` = idle. */
 type Busy =
-  | 'demo' | 'tests' | 'clear' | 'clearPo' | 'stress' | 'bench' | 'storage' | 'clearStress' | 'audit' | 'evals';
+  | 'demo' | 'tests' | 'clear' | 'clearPo' | 'stress' | 'bench' | 'storage' | 'clearStress' | 'audit' | 'evals' | 'cards';
 
 type SectionKey = 'tables' | 'stress' | 'audit' | 'perf' | 'storage' | 'tests' | 'evals' | 'danger';
 
@@ -134,6 +135,37 @@ export function DevToolsScreen(): React.JSX.Element {
    * the configured provider (needs AI helpers on + a key). Results also go to
    * the console as one line per case so `adb logcat` / Metro shows them.
    */
+  /**
+   * Seed the assistant chat with sample confirmation cards (every state: fields
+   * to fix, ready, saved, rejected) so the card can be designed without a live
+   * model. Names resolve against the current company's own data.
+   */
+  const onPreviewCards = run('cards', async () => {
+    const world = await buildWorld();
+    const project = world.projects[0]?.name;
+    const worker = world.workers[0]?.name;
+    const party = world.parties[0]?.name;
+    const drafts: Draft[] = [
+      { kind: 'expense', amount: 5000, note: 'paint', project },
+      { kind: 'material', item: 'cement', qty: 30, unit: 'bori', rate: 1300, project, party },
+      { kind: 'income', category: 'rent' },
+      ...(worker ? [{ kind: 'payWorker', worker, amount: 2000 } as Draft] : []),
+      { kind: 'createProject', name: 'Demo House' },
+      { kind: 'expense', amount: 1200, category: 'Fuel' },
+    ];
+    let n = 0;
+    const turns = drafts.flatMap((d, i) => {
+      const resolved = resolveDraft(d, world);
+      const settled = i === drafts.length - 1 ? { 0: { status: 'accepted' as const, message: 'Saved · Rs 1,200' } } : i === 2 ? { 0: { status: 'rejected' as const } } : undefined;
+      return [
+        { id: `demo-u${++n}`, role: 'user', text: `demo ${d.kind}`, at: new Date().toISOString() },
+        { id: `demo-a${++n}`, role: 'assistant', text: 'Yeh entry theek hai? ✅', cards: [], drafts: [resolved], suggestions: [], options: [], settled, at: new Date().toISOString() },
+      ];
+    });
+    await saveSetting('aiChat', JSON.stringify({ turns, exchanges: [] }));
+    navigation.navigate('Assistant');
+  });
+
   const onRunEvals = run('evals', async () => {
     setEvals([]);
     const transport = getAiTransport();
@@ -145,7 +177,7 @@ export function DevToolsScreen(): React.JSX.Element {
       onCase: (r, i, total) => {
         setEvalProgress({ done: i + 1, total });
         setEvals((cur) => [...cur, r]);
-        console.log(`[assistant-eval] ${r.passed ? 'PASS' : 'FAIL'} ${r.id} (${r.calls} calls, ${r.ms}ms) ${r.detail}`);
+        console.log(`[assistant-eval] ${r.passed ? 'PASS' : 'FAIL'} ${r.id} (${r.calls} calls, ${r.ms}ms${r.usage ? `, ${r.usage.inputTokens} in / ${r.usage.outputTokens} out` : ''}) ${r.detail}`);
       },
     });
     const passed = results.filter((r) => r.passed).length;
@@ -666,6 +698,10 @@ export function DevToolsScreen(): React.JSX.Element {
             <AppText size="xs" color="textSecondary">
               Sends each scripted message through the real assistant with the configured provider. Load demo data first. Takes a few minutes on a free tier.
             </AppText>
+            <AppButton label="Preview confirmation cards" icon="assistant" variant="secondary" onPress={onPreviewCards} loading={busy === 'cards'} disabled={disabled} />
+            <AppText size="xs" color="textSecondary">
+              Replaces the chat with sample cards in every state (to fix, ready, saved, rejected) using this company's names. No model call.
+            </AppText>
             {evals.length > 0 ? (
               <AppCard compact>
                 {evals.map((r, i) => (
@@ -675,7 +711,7 @@ export function DevToolsScreen(): React.JSX.Element {
                       <AppIcon name={r.passed ? 'checkCircle' : 'close'} size={20} color={r.passed ? 'success' : 'danger'} />
                       <View style={styles.testText}>
                         <AppText size="sm" weight="semibold">
-                          {r.id} · {r.calls} calls · {secs(r.ms)}
+                          {r.id} · {r.calls} calls · {secs(r.ms)}{r.usage ? ` · ${r.usage.inputTokens} in / ${r.usage.outputTokens} out` : ''}
                         </AppText>
                         <AppText size="xs" color="textSecondary">
                           {r.detail}
@@ -733,6 +769,7 @@ const BUSY_LABEL: Record<Busy, string> = {
   bench: 'Benchmarking screens…',
   storage: 'Measuring storage…',
   clearStress: 'Clearing stress companies…',
+  cards: 'Seeding sample cards…',
 };
 
 const makeStyles = (theme: Theme) =>

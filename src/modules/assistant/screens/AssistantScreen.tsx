@@ -1,13 +1,14 @@
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, View } from 'react-native';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { AppButton, AppHeader, AppIcon, AppText, SelectSheet, Toast, type IconKey } from '@/components/ui';
-import { PROVIDERS } from '@/ai';
+import { aiConfigured } from '@/ai';
 import { useToast } from '@/hooks';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { RootStackParamList } from '@/navigation/types';
@@ -17,13 +18,14 @@ import { captureReceipt, pickDocumentImage } from '@/utils/photo';
 import { useTheme } from '@/theme';
 
 import { AnswerCard } from '../components/AnswerCard';
+import { ChatWallpaper } from '../components/ChatWallpaper';
 import { Composer } from '../components/Composer';
 import { DraftCard } from '../components/DraftCard';
 import { InsightsCard } from '../components/InsightsCard';
 import { ChoiceList } from '../components/ChoiceList';
 import { MessageActions } from '../components/MessageActions';
 import { ThinkingBubble } from '../components/ThinkingBubble';
-import { AssistantBubble, AssistantRow, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
+import { AssistantBubble, AssistantRow, BubbleTail, ErrorBubble, OpenBubble, UserBubble } from '../components/MessageBubble';
 import { useAssistant } from '../hooks/useAssistant';
 import { useInsights } from '../hooks/useInsights';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -34,6 +36,8 @@ import { turnToText } from '../utils/turnText';
 import { TurnPiece } from '../components/TurnPiece';
 import { speak, stopSpeaking } from '../utils/speech';
 import { makeStyles } from '../styled/AssistantScreen.styles';
+import { MotionContext } from '../utils/motion';
+import type { Turn } from '../hooks/useAssistant';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Assistant'>;
@@ -57,18 +61,15 @@ export function AssistantScreen(): React.JSX.Element {
   const aiSpeak = useSettingsStore((s) => s.aiSpeak);
   const language = useSettingsStore((s) => s.language);
   // Re-evaluates when any AI setting changes (provider, key, URL).
-  const configured = useSettingsStore((s) => {
-    const info = PROVIDERS[s.aiProvider];
-    const key = s.aiKeys[s.aiProvider] ?? '';
-    const url = s.aiProvider === 'proxy' ? s.aiProxyUrl : s.aiProvider === 'custom' ? s.aiCustomBaseUrl : info.baseUrl;
-    return (!info.needsKey || !!key) && (!info.needsUrl || !!url);
-  });
+  const configured = useSettingsStore((s) => aiConfigured(s));
   const ready = aiEnabled && configured;
 
-  const { turns, busy, working, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget } = useAssistant();
+  const { turns, restoredIds, busy, working, ask, clear, settle, retry, pick, onSpeak, onOpen, onOpenTarget } = useAssistant();
   const { toast, showToast } = useToast();
   const { data: insightsData, loaded: insightsLoaded } = useInsights();
   const [input, setInput] = useState(params?.seed ?? '');
+  // Replies that fetched several cards show one; the rest unfold on request.
+  const [moreCards, setMoreCards] = useState<ReadonlySet<string>>(new Set());
   const scroll = useRef<ScrollView>(null);
 
   // Photos queued for the next message (compressed by the shared photo utils).
@@ -101,18 +102,17 @@ export function AssistantScreen(): React.JSX.Element {
     };
   }, [navigation, onOpen, onOpenTarget]);
 
-  // Android (edge-to-edge) does not resize the window for the keyboard and
-  // KeyboardAvoidingView leaves a stale gap after it closes — so pad by the
-  // keyboard's own height and drop it to zero the moment the keyboard hides.
-  const [kb, setKb] = useState(0);
+  // The composer rides the keyboard frame by frame: Reanimated reads the
+  // system's own keyboard animation, so the bar never jumps up after the
+  // keyboard has landed or leaves a stale gap once it has gone. Edge-to-edge
+  // Android reports the height from the screen's bottom edge, so the safe-area
+  // inset the bar already pads is taken back out of the lift.
+  const keyboard = useAnimatedKeyboard();
+  const bottomInset = insets.bottom;
+  const liftStyle = useAnimatedStyle(() => ({ paddingBottom: Math.max(keyboard.height.value - bottomInset, 0) }));
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKb(e.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKb(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
+    const show = Keyboard.addListener('keyboardDidShow', () => scroll.current?.scrollToEnd({ animated: true }));
+    return () => show.remove();
   }, []);
 
   // Hold-to-talk: the transcript goes straight through the router.
@@ -141,6 +141,9 @@ export function AssistantScreen(): React.JSX.Element {
   const lastAssistantId = [...turns].reverse().find((x) => x.role === 'assistant')?.id;
 
   const send = () => {
+    // Close the keyboard now, on its own curve, instead of when the busy state
+    // lands and yanks focus away.
+    Keyboard.dismiss();
     const text = input;
     const photos = attachments;
     setInput('');
@@ -155,8 +158,126 @@ export function AssistantScreen(): React.JSX.Element {
       .catch(swallow('assistant:attachRead'));
   };
 
+  /** One turn of the conversation (user bubble, error bubble, or a full reply with its pieces). */
+  function renderTurn(turn: Turn): React.JSX.Element {
+            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} imageUris={turn.imageUris} onCopied={() => showToast(t('aiCopied'))} />;
+            if ('error' in turn) {
+              return (
+                <AssistantRow key={turn.id}>
+                  <View style={styles.turnStack}>
+                    <ErrorBubble code={turn.error} detail={turn.detail} />
+                    <MessageActions onRetry={() => void retry(turn.id)} disabled={busy} />
+                  </View>
+                </AssistantRow>
+              );
+            }
+            // On the newest reply, name-list rows are tappable answers ("which plot?")
+            // and the list is fully expanded so any item can be chosen.
+            const isLast = turn.id === lastAssistantId;
+            const asksChoice = isLast && !turn.picked;
+            // A written report (2+ section headings) or a list of 3+ items already shows the detail in the
+            // text; the card under it shrinks to a header + Open link instead of repeating the rows.
+            const writtenReport = (turn.text.match(/(^|\n)\s*(#{1,3}\s+[^\n]+|[^\n|]{1,40}[:：])\s*(?=\n|$)/g) ?? []).length >= 2;
+            const listedInText = (turn.text.match(/(^|\n)\s*(\d+[.)]|[-•])\s+\S/g) ?? []).length >= 3;
+            // One reply = one bubble: the sentence, its card, its choices and its
+            // confirmation share a single surface, like a message in any chat app.
+            const showAllCards = moreCards.has(turn.id);
+            const visibleCards = showAllCards ? turn.cards : turn.cards.slice(0, 1);
+            const hiddenCards = turn.cards.length - visibleCards.length;
+            // A plain sentence hugs its words; anything with a card, a list or a confirmation takes the full width.
+            const textOnly = turn.cards.length === 0 && turn.drafts.length === 0 && turn.options.length === 0 && !turn.open;
+            return (
+              <AssistantRow key={turn.id}>
+                <View style={styles.turnStack}>
+                  <TurnPiece step={0}>
+                  <View style={[styles.replyWrap, textOnly && styles.replyWrapHug]}>
+                  <View style={styles.replyBubble}>
+                  {turn.text ? <AssistantBubble text={turn.text} /> : turn.drafts.length > 0 && !turn.settled ? <AssistantBubble text={t('aiConfirmHint')} /> : null}
+                  {visibleCards.map((card, i) => (
+                    <View key={`${turn.id}-cw${i}`} style={styles.replyPiece}>
+                    <AnswerCard
+                      key={`${turn.id}-c${i}`}
+                      answer={card}
+                      expandAll={asksChoice && !!card.list}
+                      compact={(writtenReport && !!card.sections?.length) || (listedInText && !card.calendar && !card.chart)}
+                      onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined}
+                    />
+                    </View>
+                  ))}
+                  {hiddenCards > 0 ? (
+                    <Pressable onPress={() => setMoreCards((cur) => new Set([...cur, turn.id]))} accessibilityRole="button" style={styles.moreCards}>
+                      <AppText size="sm" weight="bold" color="accent">
+                        {`+${hiddenCards} ${t('aiMore')}`}
+                      </AppText>
+                    </Pressable>
+                  ) : null}
+                  {turn.options.length > 0 ? (
+                    <View style={styles.replyPiece}>
+                      <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
+                    </View>
+                  ) : null}
+                  {/* Several actions from one message (a bill: order → delivery → payment) run one step at a time: the next card
+                      appears only after the previous is accepted or rejected, because later steps depend on the earlier ones. */}
+                  {turn.drafts.map((d, di) => {
+                    const previousSettled = turn.drafts.slice(0, di).every((_, k) => !!turn.settled?.[k]);
+                    if (!previousSettled) return null;
+                    // The order created / touched by an earlier accepted step, so delivery and payment hit the same one.
+                    const linkedPo = turn.drafts.slice(0, di).map((_, k) => turn.settled?.[k]?.poId).filter(Boolean).pop() ?? null;
+                    return (
+                      <View key={`${turn.id}-dw${di}`} style={styles.replyPiece}>
+                      <DraftCard
+                        key={`${turn.id}-d${di}`}
+                        resolved={d}
+                        settled={turn.settled?.[di]}
+                        step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
+                        poId={linkedPo}
+                        onSettled={(status, message, poId, used) => settle(turn.id, di, status, message, poId, used)}
+                        onDone={showToast}
+                      />
+                      </View>
+                    );
+                  })}
+                  {turn.open ? <OpenBubble screen={turn.open} /> : null}
+                  </View>
+                  <BubbleTail side="left" color={theme.colors.card} />
+                  </View>
+                  </TurnPiece>
+                  {/* Same action row under EVERY reply — copy takes the text plus the cards. */}
+                  <MessageActions
+                    text={turnToText(turn.text, turn.cards) || undefined}
+                    onCopied={() => showToast(t('aiCopied'))}
+                    onSpeak={turn.text ? (x) => void speak(x, language) : undefined}
+                    disabled={busy}
+                    usage={turn.usage}
+                  />
+                  {turn.suggestions.length > 0 && turn.options.length === 0 && turn.id === lastAssistantId ? (
+                    <TurnPiece step={1}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
+                      {turn.suggestions.map((sug) => (
+                        <Pressable
+                          key={sug}
+                          onPress={() => void ask(sug)}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          hitSlop={theme.touch.hitSlop}
+                          style={({ pressed }) => [styles.followChip, pressed && styles.chipPressed]}
+                        >
+                          <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
+                            {sug}
+                          </AppText>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                    </TurnPiece>
+                  ) : null}
+                </View>
+              </AssistantRow>
+            );
+  }
+
   return (
     <View style={styles.screen}>
+      <ChatWallpaper />
       <AppHeader
         title={t('assistantTitle')}
         onBack={() => navigation.goBack()}
@@ -175,12 +296,7 @@ export function AssistantScreen(): React.JSX.Element {
             : undefined
         }
       />
-      {/* The composer must never look glued to the keyboard: lift it by the
-          keyboard's height PLUS a visible gap, so the pill keeps its own air. */}
-      <KeyboardAvoidingView
-        style={[styles.flex, kb > 0 && { paddingBottom: kb + theme.spacing.md }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <Animated.View style={[styles.flex, liftStyle]}>
         <ScrollView
           ref={scroll}
           style={styles.flex}
@@ -228,97 +344,12 @@ export function AssistantScreen(): React.JSX.Element {
             </>
           ) : null}
 
-          {turns.map((turn) => {
-            if (turn.role === 'user') return <UserBubble key={turn.id} text={turn.text} imageUris={turn.imageUris} onCopied={() => showToast(t('aiCopied'))} />;
-            if ('error' in turn) {
-              return (
-                <AssistantRow key={turn.id}>
-                  <View style={styles.turnStack}>
-                    <ErrorBubble code={turn.error} detail={turn.detail} />
-                    <MessageActions onRetry={() => void retry(turn.id)} disabled={busy} />
-                  </View>
-                </AssistantRow>
-              );
-            }
-            // On the newest reply, name-list rows are tappable answers ("which plot?")
-            // and the list is fully expanded so any item can be chosen.
-            const isLast = turn.id === lastAssistantId;
-            const asksChoice = isLast && !turn.picked;
-            // A written report (2+ section headings) already shows the detail; its card shrinks to a header + Open link.
-            const writtenReport = (turn.text.match(/(^|\n)\s*(#{1,3}\s+[^\n]+|[^\n|]{1,40}[:：])\s*(?=\n|$)/g) ?? []).length >= 2;
-            return (
-              <AssistantRow key={turn.id}>
-                <View style={styles.turnStack}>
-                  {turn.text ? <AssistantBubble text={turn.text} /> : turn.drafts.length > 0 && !turn.settled ? <AssistantBubble text={t('aiConfirmHint')} /> : null}
-                  {turn.cards.map((card, i) => (
-                    <TurnPiece key={`${turn.id}-cw${i}`} step={1 + i}>
-                    <AnswerCard
-                      key={`${turn.id}-c${i}`}
-                      answer={card}
-                      expandAll={asksChoice && !!card.list}
-                      compact={writtenReport && !!card.sections?.length}
-                      onPick={asksChoice && card.list && !busy ? (title) => void pick(turn.id, title) : undefined}
-                    />
-                    </TurnPiece>
-                  ))}
-                  {turn.options.length > 0 ? (
-                    <TurnPiece step={1 + turn.cards.length}>
-                      <ChoiceList options={turn.options} picked={turn.picked ?? null} disabled={busy || !isLast} onPick={(o) => void pick(turn.id, o)} />
-                    </TurnPiece>
-                  ) : null}
-                  {/* Several actions from one message (a bill: order → delivery → payment) run one step at a time: the next card
-                      appears only after the previous is accepted or rejected, because later steps depend on the earlier ones. */}
-                  {turn.drafts.map((d, di) => {
-                    const previousSettled = turn.drafts.slice(0, di).every((_, k) => !!turn.settled?.[k]);
-                    if (!previousSettled) return null;
-                    // The order created / touched by an earlier accepted step, so delivery and payment hit the same one.
-                    const linkedPo = turn.drafts.slice(0, di).map((_, k) => turn.settled?.[k]?.poId).filter(Boolean).pop() ?? null;
-                    return (
-                      <TurnPiece key={`${turn.id}-dw${di}`} step={1 + turn.cards.length + di}>
-                      <DraftCard
-                        key={`${turn.id}-d${di}`}
-                        resolved={d}
-                        settled={turn.settled?.[di]}
-                        step={turn.drafts.length > 1 ? { index: di + 1, total: turn.drafts.length } : undefined}
-                        poId={linkedPo}
-                        onSettled={(status, message, poId, used) => settle(turn.id, di, status, message, poId, used)}
-                        onDone={showToast}
-                      />
-                      </TurnPiece>
-                    );
-                  })}
-                  {turn.open ? <OpenBubble screen={turn.open} /> : null}
-                  {/* Same action row under EVERY reply — copy takes the text plus the cards. */}
-                  <MessageActions
-                    text={turnToText(turn.text, turn.cards) || undefined}
-                    onCopied={() => showToast(t('aiCopied'))}
-                    onSpeak={turn.text ? (x) => void speak(x, language) : undefined}
-                    disabled={busy}
-                  />
-                  {turn.suggestions.length > 0 && turn.options.length === 0 && turn.id === lastAssistantId ? (
-                    <TurnPiece step={2 + turn.cards.length + turn.drafts.length}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
-                      {turn.suggestions.map((sug) => (
-                        <Pressable
-                          key={sug}
-                          onPress={() => void ask(sug)}
-                          disabled={busy}
-                          accessibilityRole="button"
-                          hitSlop={theme.touch.hitSlop}
-                          style={({ pressed }) => [styles.followChip, pressed && styles.chipPressed]}
-                        >
-                          <AppText size="xs" weight="semibold" color="accent" numberOfLines={1}>
-                            {sug}
-                          </AppText>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                    </TurnPiece>
-                  ) : null}
-                </View>
-              </AssistantRow>
-            );
-          })}
+          {turns.map((turn) => (
+            // Restored turns were already on screen when the user arrived: no entrance for them.
+            <MotionContext.Provider key={turn.id} value={!restoredIds.has(turn.id)}>
+              {renderTurn(turn)}
+            </MotionContext.Provider>
+          ))}
 
           {busy ? (
             <AssistantRow>
@@ -344,7 +375,7 @@ export function AssistantScreen(): React.JSX.Element {
             voiceStatus={voice.status}
             onMicPressIn={() => void voice.start()}
             onMicPressOut={() => void voice.stop()}
-            bottomInset={kb > 0 ? 0 : insets.bottom}
+            bottomInset={insets.bottom}
             attachments={attachments}
             onAttach={() => setAttachSheet(true)}
             onRemoveAttachment={(uri) => setAttachments((cur) => cur.filter((a) => a.uri !== uri))}
@@ -360,7 +391,7 @@ export function AssistantScreen(): React.JSX.Element {
             <AppButton label={t('settings')} icon="settings" onPress={() => navigation.navigate('Settings')} />
           </View>
         )}
-      </KeyboardAvoidingView>
+      </Animated.View>
       <SelectSheet
         visible={attachSheet}
         onClose={() => setAttachSheet(false)}

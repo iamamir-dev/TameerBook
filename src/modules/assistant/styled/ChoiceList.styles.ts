@@ -4,10 +4,10 @@ import type { Theme } from '@/theme/theme';
 
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
+    /** Lives inside the reply bubble: no box of its own. */
     card: {
       alignSelf: 'stretch',
-      backgroundColor: theme.colors.card,
-      borderRadius: theme.radius.lg,
+      backgroundColor: 'transparent',
       overflow: 'hidden',
     },
     head: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.xxs },

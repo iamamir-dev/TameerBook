@@ -1,4 +1,4 @@
-import { MAX_OUTPUT_TOKENS } from './models';
+import { MAX_OUTPUT_TOKENS } from './providers';
 import { AiError, type AiChatMessage, type AiTransport, type ChatOptions } from './types';
 
 /**

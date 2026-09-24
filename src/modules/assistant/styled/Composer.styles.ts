@@ -16,7 +16,7 @@ export const makeStyles = (theme: Theme) =>
       flex: 1,
       flexDirection: 'row',
       alignItems: 'flex-end',
-      gap: theme.spacing.xs,
+      gap: 0,
       backgroundColor: theme.colors.card,
       // Half the single-line height: a true pill when short, soft corners when tall.
       borderRadius: theme.touch.minTarget / 2,
@@ -63,7 +63,8 @@ export const makeStyles = (theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    lead: { width: theme.touch.minTarget - 2 * theme.spacing.xs },
+    /** The attach button is narrower than the mic: the icon sits near the text it belongs with. */
+    lead: { width: theme.touch.minTarget - 2 * theme.spacing.md + theme.spacing.xs },
     /** The send / mic circle: its own button outside the field, never squeezed. */
     action: {
       width: theme.touch.minTarget,

@@ -392,15 +392,15 @@ export function summarizeAnswerForModel(a: Answer): string {
     });
   }
   const rows: unknown[] = a.list
-    ? a.list.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle }))
-    : a.rows.slice(0, 12).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction }));
+    ? a.list.slice(0, 20).map((r) => ({ title: r.title, note: r.subtitle }))
+    : a.rows.slice(0, 20).map((r) => ({ title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction, ...(r.fields ?? {}) }));
   const total = (a.list ?? a.rows).length;
   const sections = a.sections?.map((sec) => ({
     title: sec.title,
     rows: sec.rows.slice(0, 12).map((r) => (r.fields ? { title: r.title, ...r.fields } : { title: r.title, note: r.subtitle || r.date || undefined, amount: r.amount, direction: r.direction })),
   }));
-  // `cardRows` tells the model the UI already renders these rows as a card, so
-  // it should summarise rather than repeat them (see HOW TO WRITE).
+  // `cardRows` tells the model the UI also renders these rows as a card; the
+  // text still lists the key ones with figures (see HOW TO WRITE).
   const showsCard = total > 0 || Boolean(a.chart) || Boolean(a.calendar);
   return JSON.stringify({
     title: a.title,
@@ -408,7 +408,7 @@ export function summarizeAnswerForModel(a: Answer): string {
     sub: a.sub,
     count: total,
     ...(a.calendar ? { calendar: { month: a.calendar.month, full: a.calendar.full, half: a.calendar.half, absent: a.calendar.absent, note: 'The app shows this month as a calendar. Summarise in 1 to 2 sentences (days present, earned); do not list dates.' } } : {}),
-    ...(showsCard ? { cardRows: total, note: 'The app shows these rows as a card under your reply. Do not repeat them; summarise in 1 to 2 sentences.' } : {}),
+    ...(showsCard ? { cardRows: total, note: 'The app also shows these rows as a card under your reply. List up to 8 of them in your text, one per line with the figure, then close with a question.' } : {}),
     rows,
     more: Math.max(0, total - rows.length),
     ...(sections ? { sections } : {}),

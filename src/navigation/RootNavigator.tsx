@@ -40,6 +40,7 @@ import { SignatureScreen } from '@/screens/SignatureScreen';
 import { CompanyDetailScreen } from '@/screens/CompanyDetailScreen';
 import { ReportsScreen } from '@/screens/ReportsScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
+import { SettingsSectionScreen } from '@/screens/settings/SettingsSectionScreen';
 import { TransactionsScreen } from '@/screens/TransactionsScreen';
 import { TransferScreen } from '@/screens/TransferScreen';
 import { UdhaarDetailScreen } from '@/screens/UdhaarDetailScreen';
@@ -103,6 +104,7 @@ export function RootNavigator(): React.JSX.Element {
       <Stack.Screen name="Tabs" component={Tabs} />
       <Stack.Screen name="QuickEntry" component={QuickEntryScreen} options={MODAL} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="SettingsSection" component={SettingsSectionScreen} />
       <Stack.Screen name="NewCompany" component={NewCompanyScreen} />
       <Stack.Screen name="DevTools" component={DevToolsScreen} />
 

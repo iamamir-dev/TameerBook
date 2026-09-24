@@ -76,6 +76,8 @@ export interface ColorPalette {
   lightboxBackdrop: string;
   /** Translucent control chip floating on the lightbox. */
   lightboxControl: string;
+  /** The chat's page: a shade deeper than the card white, so white bubbles read as bubbles without borders. */
+  chatCanvas: string;
 }
 
 const lightColors: ColorPalette = {
@@ -110,6 +112,7 @@ const lightColors: ColorPalette = {
   overlay: 'rgba(28, 27, 24, 0.45)',
   lightboxBackdrop: 'rgba(0, 0, 0, 0.92)',
   lightboxControl: 'rgba(255, 255, 255, 0.15)',
+  chatCanvas: '#F5F4F1',
 };
 
 const darkColors: ColorPalette = {
@@ -148,6 +151,7 @@ const darkColors: ColorPalette = {
   overlay: 'rgba(0, 0, 0, 0.62)',
   lightboxBackdrop: 'rgba(0, 0, 0, 0.92)',
   lightboxControl: 'rgba(255, 255, 255, 0.15)',
+  chatCanvas: '#15140F',
 };
 
 /* -------------------------------------------------------------------------- */
@@ -359,6 +363,8 @@ export const spacing = {
  * prefer the semantic `chip` / `card` / `hero`.
  */
 export const radius = {
+  /** The corner beside a chat bubble's tail: square, so the tail continues the edge. */
+  tail: 0,
   sm: 10,
   md: 14,
   lg: 18,

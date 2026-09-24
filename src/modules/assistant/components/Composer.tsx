@@ -65,9 +65,9 @@ export function Composer({
   const canSend = !disabled && !recording && !transcribing && (value.trim().length > 0 || attachments.length > 0);
 
   return (
-    // The pill needs real air under it: with the keyboard up `bottomInset` is 0,
-    // and a small gap left the rounded bottom edge sitting on the keyboard.
-    <View style={[styles.bar, { paddingBottom: bottomInset + theme.spacing.lg }]}>
+    // A little air under the pill, on top of the safe area (the screen lifts the
+    // whole bar above the keyboard, so the gap is the same with it up or down).
+    <View style={[styles.bar, { paddingBottom: bottomInset + theme.spacing.sm }]}>
       {attachments.length > 0 ? (
         <View style={styles.previews}>
           {attachments.map((a) => (
@@ -119,9 +119,8 @@ export function Composer({
               multiline
               scrollEnabled
               returnKeyType="send"
-              blurOnSubmit
+              submitBehavior="blurAndSubmit"
               onSubmitEditing={() => canSend && onSend()}
-              editable={!disabled}
               accessibilityLabel={t('assistantPlaceholder')}
             />
           )}

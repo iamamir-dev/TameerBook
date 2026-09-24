@@ -16,6 +16,7 @@ import {
   runAgent,
   runIntent,
   type AiErrorCode,
+  type AiUsage,
   type Answer,
   type AnswerTarget,
   type Exchange,
@@ -31,7 +32,7 @@ import { loadMemory, saveMemory } from '../utils/memoryStore';
 
 /** One message in the conversation. */
 export type Turn =
-  | { id: string; role: 'user'; text: string; /** Attached photos (file URIs) for the bubble. */ imageUris?: string[] }
+  | { id: string; role: 'user'; text: string; /** Attached photos (file URIs) for the bubble. */ imageUris?: string[]; /** ISO time it was sent. */ at?: string }
   | {
       id: string;
       role: 'assistant';
@@ -52,11 +53,17 @@ export type Turn =
       /** Per-draft outcome, by index (survives restarts). */
       /** Per draft: outcome, message, and the purchase order it created / touched (later steps reuse it). */
       settled?: Record<number, { status: 'accepted' | 'rejected'; message?: string; poId?: string }>;
+      /** Tokens this reply cost, when the provider reported them. */
+      usage?: AiUsage;
+      /** ISO time it arrived. */
+      at?: string;
     }
   | { id: string; role: 'assistant'; error: AiErrorCode; detail?: string; /** The prompt that failed, for Retry. */ retryText?: string };
 
 interface State {
   turns: Turn[];
+  /** Ids of turns read back from the saved chat (they mount without an entrance). */
+  restoredIds: ReadonlySet<string>;
   busy: boolean;
   /** What the agent is doing right now, for the thinking bubble. */
   working: { phase: 'thinking' | 'tools' | 'writing'; tools: string[] };
@@ -83,7 +90,7 @@ function reducer(s: State, a: Action): State {
     case 'clear':
       return { ...s, turns: [], busy: false };
     case 'hydrate':
-      return { ...s, turns: a.turns, hydrated: true };
+      return { ...s, turns: a.turns, restoredIds: new Set(a.turns.map((t) => t.id)), hydrated: true };
     case 'remove':
       return { ...s, turns: s.turns.filter((t) => t.id !== a.turnId) };
     case 'working':
@@ -105,7 +112,8 @@ function normalizeTurn(raw: unknown): Turn | null {
   if (!raw || typeof raw !== 'object') return null;
   const t = raw as Record<string, unknown>;
   if (typeof t.id !== 'string') return null;
-  if (t.role === 'user') return typeof t.text === 'string' ? { id: t.id, role: 'user', text: t.text, imageUris: Array.isArray(t.imageUris) ? (t.imageUris as string[]) : undefined } : null;
+  const at = typeof t.at === 'string' ? t.at : undefined;
+  if (t.role === 'user') return typeof t.text === 'string' ? { id: t.id, role: 'user', text: t.text, imageUris: Array.isArray(t.imageUris) ? (t.imageUris as string[]) : undefined, at } : null;
   if (t.role !== 'assistant') return null;
   if (typeof t.error === 'string') {
     return { id: t.id, role: 'assistant', error: t.error as AiErrorCode, detail: typeof t.detail === 'string' ? t.detail : undefined, retryText: typeof t.retryText === 'string' ? t.retryText : undefined };
@@ -134,6 +142,8 @@ function normalizeTurn(raw: unknown): Turn | null {
     options: Array.isArray(t.options) ? (t.options as string[]) : [],
     picked: typeof t.picked === 'string' ? t.picked : undefined,
     settled,
+    usage: t.usage && typeof t.usage === 'object' && typeof (t.usage as AiUsage).inputTokens === 'number' ? (t.usage as AiUsage) : undefined,
+    at,
   };
 }
 
@@ -146,7 +156,7 @@ const CHAT_KEY = 'aiChat';
 /** Keep the saved conversation bounded (old turns fall off). */
 const MAX_SAVED_TURNS = 40;
 /** Exchanges kept for the model (the older ones are folded into a summary). */
-const MAX_EXCHANGES = 14;
+const MAX_EXCHANGES = 20;
 
 let seq = 0;
 const nextId = (): string => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -175,7 +185,7 @@ export interface AssistantApi extends State {
  * a screen to open. The model never touches the database.
  */
 export function useAssistant(): AssistantApi {
-  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, working: { phase: 'thinking', tools: [] }, hydrated: false });
+  const [state, dispatch] = useReducer(reducer, { turns: [], restoredIds: new Set<string>(), busy: false, working: { phase: 'thinking', tools: [] }, hydrated: false });
   // Always-fresh view of the turns for callbacks (avoids stale closures).
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = state.turns;
@@ -220,7 +230,7 @@ export function useAssistant(): AssistantApi {
   const runTurn = useCallback(async (text: string, echoUser: boolean, images?: { uri: string; base64: string }[]) => {
     if ((!text && !images?.length) || inFlight.current) return;
     inFlight.current = true;
-    if (echoUser) dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text, imageUris: images?.map((i) => i.uri) } });
+    if (echoUser) dispatch({ type: 'push', turn: { id: nextId(), role: 'user', text, imageUris: images?.map((i) => i.uri), at: new Date().toISOString() } });
     dispatch({ type: 'busy', busy: true });
     try {
       const transport = getAiTransport();
@@ -256,7 +266,7 @@ export function useAssistant(): AssistantApi {
       let mem = noteLanguage(memory, guess.strong ? guess.language : null);
       for (const f of r.learned) mem = addFact(mem, f, todayISO());
       if (mem !== memory) void saveMemory(mem).catch(swallow('assistant:memory'));
-      dispatch({ type: 'push', turn: { id: turnId, role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options } });
+      dispatch({ type: 'push', turn: { id: turnId, role: 'assistant', text: r.text, cards: r.cards, drafts: r.drafts, open: r.open, suggestions: r.suggestions, options: r.options, usage: r.usage, at: new Date().toISOString() } });
       if (r.open) onOpen.current?.(r.open);
       const auto = r.cards.find((c) => c.autoOpen && c.target);
       if (auto?.target) onOpenTarget.current?.(auto.target);

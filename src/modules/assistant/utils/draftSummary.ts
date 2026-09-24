@@ -162,7 +162,7 @@ export function draftFields(r: ResolvedDraft, t: T): DraftField[] {
       date(d.date);
       break;
     case 'material':
-      named(t('material'), r.category, d.item);
+      f.push({ label: t('material'), value: r.category ? r.category.name : `${d.item} · ${t('aiNewShort')}` });
       if (d.qty) f.push({ label: t('size'), value: `${formatQty(d.qty)} ${d.unit ?? ''}`.trim() });
       if (d.rate) f.push({ label: t('rateLabel'), value: formatRupees(d.rate), money: true });
       partyOrNew(t('supplier'));

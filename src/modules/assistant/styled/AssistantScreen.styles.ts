@@ -4,13 +4,12 @@ import type { Theme } from '@/theme/theme';
 
 export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.colors.background },
+    screen: { flex: 1, backgroundColor: theme.colors.chatCanvas },
     flex: { flex: 1 },
     content: {
       paddingHorizontal: theme.spacing.page,
       paddingTop: theme.spacing.sm,
-      // Breathing room between turns; a user question gets extra space above
-      // (see MessageBubble.userWrap) so each exchange reads as one group.
+      // Room between turns; a user question gets a little extra above (see MessageBubble.userWrap).
       gap: theme.spacing.md,
     },
     intro: {
@@ -56,6 +55,20 @@ export const makeStyles = (theme: Theme) =>
       justifyContent: 'center',
     },
     turnStack: { gap: theme.spacing.sm },
+    /** The whole reply on one surface: text, card, choices, confirmation. */
+    /** Incoming bubble: white on the deeper canvas, no shadow, no outline, tight corner beside the tail. */
+    replyWrap: { alignSelf: 'stretch', overflow: 'visible' },
+    replyWrapHug: { alignSelf: 'flex-start', maxWidth: '88%' },
+    replyBubble: {
+      alignSelf: 'stretch',
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.hero,
+      borderTopLeftRadius: theme.radius.tail,
+      overflow: 'hidden',
+    },
+    /** A card or list inside the bubble sits under a hairline, never in its own box. */
+    replyPiece: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.track },
+    moreCards: { alignItems: 'flex-end', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.track },
     sectionLabel: { marginTop: theme.spacing.xs, marginLeft: theme.spacing.xs },
     setup: {
       margin: theme.spacing.page,

@@ -13,7 +13,7 @@ export type AiErrorCode =
   | 'timeout'
   /** No key / URL configured for the chosen provider. */
   | 'noProvider'
-  /** The chosen provider cannot transcribe audio and no Groq key is set. */
+  /** The chosen provider cannot transcribe audio and no OpenAI key is set. */
   | 'noVoice'
   /** Provider rate limit / free quota exhausted. */
   | 'quota'
@@ -55,7 +55,8 @@ export interface ToolCall {
 
 /** Conversation message. Tool results reference the call they answer. */
 export type AiChatMessage =
-  | { role: 'system'; content: string }
+  /** `cachePrefixChars` = how many leading characters never change between turns (a cacheable prefix). */
+  | { role: 'system'; content: string; cachePrefixChars?: number }
   /** `images` = base64 JPEGs attached to this message (bills, lists, screenshots). */
   | { role: 'user'; content: string; images?: string[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCall[] }
@@ -69,10 +70,34 @@ export interface ChatOptions {
   temperature?: number;
 }
 
+/** Tokens one call cost, as the provider reports them (cache figures only when it says). */
+export interface AiUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}
+
+/** Sum of two usages (either may be missing). */
+export function addUsage(a: AiUsage | undefined, b: AiUsage | undefined): AiUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const cacheRead = (a.cacheReadTokens ?? 0) + (b.cacheReadTokens ?? 0);
+  const cacheWrite = (a.cacheWriteTokens ?? 0) + (b.cacheWriteTokens ?? 0);
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    ...(a.cacheReadTokens !== undefined || b.cacheReadTokens !== undefined ? { cacheReadTokens: cacheRead } : {}),
+    ...(a.cacheWriteTokens !== undefined || b.cacheWriteTokens !== undefined ? { cacheWriteTokens: cacheWrite } : {}),
+  };
+}
+
 /** What a tool-enabled turn returns: text, tool calls, or both. */
 export interface ChatToolsResult {
   content: string | null;
   toolCalls: ToolCall[];
+  /** Present when the provider reported token usage. */
+  usage?: AiUsage;
 }
 
 export interface AudioFile {

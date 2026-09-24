@@ -1,0 +1,1434 @@
+diff --git a/src/modules/whatsapp/format.ts b/src/modules/whatsapp/format.ts
+new file mode 100644
+index 0000000..70caa10
+--- /dev/null
++++ b/src/modules/whatsapp/format.ts
+@@ -0,0 +1,137 @@
++/**
++ * WHATSAPP TEXT — pure helpers shared by the handler, the briefings and the
++ * tests. WhatsApp renders *bold*, _italic_ and plain lines; no headings, no
++ * tables, no chips. The assistant writes markdown for the in-app chat, so
++ * every reply is rewritten here before it is sent.
++ */
++
++/** WhatsApp caps a text message at 4,096 characters; keep a margin for the footer. */
++export const WHATSAPP_MAX_CHARS = 3900;
++
++/** A pipe table row → "a · b · c". */
++const tableRow = (line: string): string =>
++  line
++    .trim()
++    .replace(/^\||\|$/g, '')
++    .split('|')
++    .map((c) => c.trim())
++    .filter(Boolean)
++    .join(' · ');
++
++/** Markdown (headings, **bold**, tables, bullets) → WhatsApp text. */
++export function toWhatsAppText(markdown: string): string {
++  const lines = markdown.replace(/\r/g, '').split('\n');
++  const out: string[] = [];
++  for (const raw of lines) {
++    const line = raw.replace(/[—–]/g, '-');
++    // Table separator rows (|---|---|) carry nothing.
++    if (/^\s*\|?\s*:?-{2,}/.test(line) && /\|/.test(line)) continue;
++    if (/^\s*\|.*\|\s*$/.test(line) || (line.includes('|') && line.split('|').length >= 3)) {
++      out.push(tableRow(line));
++      continue;
++    }
++    let s = line;
++    s = s.replace(/^\s*#{1,6}\s*(.+?)\s*#*\s*$/, '*$1*');
++    s = s.replace(/\*\*(.+?)\*\*/g, '*$1*');
++    s = s.replace(/__(.+?)__/g, '_$1_');
++    s = s.replace(/^\s*[-*•]\s+/, '• ');
++    s = s.replace(/`([^`]+)`/g, '$1');
++    out.push(s.trimEnd());
++  }
++  return out
++    .join('\n')
++    .replace(/\n{3,}/g, '\n\n')
++    .trim();
++}
++
++/** Trim to the WhatsApp limit on a line boundary. */
++export function clampWhatsApp(text: string, max = WHATSAPP_MAX_CHARS): string {
++  if (text.length <= max) return text;
++  const cut = text.lastIndexOf('\n', max - 1);
++  return `${text.slice(0, cut > max / 2 ? cut : max - 1).trimEnd()}…`;
++}
++
++/** "OPTIONS" choices become a numbered list the user can answer by number or name. */
++export function optionsBlock(options: readonly string[]): string {
++  return options.map((o, i) => `${i + 1}. ${o}`).join('\n');
++}
++
++/**
++ * The user's reply to a numbered list: "2" → the second option. Anything
++ * else is passed through unchanged (they may have typed the name).
++ */
++export function resolveNumberedReply(text: string, options: readonly string[] | undefined): string {
++  const m = text.trim().match(/^(\d{1,2})[.)]?$/);
++  if (!m || !options?.length) return text;
++  const idx = Number(m[1]) - 1;
++  return idx >= 0 && idx < options.length ? options[idx] : text;
++}
++
++/** Action ids the user types back: short, unambiguous, upper case. */
++const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
++export function newActionId(random: () => number = Math.random): string {
++  let s = '';
++  for (let i = 0; i < 4; i++) s += ID_ALPHABET[Math.floor(random() * ID_ALPHABET.length)];
++  return `ACT-${s}`;
++}
++
++export type WaCommand = { kind: 'confirm'; id: string } | { kind: 'cancel'; id: string } | { kind: 'confirmLatest' } | { kind: 'cancelLatest' } | null;
++
++/**
++ * "CONFIRM ACT-K9X2", "yes ACT-K9X2", "ACT-K9X2", "cancel ACT-K9X2"; and the
++ * bare words a person actually types after a proposal: "haan", "ok", "yes",
++ * "confirm" (latest pending), "nahi", "no", "cancel" (drop latest pending).
++ */
++export function parseCommand(text: string): WaCommand {
++  const t = text.trim();
++  const withId = t.match(/^(?:confirm|yes|ok|okay|haan|han|ji|theek|save|karo|kar do|do)?\s*(ACT-[A-Z0-9]{4,})\s*$/i);
++  if (withId) return { kind: 'confirm', id: withId[1].toUpperCase() };
++  const cancelId = t.match(/^(?:cancel|no|nahi|nahin|abort|drop|stop|rehne do)\s+(ACT-[A-Z0-9]{4,})\s*$/i);
++  if (cancelId) return { kind: 'cancel', id: cancelId[1].toUpperCase() };
++  if (/^(?:confirm|yes|ok|okay|haan|han|ji haan|ji|theek hai|theek|save|save karo|kar do|done)\s*[.!]?$/i.test(t)) return { kind: 'confirmLatest' };
++  if (/^(?:cancel|no|nahi|nahin|abort|drop|rehne do|chhor do|stop)\s*[.!]?$/i.test(t)) return { kind: 'cancelLatest' };
++  return null;
++}
++
++/** The two-line footer under a proposed write. */
++export function confirmFooter(id: string, lang: 'ur' | 'roman' | 'en'): string {
++  switch (lang) {
++    case 'ur':
++      return `محفوظ کرنے کے لیے *CONFIRM ${id}* لکھیں، چھوڑنے کے لیے *CANCEL ${id}*۔`;
++    case 'roman':
++      return `Save karne ke liye *CONFIRM ${id}* likhein, chhorne ke liye *CANCEL ${id}*.`;
++    default:
++      return `Reply *CONFIRM ${id}* to save, or *CANCEL ${id}* to drop it.`;
++  }
++}
++
++/** "HH:MM" → minutes since midnight, or null when malformed. */
++export function parseClock(hhmm: string): number | null {
++  const m = hhmm.trim().match(/^(\d{1,2}):(\d{2})$/);
++  if (!m) return null;
++  const h = Number(m[1]);
++  const min = Number(m[2]);
++  if (h > 23 || min > 59) return null;
++  return h * 60 + min;
++}
++
++/**
++ * Is a daily job due now? True once per local day, when the clock has passed
++ * the scheduled time and the job has not run today. `lastRun` is the ISO day
++ * of the last run. The scheduler ticks every minute, so a phone that was
++ * asleep at 09:00 sends the briefing when the app next wakes.
++ */
++export function isDailyDue(now: Date, hhmm: string, lastRunDay: string | null, weekday?: number): boolean {
++  const at = parseClock(hhmm);
++  if (at === null) return false;
++  if (weekday !== undefined && now.getDay() !== weekday) return false;
++  const today = localDay(now);
++  if (lastRunDay === today) return false;
++  return now.getHours() * 60 + now.getMinutes() >= at;
++}
++
++/** Local calendar day as YYYY-MM-DD. */
++export function localDay(d: Date): string {
++  const p = (n: number) => String(n).padStart(2, '0');
++  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
++}
+diff --git a/src/modules/whatsapp/format.test.ts b/src/modules/whatsapp/format.test.ts
+new file mode 100644
+index 0000000..576df8b
+--- /dev/null
++++ b/src/modules/whatsapp/format.test.ts
+@@ -0,0 +1,89 @@
++import { describe, expect, it } from 'vitest';
++
++import { clampWhatsApp, confirmFooter, isDailyDue, newActionId, optionsBlock, parseClock, parseCommand, resolveNumberedReply, toWhatsAppText } from './format';
++
++describe('toWhatsAppText', () => {
++  it('rewrites headings, bold and bullets for WhatsApp', () => {
++    expect(toWhatsAppText('## Cost:\n**Rs 5,52,500** this month.\n- Cement Rs 3,00,000\n- Sariya Rs 1,80,000')).toBe('*Cost:*\n*Rs 5,52,500* this month.\n• Cement Rs 3,00,000\n• Sariya Rs 1,80,000');
++  });
++  it('flattens tables into dotted lines and drops the separator row', () => {
++    expect(toWhatsAppText('| Worker | Days | Baqaya |\n|---|---|---|\n| Bilal | 18 | Rs 20,000 |')).toBe('Worker · Days · Baqaya\nBilal · 18 · Rs 20,000');
++  });
++  it('replaces dashes and strips code ticks', () => {
++    expect(toWhatsAppText('Cash — `Rs 1,000`')).toBe('Cash - Rs 1,000');
++  });
++});
++
++describe('clampWhatsApp', () => {
++  it('cuts on a line boundary with an ellipsis', () => {
++    const text = Array.from({ length: 50 }, (_, i) => `line ${i} ${'x'.repeat(90)}`).join('\n');
++    const out = clampWhatsApp(text, 1000);
++    expect(out.length).toBeLessThanOrEqual(1000);
++    expect(out.endsWith('…')).toBe(true);
++    expect(out.split('\n').at(-1)).toMatch(/^line \d+ x+…$/);
++  });
++});
++
++describe('numbered choices', () => {
++  it('renders and resolves them', () => {
++    expect(optionsBlock(['Gulberg House', 'Wapda Town'])).toBe('1. Gulberg House\n2. Wapda Town');
++    expect(resolveNumberedReply('2', ['Gulberg House', 'Wapda Town'])).toBe('Wapda Town');
++    expect(resolveNumberedReply('2.', ['a', 'b'])).toBe('b');
++    expect(resolveNumberedReply('7', ['a', 'b'])).toBe('7');
++    expect(resolveNumberedReply('Wapda', ['a', 'b'])).toBe('Wapda');
++  });
++});
++
++describe('parseCommand', () => {
++  it('reads confirm and cancel with an id, in any case, with or without a verb', () => {
++    expect(parseCommand('CONFIRM ACT-K9X2')).toEqual({ kind: 'confirm', id: 'ACT-K9X2' });
++    expect(parseCommand('yes act-k9x2')).toEqual({ kind: 'confirm', id: 'ACT-K9X2' });
++    expect(parseCommand('ACT-K9X2')).toEqual({ kind: 'confirm', id: 'ACT-K9X2' });
++    expect(parseCommand('haan ACT-K9X2')).toEqual({ kind: 'confirm', id: 'ACT-K9X2' });
++    expect(parseCommand('cancel ACT-K9X2')).toEqual({ kind: 'cancel', id: 'ACT-K9X2' });
++    expect(parseCommand('nahi ACT-K9X2')).toEqual({ kind: 'cancel', id: 'ACT-K9X2' });
++  });
++  it('treats a bare yes / no as acting on the latest proposal', () => {
++    expect(parseCommand('haan')).toEqual({ kind: 'confirmLatest' });
++    expect(parseCommand('Theek hai')).toEqual({ kind: 'confirmLatest' });
++    expect(parseCommand('ok!')).toEqual({ kind: 'confirmLatest' });
++    expect(parseCommand('nahi')).toEqual({ kind: 'cancelLatest' });
++    expect(parseCommand('rehne do')).toEqual({ kind: 'cancelLatest' });
++  });
++  it('leaves ordinary messages alone', () => {
++    expect(parseCommand('is mahine kitna kharcha hua')).toBeNull();
++    expect(parseCommand('haan Bilal ko 2000 diye')).toBeNull();
++  });
++});
++
++describe('ids and footer', () => {
++  it('makes short unambiguous ids', () => {
++    let i = 0;
++    const id = newActionId(() => [0.1, 0.5, 0.9, 0.3][i++ % 4]);
++    expect(id).toMatch(/^ACT-[A-HJ-NP-Z2-9]{4}$/);
++    expect(id).not.toMatch(/[IO01]/);
++  });
++  it('writes the footer in the reply language', () => {
++    expect(confirmFooter('ACT-AB12', 'roman')).toContain('CONFIRM ACT-AB12');
++    expect(confirmFooter('ACT-AB12', 'ur')).toContain('CANCEL ACT-AB12');
++    expect(confirmFooter('ACT-AB12', 'en')).toMatch(/^Reply/);
++  });
++});
++
++describe('schedule', () => {
++  it('parses clocks', () => {
++    expect(parseClock('09:00')).toBe(540);
++    expect(parseClock('9:05')).toBe(545);
++    expect(parseClock('25:00')).toBeNull();
++    expect(parseClock('nine')).toBeNull();
++  });
++  it('is due once per day after the time, and only on the chosen weekday when given', () => {
++    const at = new Date(2026, 8, 24, 9, 30); // Thursday
++    expect(isDailyDue(at, '09:00', null)).toBe(true);
++    expect(isDailyDue(at, '09:00', '2026-09-24')).toBe(false);
++    expect(isDailyDue(at, '09:00', '2026-09-23')).toBe(true);
++    expect(isDailyDue(new Date(2026, 8, 24, 8, 59), '09:00', null)).toBe(false);
++    expect(isDailyDue(at, '09:00', null, 4)).toBe(true);
++    expect(isDailyDue(at, '09:00', null, 1)).toBe(false);
++  });
++});
+diff --git a/src/modules/whatsapp/access.ts b/src/modules/whatsapp/access.ts
+new file mode 100644
+index 0000000..76e0d55
+--- /dev/null
++++ b/src/modules/whatsapp/access.ts
+@@ -0,0 +1,51 @@
++/**
++ * WHO MAY TALK TO THE AGENT — pure whitelist matching.
++ *
++ * Meta's Cloud Agent API hides phone numbers behind participant ids such as
++ * `user:114937619824772`. A user who typed their own number in Settings
++ * cannot know that id, so the match is generous the way SubscribAI's is:
++ *   1. exact match on the phone, the bare id or the digits;
++ *   2. the participant the agent last paired with;
++ *   3. a digit suffix / prefix match on real phone numbers (7+ digits);
++ *   4. auto-bind: exactly ONE plain phone number in the list and no pairing
++ *      yet → the first participant that writes in becomes the admin.
++ * An empty whitelist means the agent is not open to anyone: the user must
++ * add at least their own number.
++ */
++export interface AccessConfig {
++  adminPhones: readonly string[];
++  lastActiveUserId?: string | null;
++}
++
++const digits = (s: string): string => s.replace(/[^0-9]/g, '');
++/** National digits: "03001234567" and "923001234567" both end in 3001234567. */
++const core = (s: string): string => digits(s).replace(/^0+/, '');
++
++export function isAdminParticipant(cfg: AccessConfig, from: string): boolean {
++  const allowed = cfg.adminPhones.map((p) => p.trim()).filter(Boolean);
++  if (allowed.length === 0) return false;
++  const bare = from.replace(/^user:/, '').trim();
++  const fromDigits = digits(from);
++
++  if (allowed.includes(from) || allowed.includes(bare) || (fromDigits && allowed.includes(fromDigits))) return true;
++
++  if (cfg.lastActiveUserId && (cfg.lastActiveUserId === from || (fromDigits && digits(cfg.lastActiveUserId) === fromDigits))) return true;
++
++  const fromCore = core(from);
++  for (const p of allowed) {
++    const d = core(p);
++    if (!d || !fromCore) continue;
++    if (d === fromCore) return true;
++    if (d.length >= 7 && fromCore.length >= 7 && (fromCore.endsWith(d) || d.endsWith(fromCore))) return true;
++  }
++
++  // Auto-bind: one plain number configured, nobody paired yet.
++  if (!cfg.lastActiveUserId && allowed.length === 1 && !allowed[0].startsWith('user:') && digits(allowed[0]).length >= 10) return true;
++
++  return false;
++}
++
++/** Split the Settings text field into a clean list. */
++export function parseAdminPhones(text: string): string[] {
++  return Array.from(new Set(text.split(/[,\n;]+/).map((p) => p.trim()).filter(Boolean)));
++}
+diff --git a/src/modules/whatsapp/access.test.ts b/src/modules/whatsapp/access.test.ts
+new file mode 100644
+index 0000000..30b17df
+--- /dev/null
++++ b/src/modules/whatsapp/access.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from 'vitest';
++
++import { isAdminParticipant, parseAdminPhones } from './access';
++
++describe('isAdminParticipant', () => {
++  it('rejects everyone when the list is empty', () => {
++    expect(isAdminParticipant({ adminPhones: [] }, 'user:1')).toBe(false);
++  });
++  it('matches the phone, the bare id and the digits', () => {
++    expect(isAdminParticipant({ adminPhones: ['+923001234567'] }, '923001234567')).toBe(true);
++    expect(isAdminParticipant({ adminPhones: ['user:114937619824772'] }, 'user:114937619824772')).toBe(true);
++    expect(isAdminParticipant({ adminPhones: ['114937619824772'] }, 'user:114937619824772')).toBe(true);
++  });
++  it('matches a local number against the international one by suffix', () => {
++    // Two numbers listed, so the one-number auto-bind rule stays out of the way.
++    expect(isAdminParticipant({ adminPhones: ['03001234567', '03007654321'] }, '923001234567')).toBe(true);
++    expect(isAdminParticipant({ adminPhones: ['03001234567', '03007654321'] }, '923009999999')).toBe(false);
++  });
++  it('trusts the paired participant', () => {
++    expect(isAdminParticipant({ adminPhones: ['03001234567'], lastActiveUserId: 'user:555' }, 'user:555')).toBe(true);
++  });
++  it('auto-binds only while nobody is paired and exactly one plain number is listed', () => {
++    expect(isAdminParticipant({ adminPhones: ['03001234567'] }, 'user:555')).toBe(true);
++    expect(isAdminParticipant({ adminPhones: ['03001234567'], lastActiveUserId: 'user:444' }, 'user:555')).toBe(false);
++    expect(isAdminParticipant({ adminPhones: ['03001234567', '03007654321'] }, 'user:555')).toBe(false);
++  });
++});
++
++describe('parseAdminPhones', () => {
++  it('splits on commas and newlines and dedupes', () => {
++    expect(parseAdminPhones('03001234567, user:555\n03001234567;')).toEqual(['03001234567', 'user:555']);
++  });
++});
+diff --git a/src/modules/whatsapp/api.ts b/src/modules/whatsapp/api.ts
+new file mode 100644
+index 0000000..6d2cc60
+--- /dev/null
++++ b/src/modules/whatsapp/api.ts
+@@ -0,0 +1,87 @@
++import { AiError } from '@/ai';
++
++/**
++ * WHATSAPP CLOUD AGENT API — the same three calls SubscribAI's service
++ * makes: long-poll for inbound messages, send a text, mark a message read
++ * (which also shows the typing indicator). Bearer key from Settings.
++ */
++export const WHATSAPP_AGENT_BASE = 'https://api.whatsapp.com/agent/v1';
++
++export interface InboundMessage {
++  id: string;
++  from: string;
++  body: string;
++}
++
++export interface PollResult {
++  messages: InboundMessage[];
++  nextOffset: number | undefined;
++}
++
++async function request(key: string, path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
++  const ctrl = new AbortController();
++  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
++  try {
++    return await fetch(`${WHATSAPP_AGENT_BASE}${path}`, {
++      ...init,
++      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
++      signal: ctrl.signal,
++    });
++  } catch (e) {
++    if (ctrl.signal.aborted) throw new AiError('timeout', `${timeoutMs}ms`);
++    throw new AiError('offline', e instanceof Error ? e.message : undefined);
++  } finally {
++    clearTimeout(timer);
++  }
++}
++
++/** Long-poll for new text messages. 204 = nothing new; 409 = another poller holds the lock. */
++export async function pollUpdates(key: string, offset: number | undefined): Promise<PollResult | null> {
++  const params = new URLSearchParams({ limit: '50', timeout: '10' });
++  if (offset !== undefined) params.set('offset', String(offset));
++  const res = await request(key, `/updates?${params.toString()}`, { method: 'GET' }, 25_000);
++  if (res.status === 204 || res.status === 409) return null;
++  if (res.status === 401 || res.status === 403) throw new AiError('badkey', 'whatsapp key rejected');
++  if (res.status === 429) throw new AiError('quota', 'whatsapp rate limit');
++  if (!res.ok) throw new AiError('failed', `whatsapp poll ${res.status}`);
++  const data = (await res.json()) as { entry?: { changes?: { value?: { messages?: { id?: string; from?: string; type?: string; text?: { body?: string } }[] } }[] }[]; next_offset?: number };
++  const messages: InboundMessage[] = [];
++  for (const entry of data.entry ?? []) {
++    for (const change of entry.changes ?? []) {
++      for (const m of change.value?.messages ?? []) {
++        if (m.type === 'text' && m.text?.body && m.id && m.from) messages.push({ id: m.id, from: m.from, body: m.text.body });
++      }
++    }
++  }
++  return { messages, nextOffset: typeof data.next_offset === 'number' ? data.next_offset : offset };
++}
++
++/**
++ * Send a text. `to` is a participant id (`user:…`) or a phone; a plain phone
++ * is wrapped as `user:<phone>`. Replies quote the inbound message on the
++ * first attempt only, so an expired context never blocks delivery.
++ */
++export async function sendText(key: string, to: string, body: string, replyToId?: string): Promise<void> {
++  const recipient = /^(user|agent):/.test(to) ? to : `user:${to.replace(/^\+/, '')}`;
++  let lastStatus = 0;
++  for (let attempt = 0; attempt < 3; attempt++) {
++    const payload: Record<string, unknown> = { messaging_product: 'whatsapp', to: recipient, type: 'text', text: { body } };
++    if (replyToId && attempt === 0) payload.context = { message_id: replyToId };
++    const res = await request(key, '/messages', { method: 'POST', body: JSON.stringify(payload) }, 15_000);
++    if (res.ok) return;
++    lastStatus = res.status;
++    if (res.status === 401 || res.status === 403) throw new AiError('badkey', 'whatsapp key rejected');
++    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
++  }
++  throw new AiError('failed', `whatsapp send ${lastStatus}`);
++}
++
++/** Read receipt + typing indicator; best effort. */
++export async function markRead(key: string, messageId: string): Promise<void> {
++  await request(
++    key,
++    '/statuses',
++    { method: 'POST', body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: messageId, typing_indicator: { type: 'text' } }) },
++    8_000
++  ).catch(() => undefined);
++}
+diff --git a/src/modules/whatsapp/store.ts b/src/modules/whatsapp/store.ts
+new file mode 100644
+index 0000000..ed93d4b
+--- /dev/null
++++ b/src/modules/whatsapp/store.ts
+@@ -0,0 +1,185 @@
++import { create } from 'zustand';
++
++import { loadSettings, saveSetting } from '@/db';
++import { swallow } from '@/utils/log';
++
++/**
++ * WHATSAPP AGENT STATE — configuration, per-participant conversation history,
++ * the poll offset and the last-run day of each scheduled message. Persisted
++ * as one JSON blob in `app_settings` (key `waAgent`). Runtime status (is the
++ * poller alive, last error) is NOT persisted.
++ */
++
++export interface WaSchedule {
++  enabled: boolean;
++  /** Local time "HH:MM". */
++  time: string;
++}
++
++export interface WaConfig {
++  enabled: boolean;
++  /** WhatsApp Cloud Agent bearer key. */
++  apiKey: string;
++  /** Phones / participant ids allowed to talk to the agent. */
++  adminPhones: string[];
++  /** The participant id the agent paired with (Meta hides phones behind these). */
++  lastActiveUserId: string | null;
++  /** Writes wait for CONFIRM ACT-XXXX (off = the agent saves immediately). */
++  requireConfirmation: boolean;
++  briefing: WaSchedule;
++  wages: WaSchedule & { minDays: number };
++  udhaar: WaSchedule & { weekday: number };
++  orders: WaSchedule & { minDays: number };
++}
++
++export interface WaTurn {
++  role: 'user' | 'assistant';
++  text: string;
++  /** ISO timestamp. */
++  at: string;
++}
++
++export interface WaStatus {
++  running: boolean;
++  lastPollAt: string | null;
++  lastError: string | null;
++  lastMessageAt: string | null;
++  messagesToday: number;
++  /** Local day the counter belongs to. */
++  countDay: string;
++}
++
++export const DEFAULT_WA_CONFIG: WaConfig = {
++  enabled: false,
++  apiKey: '',
++  adminPhones: [],
++  lastActiveUserId: null,
++  requireConfirmation: true,
++  briefing: { enabled: true, time: '09:00' },
++  wages: { enabled: true, time: '11:00', minDays: 3 },
++  udhaar: { enabled: true, time: '10:00', weekday: 1 },
++  orders: { enabled: true, time: '17:00', minDays: 7 },
++};
++
++const KEY = 'waAgent';
++const MAX_TURNS_PER_PHONE = 40;
++const MAX_PHONES = 10;
++
++interface Persisted {
++  config: WaConfig;
++  histories: Record<string, WaTurn[]>;
++  nextOffset?: number;
++  lastRuns: Record<string, string>;
++}
++
++interface WaState extends Persisted {
++  status: WaStatus;
++  hydrated: boolean;
++  hydrate: () => Promise<void>;
++  setConfig: (patch: Partial<WaConfig>) => void;
++  appendTurn: (phone: string, turn: WaTurn) => void;
++  clearHistory: () => void;
++  setOffset: (offset: number | undefined) => void;
++  markRun: (key: string, day: string) => void;
++  setStatus: (patch: Partial<WaStatus>) => void;
++  /** The most recent turns of one participant, oldest first. */
++  turnsFor: (phone: string) => WaTurn[];
++}
++
++const localDay = (): string => {
++  const d = new Date();
++  const p = (n: number) => String(n).padStart(2, '0');
++  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
++};
++
++function persist(get: () => WaState): void {
++  const { config, histories, nextOffset, lastRuns } = get();
++  const payload: Persisted = { config, histories, nextOffset, lastRuns };
++  void saveSetting(KEY, JSON.stringify(payload)).catch(swallow('whatsapp:persist'));
++}
++
++/** Tolerant read of a saved blob (older shapes fall back to defaults). */
++function parsePersisted(raw: string | undefined): Persisted {
++  const base: Persisted = { config: { ...DEFAULT_WA_CONFIG }, histories: {}, nextOffset: undefined, lastRuns: {} };
++  if (!raw) return base;
++  try {
++    const o = JSON.parse(raw) as Partial<Persisted>;
++    const c = (o.config ?? {}) as Partial<WaConfig>;
++    return {
++      config: {
++        ...DEFAULT_WA_CONFIG,
++        ...c,
++        adminPhones: Array.isArray(c.adminPhones) ? c.adminPhones.filter((p): p is string => typeof p === 'string') : [],
++        briefing: { ...DEFAULT_WA_CONFIG.briefing, ...(c.briefing ?? {}) },
++        wages: { ...DEFAULT_WA_CONFIG.wages, ...(c.wages ?? {}) },
++        udhaar: { ...DEFAULT_WA_CONFIG.udhaar, ...(c.udhaar ?? {}) },
++        orders: { ...DEFAULT_WA_CONFIG.orders, ...(c.orders ?? {}) },
++      },
++      histories: o.histories && typeof o.histories === 'object' ? (o.histories as Record<string, WaTurn[]>) : {},
++      nextOffset: typeof o.nextOffset === 'number' ? o.nextOffset : undefined,
++      lastRuns: o.lastRuns && typeof o.lastRuns === 'object' ? (o.lastRuns as Record<string, string>) : {},
++    };
++  } catch {
++    return base;
++  }
++}
++
++export const useWhatsAppStore = create<WaState>((set, get) => ({
++  config: { ...DEFAULT_WA_CONFIG },
++  histories: {},
++  nextOffset: undefined,
++  lastRuns: {},
++  status: { running: false, lastPollAt: null, lastError: null, lastMessageAt: null, messagesToday: 0, countDay: localDay() },
++  hydrated: false,
++
++  hydrate: async () => {
++    try {
++      const s = await loadSettings();
++      set({ ...parsePersisted(s[KEY]), hydrated: true });
++    } catch {
++      set({ hydrated: true });
++    }
++  },
++
++  setConfig: (patch) => {
++    set({ config: { ...get().config, ...patch } });
++    persist(get);
++  },
++
++  appendTurn: (phone, turn) => {
++    const histories = { ...get().histories };
++    const turns = [...(histories[phone] ?? []), turn].slice(-MAX_TURNS_PER_PHONE);
++    histories[phone] = turns;
++    // Keep the newest few participants only.
++    const keys = Object.keys(histories);
++    if (keys.length > MAX_PHONES) {
++      const oldest = keys.sort((a, b) => (histories[a].at(-1)?.at ?? '').localeCompare(histories[b].at(-1)?.at ?? '')).slice(0, keys.length - MAX_PHONES);
++      for (const k of oldest) delete histories[k];
++    }
++    const day = localDay();
++    const status = get().status;
++    const messagesToday = (status.countDay === day ? status.messagesToday : 0) + (turn.role === 'user' ? 1 : 0);
++    set({ histories, status: { ...status, countDay: day, messagesToday, lastMessageAt: turn.at } });
++    persist(get);
++  },
++
++  clearHistory: () => {
++    set({ histories: {} });
++    persist(get);
++  },
++
++  setOffset: (nextOffset) => {
++    if (nextOffset === get().nextOffset) return;
++    set({ nextOffset });
++    persist(get);
++  },
++
++  markRun: (key, day) => {
++    set({ lastRuns: { ...get().lastRuns, [key]: day } });
++    persist(get);
++  },
++
++  setStatus: (patch) => set({ status: { ...get().status, ...patch } }),
++
++  turnsFor: (phone) => get().histories[phone] ?? [],
++}));
+diff --git a/src/modules/whatsapp/handle.ts b/src/modules/whatsapp/handle.ts
+new file mode 100644
+index 0000000..603c8c4
+--- /dev/null
++++ b/src/modules/whatsapp/handle.ts
+@@ -0,0 +1,244 @@
++import {
++  addFact,
++  buildWorld,
++  decideReplyLanguage,
++  detectLanguage,
++  getAiTransport,
++  isAiError,
++  memoryBlock,
++  noteAccepted,
++  noteLanguage,
++  runAgent,
++  runIntent,
++  type AiChatMessage,
++  type AiErrorCode,
++  type Answer,
++  type ReplyLanguage,
++  type ResolvedDraft,
++  type World,
++} from '@/ai';
++import { listProjectLaborers } from '@/db';
++import { useSettingsStore } from '@/stores/useSettingsStore';
++import { todayISO } from '@/utils/date';
++import { formatRupees } from '@/utils/money';
++import { reportError, swallow } from '@/utils/log';
++
++import { applyDraft, type DraftChoices } from '@/modules/assistant/utils/applyDraft';
++import { loadMemory, saveMemory } from '@/modules/assistant/utils/memoryStore';
++
++import { isAdminParticipant } from './access';
++import type { InboundMessage } from './api';
++import { clampWhatsApp, confirmFooter, newActionId, optionsBlock, parseCommand, resolveNumberedReply, toWhatsAppText } from './format';
++import { useWhatsAppStore, type WaTurn } from './store';
++
++/**
++ * ONE INBOUND WHATSAPP MESSAGE → ONE REPLY. The same agent loop, tools,
++ * gap checks, memory and language rules as the in-app chat; the differences
++ * are all about the channel:
++ *
++ *   - no cards: the numbers a tool returned are restated in plain lines;
++ *   - no tap chips: OPTIONS become a numbered list the user answers by number;
++ *   - no Accept button: a proposed write is staged as ACT-XXXX and saved only
++ *     when the user replies CONFIRM ACT-XXXX (or a plain "haan" / "ok" for the
++ *     latest one). Pending actions expire after ten minutes.
++ */
++
++export interface PendingAction {
++  id: string;
++  phone: string;
++  drafts: ResolvedDraft[];
++  lang: ReplyLanguage;
++  createdAt: number;
++}
++
++const PENDING_TTL_MS = 10 * 60_000;
++const pending = new Map<string, PendingAction>();
++/** Choices offered in the last reply, per participant, so "2" can be resolved. */
++const lastOptions = new Map<string, string[]>();
++
++const sweep = (): void => {
++  const now = Date.now();
++  for (const [id, a] of pending) if (now - a.createdAt > PENDING_TTL_MS) pending.delete(id);
++};
++
++/** The newest pending action of one participant. */
++function latestPending(phone: string): PendingAction | undefined {
++  sweep();
++  let best: PendingAction | undefined;
++  for (const a of pending.values()) if (a.phone === phone && (!best || a.createdAt > best.createdAt)) best = a;
++  return best;
++}
++
++/** Exposed for the admin screen (count only). */
++export const pendingCount = (): number => {
++  sweep();
++  return pending.size;
++};
++
++const DENIED = 'This number is not allowed to use the TameerBook agent.\nYeh number TameerBook agent ke liye allowed nahi hai. Apna number app ki Settings → WhatsApp agent mein add karein.';
++
++const ERRORS: Record<AiErrorCode, string> = {
++  disabled: 'AI helpers are off in TameerBook Settings.',
++  offline: 'The phone running TameerBook is offline right now. Try again in a while.',
++  timeout: 'The assistant took too long. Try again.',
++  noProvider: 'No AI key is set in TameerBook Settings.',
++  noVoice: 'Voice is not available here.',
++  quota: 'The AI limit is used up for now. Try again in a few minutes.',
++  badkey: 'The AI key was rejected. Check TameerBook Settings.',
++  unparseable: 'Did not understand that. Try shorter words.',
++  failed: 'Could not get an answer. Try again.',
++};
++
++/**
++ * What a draft needs that the WhatsApp user could not tap: the usual account
++ * (memory) or the first one; the only project when there is one; the worker's
++ * participation with a balance; the plot it named.
++ */
++export async function autoChoices(r: ResolvedDraft, world: World, memory: { defaults: { account?: string; project?: string } }): Promise<DraftChoices> {
++  const byName = (name: string | undefined, list: readonly { id: string; name: string }[]) => (name ? list.find((x) => x.name.toLowerCase() === name.toLowerCase())?.id ?? null : null);
++  const accountId = r.account?.id ?? byName(memory.defaults.account, world.accounts) ?? world.accounts[0]?.id ?? null;
++  const projectId = r.project?.id ?? (world.projects.length === 1 ? world.projects[0].id : byName(memory.defaults.project, world.projects));
++  let projectLaborerId: string | null = null;
++  if (r.draft.kind === 'payWorker' && r.worker) {
++    const candidates: { id: string; balance: number; projectId: string }[] = [];
++    for (const p of world.projects) {
++      const pls = await listProjectLaborers(p.id).catch(() => []);
++      for (const pl of pls) if (pl.laborer.id === r.worker.id) candidates.push({ id: pl.projectLaborer.id, balance: pl.balance.balance, projectId: p.id });
++    }
++    const preferred = projectId ? candidates.find((c) => c.projectId === projectId) : undefined;
++    projectLaborerId = (preferred ?? candidates.sort((a, b) => b.balance - a.balance)[0])?.id ?? null;
++  }
++  return { accountId, projectId, projectLaborerId, plotId: r.plot?.id ?? null };
++}
++
++/** Run every draft of a confirmed action; each line reports one step. */
++async function applyPending(a: PendingAction): Promise<string> {
++  const [world, memory0] = await Promise.all([buildWorld(), loadMemory()]);
++  let memory = memory0;
++  const lines: string[] = [];
++  let poId: string | null = null;
++  for (const [i, r] of a.drafts.entries()) {
++    try {
++      const choices = { ...(await autoChoices(r, world, memory)), poId };
++      const applied = await applyDraft(r, choices);
++      if (applied.target && 'poId' in applied.target) poId = applied.target.poId;
++      memory = noteAccepted(memory, r, { account: world.accounts.find((x) => x.id === choices.accountId)?.name, project: world.projects.find((x) => x.id === choices.projectId)?.name });
++      lines.push(`✓ ${a.drafts.length > 1 ? `${i + 1}. ` : ''}${applied.message}`);
++    } catch (e) {
++      const msg = e instanceof Error ? e.message : 'failed';
++      lines.push(`✗ ${a.drafts.length > 1 ? `${i + 1}. ` : ''}${msg}`);
++    }
++  }
++  if (memory !== memory0) void saveMemory(memory).catch(swallow('whatsapp:memory'));
++  return lines.join('\n');
++}
++
++/** A read card as plain lines, for figures the model's sentence left out. */
++function cardLines(c: Answer): string[] {
++  const out: string[] = [];
++  const head = [c.title, c.headline].filter(Boolean).join(': ');
++  if (head) out.push(`*${head}*`);
++  if (c.sub) out.push(c.sub);
++  const rows = c.list ? c.list.slice(0, 6).map((r) => `• ${r.title}${r.subtitle ? ` · ${r.subtitle}` : ''}`) : c.rows.slice(0, 6).map((r) => `• ${r.title}: ${formatRupees(r.amount)}`);
++  out.push(...rows);
++  const total = (c.list ?? c.rows).length;
++  if (total > 6) out.push(`• +${total - 6}`);
++  return out;
++}
++
++/** Recent turns of this participant as model history (oldest first). */
++function historyFor(phone: string): AiChatMessage[] {
++  const turns = useWhatsAppStore.getState().turnsFor(phone).slice(-10);
++  const out: AiChatMessage[] = [];
++  for (const t of turns) {
++    const content = t.text.slice(0, 600);
++    if (!content.trim()) continue;
++    out.push(t.role === 'user' ? { role: 'user', content } : { role: 'assistant', content });
++  }
++  while (out.length && out[0].role !== 'user') out.shift();
++  return out;
++}
++
++/** Handle one message and return the reply text (already WhatsApp-formatted, never empty). */
++export async function handleInbound(msg: InboundMessage): Promise<string> {
++  const store = useWhatsAppStore.getState();
++  const cfg = store.config;
++  if (!isAdminParticipant(cfg, msg.from)) return DENIED;
++  // Pair with the participant id Meta gave us, so the whitelist keeps matching.
++  if (cfg.lastActiveUserId !== msg.from) store.setConfig({ lastActiveUserId: msg.from });
++
++  const at = new Date().toISOString();
++  const remember = (role: WaTurn['role'], text: string) => useWhatsAppStore.getState().appendTurn(msg.from, { role, text, at });
++  remember('user', msg.body);
++
++  const reply = await respond(msg);
++  const out = clampWhatsApp(reply);
++  remember('assistant', out);
++  return out;
++}
++
++async function respond(msg: InboundMessage): Promise<string> {
++  const phone = msg.from;
++  const cmd = parseCommand(msg.body);
++  if (cmd) {
++    const a = cmd.kind === 'confirm' || cmd.kind === 'cancel' ? pending.get(cmd.id) : latestPending(phone);
++    if (cmd.kind === 'confirm' || cmd.kind === 'confirmLatest') {
++      if (!a || a.phone !== phone) return cmd.kind === 'confirm' ? `${cmd.id} was not found or has expired.` : 'Nothing is waiting to be saved.';
++      pending.delete(a.id);
++      return applyPending(a);
++    }
++    if (!a || a.phone !== phone) return cmd.kind === 'cancel' ? `${cmd.id} was not found or has already expired.` : 'Nothing is waiting to be saved.';
++    pending.delete(a.id);
++    return a.lang === 'ur' ? 'چھوڑ دیا۔' : a.lang === 'roman' ? 'Chhor diya.' : 'Dropped.';
++  }
++
++  const text = resolveNumberedReply(msg.body, lastOptions.get(phone));
++  lastOptions.delete(phone);
++  try {
++    const transport = getAiTransport();
++    const [world, memory] = await Promise.all([buildWorld(), loadMemory()]);
++    const settings = useSettingsStore.getState();
++    const guess = detectLanguage(text);
++    const language = decideReplyLanguage({ text, setting: settings.aiReplyLanguage, appLanguage: settings.language, recent: memory.langs });
++    const r = await runAgent(text, {
++      transport,
++      world,
++      runIntent,
++      history: historyFor(phone).slice(0, -1),
++      prompt: { language, memory: memoryBlock(memory), channel: 'whatsapp' },
++    });
++
++    let mem = noteLanguage(memory, guess.strong ? guess.language : null);
++    for (const f of r.learned) mem = addFact(mem, f, todayISO());
++    if (mem !== memory) void saveMemory(mem).catch(swallow('whatsapp:memory'));
++
++    const parts: string[] = [];
++    if (r.text) parts.push(toWhatsAppText(r.text));
++    // Figures the sentence did not carry: restate the card headline and top rows.
++    for (const c of r.cards) {
++      if (c.headline && r.text.includes(c.headline)) continue;
++      if (c.notFound) continue;
++      parts.push(cardLines(c).join('\n'));
++    }
++    if (r.options.length) {
++      lastOptions.set(phone, r.options);
++      parts.push(optionsBlock(r.options));
++    }
++    if (r.drafts.length) {
++      const cfg = useWhatsAppStore.getState().config;
++      if (cfg.requireConfirmation) {
++        const id = newActionId();
++        pending.set(id, { id, phone, drafts: r.drafts, lang: language, createdAt: Date.now() });
++        parts.push(confirmFooter(id, language));
++      } else {
++        parts.push(await applyPending({ id: 'now', phone, drafts: r.drafts, lang: language, createdAt: Date.now() }));
++      }
++    }
++    if (r.open && parts.length === 0) parts.push('That opens a screen in the app; ask me for the figures here instead.');
++    return parts.join('\n\n').trim() || ERRORS.unparseable;
++  } catch (e) {
++    const code: AiErrorCode = isAiError(e) ? e.code : 'failed';
++    if (code === 'failed') reportError('whatsapp:respond', e);
++    return ERRORS[code];
++  }
++}
+diff --git a/src/modules/whatsapp/briefings.ts b/src/modules/whatsapp/briefings.ts
+new file mode 100644
+index 0000000..1a7c800
+--- /dev/null
++++ b/src/modules/whatsapp/briefings.ts
+@@ -0,0 +1,121 @@
++import { listAccountsWithBalance, listInsights, listProjectSummaries, listPurchaseOrders, listUdhaar } from '@/db';
++import { useSettingsStore } from '@/stores/useSettingsStore';
++import { formatRupees } from '@/utils/money';
++
++import { toWhatsAppText } from './format';
++
++/**
++ * SCHEDULED MESSAGES — the four proactive texts the agent sends on its own,
++ * built straight from the repositories (no model call, no tokens). Each
++ * returns null when there is nothing worth saying, except the morning
++ * report, which always goes out.
++ */
++
++const rs = formatRupees;
++
++/** Labels in the app's UI language (Urdu script or English). */
++function labels() {
++  const ur = useSettingsStore.getState().language === 'ur';
++  return ur
++    ? {
++        morning: 'صبح کی رپورٹ',
++        cash: 'اکاؤنٹس',
++        projects: 'چلتے پروجیکٹ',
++        cost: 'خرچ',
++        orders: 'ادھورے آرڈر',
++        toPay: 'باقی',
++        workers: 'مزدوروں کے پیسے',
++        days: 'دن',
++        none: 'کچھ نہیں',
++        wagesTitle: 'مزدوری کی ادائیگی',
++        wagesLine: (n: number, d: number) => `${n} مزدوروں کے پیسے ${d}+ دن سے باقی ہیں:`,
++        udhaarTitle: 'ادھار کی یاد دہانی',
++        given: 'لینے ہیں',
++        taken: 'دینے ہیں',
++        stuckTitle: 'ڈلیوری رکی ہوئی',
++        stuckLine: (n: number, d: number) => `${n} آرڈر ${d}+ دن سے ڈلیور نہیں ہوئے:`,
++        more: (n: number) => `اور ${n} مزید`,
++        footer: 'کچھ پوچھنا ہو تو یہیں لکھیں۔',
++      }
++    : {
++        morning: 'Subah ki report',
++        cash: 'Accounts',
++        projects: 'Active projects',
++        cost: 'cost',
++        orders: 'Open orders',
++        toPay: 'to pay',
++        workers: 'Workers to pay',
++        days: 'days',
++        none: 'nothing',
++        wagesTitle: 'Mazdoor payment alert',
++        wagesLine: (n: number, d: number) => `${n} worker(s) unpaid for ${d}+ days:`,
++        udhaarTitle: 'Udhaar reminder',
++        given: 'to collect',
++        taken: 'to return',
++        stuckTitle: 'Stuck orders',
++        stuckLine: (n: number, d: number) => `${n} order(s) undelivered for ${d}+ days:`,
++        more: (n: number) => `and ${n} more`,
++        footer: 'Reply here to ask anything.',
++      };
++}
++
++const today = (): string => new Date().toISOString().slice(0, 10);
++
++export async function morningBriefing(): Promise<string> {
++  const L = labels();
++  const [accounts, projects, pos, insights] = await Promise.all([listAccountsWithBalance(), listProjectSummaries(), listPurchaseOrders(), listInsights(today())]);
++  const lines: string[] = [`**${L.morning}** · ${new Date().toLocaleDateString('en-GB')}`, ''];
++
++  const total = accounts.reduce((s, a) => s + a.balance, 0);
++  lines.push(`**${L.cash}: ${rs(total)}**`);
++  for (const a of accounts.slice(0, 5)) lines.push(`- ${a.name}: ${rs(a.balance)}`);
++  lines.push('');
++
++  const active = projects.filter((p) => p.project.status === 'ACTIVE');
++  lines.push(`**${L.projects}: ${active.length}**`);
++  for (const p of active.slice(0, 5)) lines.push(`- ${p.project.name}: ${rs(p.cost.totalCost)} ${L.cost}`);
++  if (active.length > 5) lines.push(`- ${L.more(active.length - 5)}`);
++  lines.push('');
++
++  const open = pos.filter((p) => p.status === 'OPEN' && (p.payRemaining >= 1 || !p.fullyReceived));
++  const owed = open.reduce((s, p) => s + p.payRemaining, 0);
++  lines.push(`**${L.orders}: ${open.length}** · ${rs(owed)} ${L.toPay}`);
++  for (const p of open.slice(0, 4)) lines.push(`- ${p.poNumber} ${p.supplierName ?? ''}: ${rs(p.payRemaining)} ${L.toPay}`);
++  lines.push('');
++
++  const workers = insights.filter((i) => i.kind === 'workerOwed');
++  const wagesDue = workers.reduce((s, i) => s + (i.amount ?? 0), 0);
++  lines.push(`**${L.workers}: ${workers.length ? rs(wagesDue) : L.none}**`);
++  for (const w of workers.slice(0, 5)) lines.push(`- ${w.subject}: ${rs(w.amount ?? 0)} · ${w.days ?? 0} ${L.days}`);
++  lines.push('', `_${L.footer}_`);
++  return toWhatsAppText(lines.join('\n'));
++}
++
++export async function wagesAlert(minDays: number): Promise<string | null> {
++  const L = labels();
++  const workers = (await listInsights(today())).filter((i) => i.kind === 'workerOwed' && (i.days ?? 0) >= minDays);
++  if (workers.length === 0) return null;
++  const lines = [`**${L.wagesTitle}**`, L.wagesLine(workers.length, minDays), ''];
++  for (const w of workers.slice(0, 8)) lines.push(`- ${w.subject}: **${rs(w.amount ?? 0)}** · ${w.days ?? 0} ${L.days}`);
++  if (workers.length > 8) lines.push(`- ${L.more(workers.length - 8)}`);
++  return toWhatsAppText(lines.join('\n'));
++}
++
++export async function udhaarReminder(): Promise<string | null> {
++  const L = labels();
++  const open = (await listUdhaar('OPEN')).filter((u) => u.balance > 0);
++  if (open.length === 0) return null;
++  const lines = [`**${L.udhaarTitle}**`, ''];
++  for (const u of open.slice(0, 10)) lines.push(`- ${u.person_name}: **${rs(u.balance)}** ${u.direction === 'GIVEN' ? L.given : L.taken}`);
++  if (open.length > 10) lines.push(`- ${L.more(open.length - 10)}`);
++  return toWhatsAppText(lines.join('\n'));
++}
++
++export async function stuckOrdersAlert(minDays: number): Promise<string | null> {
++  const L = labels();
++  const stuck = (await listInsights(today())).filter((i) => i.kind === 'poUndelivered' && (i.days ?? 0) >= minDays);
++  if (stuck.length === 0) return null;
++  const lines = [`**${L.stuckTitle}**`, L.stuckLine(stuck.length, minDays), ''];
++  for (const s of stuck.slice(0, 8)) lines.push(`- ${s.subject}: ${s.days ?? 0} ${L.days}${s.amount ? ` · ${rs(s.amount)}` : ''}`);
++  return toWhatsAppText(lines.join('\n'));
++}
+diff --git a/src/modules/whatsapp/service.ts b/src/modules/whatsapp/service.ts
+new file mode 100644
+index 0000000..985bfdd
+--- /dev/null
++++ b/src/modules/whatsapp/service.ts
+@@ -0,0 +1,183 @@
++import { AppState, type AppStateStatus } from 'react-native';
++
++import { isAiError } from '@/ai';
++import { useCompanyStore } from '@/stores/useCompanyStore';
++import { useSettingsStore } from '@/stores/useSettingsStore';
++import { reportError } from '@/utils/log';
++
++import { markRead, pollUpdates, sendText } from './api';
++import { morningBriefing, stuckOrdersAlert, udhaarReminder, wagesAlert } from './briefings';
++import { isDailyDue, localDay } from './format';
++import { handleInbound } from './handle';
++import { useWhatsAppStore } from './store';
++
++/**
++ * THE AGENT'S HEARTBEAT. While the app is in the foreground and the agent is
++ * switched on, this long-polls the WhatsApp Cloud Agent API for messages and
++ * answers each one, and once a minute checks whether a scheduled message is
++ * due. Everything runs on the phone: the ledger is here, so the answers are.
++ *
++ * Lifecycle: `syncWhatsAppAgent()` is idempotent and is called after boot and
++ * whenever the agent settings, the AI settings or the app state change.
++ */
++
++const POLL_GAP_MS = 1_500;
++const ERROR_BACKOFF_MS = 15_000;
++const TICK_MS = 60_000;
++
++let pollTimer: ReturnType<typeof setTimeout> | null = null;
++let tickTimer: ReturnType<typeof setInterval> | null = null;
++let polling = false;
++let stopped = true;
++let wired = false;
++
++const store = () => useWhatsAppStore.getState();
++
++/** Everything a running agent needs: switched on, a key, AI on, a company open, app in front. */
++function shouldRun(): boolean {
++  const cfg = store().config;
++  const s = useSettingsStore.getState();
++  return cfg.enabled && !!cfg.apiKey && s.aiEnabled && !!useCompanyStore.getState().activeCompanyId && AppState.currentState === 'active';
++}
++
++/** Where proactive messages go: the paired participant, else the first allowed number. */
++export function targetParticipant(): string | null {
++  const cfg = store().config;
++  return cfg.lastActiveUserId ?? cfg.adminPhones[0] ?? null;
++}
++
++async function pollOnce(): Promise<number> {
++  const cfg = store().config;
++  const res = await pollUpdates(cfg.apiKey, store().nextOffset);
++  store().setStatus({ lastPollAt: new Date().toISOString(), lastError: null });
++  if (!res) return POLL_GAP_MS;
++  if (res.nextOffset !== undefined) store().setOffset(res.nextOffset);
++  for (const msg of res.messages) {
++    if (stopped) break;
++    void markRead(cfg.apiKey, msg.id);
++    let reply: string;
++    try {
++      reply = await handleInbound(msg);
++    } catch (e) {
++      reportError('whatsapp:handle', e);
++      reply = 'Something went wrong on the phone. Try again.';
++    }
++    try {
++      await sendText(cfg.apiKey, msg.from, reply, msg.id);
++    } catch (e) {
++      reportError('whatsapp:send', e);
++      store().setStatus({ lastError: e instanceof Error ? e.message : 'send failed' });
++    }
++  }
++  return res.messages.length ? 200 : POLL_GAP_MS;
++}
++
++function scheduleNext(ms: number): void {
++  if (pollTimer) clearTimeout(pollTimer);
++  pollTimer = setTimeout(() => void loop(), ms);
++}
++
++async function loop(): Promise<void> {
++  if (stopped || polling) return;
++  if (!shouldRun()) {
++    stop();
++    return;
++  }
++  polling = true;
++  let delay = POLL_GAP_MS;
++  try {
++    delay = await pollOnce();
++  } catch (e) {
++    const code = isAiError(e) ? e.code : 'failed';
++    store().setStatus({ lastError: e instanceof Error ? e.message.slice(0, 120) : 'poll failed' });
++    // A rejected key will not fix itself: stop and let the screen show the error.
++    if (code === 'badkey') {
++      polling = false;
++      stop();
++      return;
++    }
++    delay = ERROR_BACKOFF_MS;
++  } finally {
++    polling = false;
++  }
++  if (!stopped) scheduleNext(delay);
++}
++
++/** Send whichever scheduled messages are due; also used by the "send now" buttons. */
++export async function runSchedules(force?: 'briefing' | 'wages' | 'udhaar' | 'orders'): Promise<string | null> {
++  const cfg = store().config;
++  const to = targetParticipant();
++  if (!to || !cfg.apiKey) return null;
++  const now = new Date();
++  const day = localDay(now);
++  const runs = store().lastRuns;
++  const jobs: { key: 'briefing' | 'wages' | 'udhaar' | 'orders'; due: boolean; build: () => Promise<string | null> }[] = [
++    { key: 'briefing', due: cfg.briefing.enabled && isDailyDue(now, cfg.briefing.time, runs.briefing ?? null), build: morningBriefing },
++    { key: 'wages', due: cfg.wages.enabled && isDailyDue(now, cfg.wages.time, runs.wages ?? null), build: () => wagesAlert(cfg.wages.minDays) },
++    { key: 'udhaar', due: cfg.udhaar.enabled && isDailyDue(now, cfg.udhaar.time, runs.udhaar ?? null, cfg.udhaar.weekday), build: udhaarReminder },
++    { key: 'orders', due: cfg.orders.enabled && isDailyDue(now, cfg.orders.time, runs.orders ?? null), build: () => stuckOrdersAlert(cfg.orders.minDays) },
++  ];
++  let last: string | null = null;
++  for (const job of jobs) {
++    if (force ? job.key !== force : !job.due) continue;
++    try {
++      const text = await job.build();
++      if (!force) store().markRun(job.key, day);
++      if (!text) continue;
++      await sendText(cfg.apiKey, to, text);
++      last = text;
++    } catch (e) {
++      reportError(`whatsapp:schedule:${job.key}`, e);
++      store().setStatus({ lastError: e instanceof Error ? e.message.slice(0, 120) : 'schedule failed' });
++      if (force) throw e;
++    }
++  }
++  return last;
++}
++
++function start(): void {
++  if (!stopped) return;
++  stopped = false;
++  store().setStatus({ running: true, lastError: null });
++  scheduleNext(0);
++  tickTimer = setInterval(() => {
++    if (shouldRun()) void runSchedules();
++  }, TICK_MS);
++  void runSchedules();
++}
++
++function stop(): void {
++  stopped = true;
++  if (pollTimer) clearTimeout(pollTimer);
++  if (tickTimer) clearInterval(tickTimer);
++  pollTimer = null;
++  tickTimer = null;
++  if (store().status.running) store().setStatus({ running: false });
++}
++
++/** Start or stop the poller to match the current settings and app state. */
++export function syncWhatsAppAgent(): void {
++  if (!wired) {
++    wired = true;
++    AppState.addEventListener('change', (_s: AppStateStatus) => syncWhatsAppAgent());
++    useWhatsAppStore.subscribe((s, prev) => {
++      if (s.config.enabled !== prev.config.enabled || s.config.apiKey !== prev.config.apiKey) syncWhatsAppAgent();
++    });
++    useSettingsStore.subscribe((s, prev) => {
++      if (s.aiEnabled !== prev.aiEnabled || s.aiProvider !== prev.aiProvider || s.aiKeys !== prev.aiKeys) syncWhatsAppAgent();
++    });
++    useCompanyStore.subscribe((s, prev) => {
++      if (s.activeCompanyId !== prev.activeCompanyId) syncWhatsAppAgent();
++    });
++  }
++  if (shouldRun()) start();
++  else stop();
++}
++
++/** Send a short message to the paired participant, to verify the key from the screen. */
++export async function sendTestMessage(): Promise<void> {
++  const cfg = store().config;
++  const to = targetParticipant();
++  if (!to) throw new Error('no target');
++  await sendText(cfg.apiKey, to, 'TameerBook agent is connected. Reply here to ask about your ledger.');
++}
+diff --git a/src/modules/whatsapp/index.ts b/src/modules/whatsapp/index.ts
+new file mode 100644
+index 0000000..ba9d31e
+--- /dev/null
++++ b/src/modules/whatsapp/index.ts
+@@ -0,0 +1,7 @@
++/** WhatsApp agent module — the assistant reachable from WhatsApp, running on this phone. */
++export { WhatsAppAgentScreen } from './screens/WhatsAppAgentScreen';
++export { useWhatsAppStore, DEFAULT_WA_CONFIG, type WaConfig, type WaTurn } from './store';
++export { syncWhatsAppAgent, runSchedules, sendTestMessage } from './service';
++export { handleInbound, autoChoices } from './handle';
++export { toWhatsAppText, parseCommand, newActionId, isDailyDue } from './format';
++export { isAdminParticipant, parseAdminPhones } from './access';
+diff --git a/src/modules/whatsapp/screens/WhatsAppAgentScreen.tsx b/src/modules/whatsapp/screens/WhatsAppAgentScreen.tsx
+new file mode 100644
+index 0000000..2e982a8
+--- /dev/null
++++ b/src/modules/whatsapp/screens/WhatsAppAgentScreen.tsx
+@@ -0,0 +1,231 @@
++import { useNavigation } from '@react-navigation/native';
++import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
++import React, { useEffect, useState } from 'react';
++import { Alert, StyleSheet, View } from 'react-native';
++
++import { FloatingLabelInput } from '@/components/FloatingLabelInput';
++import { SettingsGroup, SettingsPage, SettingsRow } from '@/components/settings';
++import { AppButton, AppIcon, AppSheet, AppText, AppToggle, SelectSheet, type IconKey, type SelectOption } from '@/components/ui';
++import { useTranslation, type TranslationKey } from '@/i18n';
++import type { RootStackParamList } from '@/navigation/types';
++import { useSettingsStore } from '@/stores/useSettingsStore';
++import { useTheme } from '@/theme';
++import type { Theme } from '@/theme/theme';
++import { formatTime } from '@/utils/date';
++
++import { parseAdminPhones } from '../access';
++import { parseClock } from '../format';
++import { pendingCount } from '../handle';
++import { runSchedules, sendTestMessage, syncWhatsAppAgent } from '../service';
++import { useWhatsAppStore, type WaConfig } from '../store';
++
++type Nav = NativeStackNavigationProp<RootStackParamList>;
++type Job = 'briefing' | 'wages' | 'udhaar' | 'orders';
++
++type Edit = { kind: 'key' } | { kind: 'phones' } | { kind: 'time'; job: Job } | { kind: 'days'; job: 'wages' | 'orders' };
++
++const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
++const WEEKDAYS_UR = ['اتوار', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ'];
++const EDIT_LABEL: Record<Edit['kind'], TranslationKey> = { key: 'waKeyLabel', phones: 'waAdminPhones', time: 'waTime', days: 'waMinDays' };
++const JOBS: { job: Job; labelKey: TranslationKey }[] = [
++  { job: 'briefing', labelKey: 'waBriefing' },
++  { job: 'wages', labelKey: 'waWages' },
++  { job: 'udhaar', labelKey: 'waUdhaar' },
++  { job: 'orders', labelKey: 'waOrders' },
++];
++
++/**
++ * The WhatsApp agent's settings page: status, the Cloud Agent key, who may
++ * use it, which scheduled messages it sends and when, and the recent
++ * conversation. The poller itself lives in `service.ts`.
++ */
++export function WhatsAppAgentScreen(): React.JSX.Element {
++  const theme = useTheme();
++  const { t, language } = useTranslation();
++  const navigation = useNavigation<Nav>();
++  const styles = makeStyles(theme);
++
++  const config = useWhatsAppStore((s) => s.config);
++  const status = useWhatsAppStore((s) => s.status);
++  const histories = useWhatsAppStore((s) => s.histories);
++  const setConfig = useWhatsAppStore((s) => s.setConfig);
++  const clearHistory = useWhatsAppStore((s) => s.clearHistory);
++  const aiEnabled = useSettingsStore((s) => s.aiEnabled);
++
++  const [edit, setEdit] = useState<Edit | null>(null);
++  const [draft, setDraft] = useState('');
++  const [weekdaySheet, setWeekdaySheet] = useState(false);
++  const [busy, setBusy] = useState<string | null>(null);
++  const [note, setNote] = useState<string | null>(null);
++
++  // The poller follows the settings; keep it in the right state while this page is open.
++  useEffect(() => {
++    syncWhatsAppAgent();
++  }, [config.enabled, config.apiKey, aiEnabled]);
++
++  const openEdit = (e: Edit) => {
++    setDraft(e.kind === 'key' ? config.apiKey : e.kind === 'phones' ? config.adminPhones.join(', ') : e.kind === 'time' ? config[e.job].time : String(config[e.job].minDays));
++    setEdit(e);
++  };
++  const saveEdit = () => {
++    if (!edit) return;
++    const v = draft.trim();
++    if (edit.kind === 'key') setConfig({ apiKey: v });
++    else if (edit.kind === 'phones') setConfig({ adminPhones: parseAdminPhones(v) });
++    else if (edit.kind === 'time') {
++      if (parseClock(v) === null) {
++        Alert.alert(t('waTime'), '09:00');
++        return;
++      }
++      setConfig({ [edit.job]: { ...config[edit.job], time: v } } as Partial<WaConfig>);
++    } else {
++      setConfig({ [edit.job]: { ...config[edit.job], minDays: Math.max(1, Math.min(90, Math.round(Number(v) || 1))) } } as Partial<WaConfig>);
++    }
++    setEdit(null);
++  };
++
++  const act = (key: string, fn: () => Promise<string | null | void>) => () => {
++    if (busy) return;
++    setBusy(key);
++    setNote(null);
++    fn()
++      .then((r) => setNote(r === null ? t('waNothingToSend') : t('waSent')))
++      .catch((e: unknown) => Alert.alert(t('waLastError'), e instanceof Error ? e.message : String(e)))
++      .finally(() => setBusy(null));
++  };
++
++  const statusLine = !aiEnabled ? t('waStatusNeedsAi') : !config.apiKey ? t('waStatusNeedsKey') : status.running ? t('waStatusRunning') : t('waStatusStopped');
++  const weekdays = language === 'ur' ? WEEKDAYS_UR : WEEKDAYS_EN;
++  const weekdayOptions: SelectOption[] = weekdays.map((d, i) => ({ id: String(i), label: d, icon: 'today' as IconKey }));
++  const turns = Object.entries(histories)
++    .flatMap(([phone, list]) => list.map((x) => ({ ...x, phone })))
++    .sort((a, b) => a.at.localeCompare(b.at))
++    .slice(-14);
++  const check = <AppIcon name="checkCircle" size={20} color="accent" />;
++
++  return (
++    <SettingsPage
++      title={t('waAgentLabel')}
++      onBack={() => navigation.goBack()}
++      overlays={
++        <>
++          <AppSheet visible={edit !== null} onClose={() => setEdit(null)} title={edit ? t(EDIT_LABEL[edit.kind]) : ''} footer={<AppButton label={t('save')} icon="check" onPress={saveEdit} />}>
++            <FloatingLabelInput
++              label={edit ? t(EDIT_LABEL[edit.kind]) : ''}
++              value={draft}
++              onChangeText={setDraft}
++              keyboardType={edit?.kind === 'days' ? 'number-pad' : edit?.kind === 'time' ? 'numbers-and-punctuation' : 'default'}
++              multiline={edit?.kind === 'phones'}
++              hint={edit?.kind === 'key' ? t('waKeyHint') : edit?.kind === 'phones' ? t('waAdminPhonesHint') : undefined}
++            />
++          </AppSheet>
++          <SelectSheet
++            visible={weekdaySheet}
++            onClose={() => setWeekdaySheet(false)}
++            options={weekdayOptions}
++            selectedId={String(config.udhaar.weekday)}
++            title={t('waWeekday')}
++            searchable={false}
++            onSelect={(o) => {
++              setConfig({ udhaar: { ...config.udhaar, weekday: Number(o.id) } });
++              setWeekdaySheet(false);
++            }}
++          />
++        </>
++      }
++    >
++      {/* Status */}
++      <SettingsGroup header={t('hdrStatus')} footer={t('waRunsWhileOpen')}>
++        <SettingsRow title={t('waEnabled')} subtitle={statusLine} trailing={<AppToggle value={config.enabled} onValueChange={(v) => setConfig({ enabled: v })} accessibilityLabel={t('waEnabled')} />} />
++        <View style={styles.stats}>
++          <Stat label={t('waLastPoll')} value={status.lastPollAt ? formatTime(status.lastPollAt) : '–'} />
++          <Stat label={t('waMessagesToday')} value={String(status.messagesToday)} />
++          <Stat label={t('waPending')} value={String(pendingCount())} />
++        </View>
++        {status.lastError ? <SettingsRow title={t('waLastError')} subtitle={status.lastError} danger /> : null}
++      </SettingsGroup>
++
++      {/* Connection */}
++      <SettingsGroup header={t('hdrConnection')} footer={note ?? undefined}>
++        <SettingsRow title={t('waKeyLabel')} subtitle={config.apiKey ? undefined : t('waKeyHint')} trailing={config.apiKey ? check : undefined} onPress={() => openEdit({ kind: 'key' })} />
++        <SettingsRow title={t('waTestMessage')} subtitle={busy === 'test' ? '…' : undefined} onPress={act('test', async () => {
++          if (!config.adminPhones.length && !config.lastActiveUserId) throw new Error(t('waNoTarget'));
++          await sendTestMessage();
++        })} />
++      </SettingsGroup>
++
++      {/* Access */}
++      <SettingsGroup header={t('hdrAccess')} footer={t('waAdminPhonesHint')}>
++        <SettingsRow title={t('waAdminPhones')} subtitle={config.adminPhones.length ? config.adminPhones.join(', ') : undefined} onPress={() => openEdit({ kind: 'phones' })} />
++        {config.lastActiveUserId ? <SettingsRow title={t('waPaired')} subtitle={config.lastActiveUserId} value={t('waUnpair')} onPress={() => setConfig({ lastActiveUserId: null })} /> : null}
++        <SettingsRow title={t('waRequireConfirm')} subtitle={t('waRequireConfirmHint')} trailing={<AppToggle value={config.requireConfirmation} onValueChange={(v) => setConfig({ requireConfirmation: v })} accessibilityLabel={t('waRequireConfirm')} />} />
++      </SettingsGroup>
++
++      {/* Scheduled messages: one group per job, WhatsApp-style toggle + detail rows */}
++      {JOBS.map(({ job, labelKey }) => {
++        const s = config[job];
++        const detail = [s.time, job === 'udhaar' ? weekdays[config.udhaar.weekday] : null, job === 'wages' || job === 'orders' ? `${config[job].minDays} ${t('waMinDays').toLowerCase()}` : null].filter(Boolean).join(' · ');
++        return (
++          <SettingsGroup key={job} header={job === 'briefing' ? t('waReminders') : undefined}>
++            <SettingsRow title={t(labelKey)} subtitle={detail} trailing={<AppToggle value={s.enabled} onValueChange={(v) => setConfig({ [job]: { ...s, enabled: v } } as Partial<WaConfig>)} accessibilityLabel={t(labelKey)} />} />
++            {s.enabled ? <SettingsRow title={t('waTime')} value={s.time} onPress={() => openEdit({ kind: 'time', job })} /> : null}
++            {s.enabled && (job === 'wages' || job === 'orders') ? <SettingsRow title={t('waMinDays')} value={String(config[job].minDays)} onPress={() => openEdit({ kind: 'days', job })} /> : null}
++            {s.enabled && job === 'udhaar' ? <SettingsRow title={t('waWeekday')} value={weekdays[config.udhaar.weekday] ?? ''} onPress={() => setWeekdaySheet(true)} /> : null}
++            {s.enabled ? <SettingsRow title={t('waSendNow')} subtitle={busy === job ? '…' : undefined} onPress={act(job, () => runSchedules(job))} /> : null}
++          </SettingsGroup>
++        );
++      })}
++
++      {/* Conversation */}
++      <SettingsGroup header={t('hdrConversation')}>
++        {turns.length === 0 ? (
++          <SettingsRow title={t('waNoTurns')} />
++        ) : (
++          <View style={styles.turns}>
++            {turns.map((x, i) => (
++              <View key={`${x.at}-${i}`} style={[styles.bubble, x.role === 'user' ? styles.bubbleUser : styles.bubbleAgent]}>
++                <AppText size="xs" color="textSecondary">
++                  {x.role === 'user' ? x.phone : 'TameerBook'} · {formatTime(x.at)}
++                </AppText>
++                <AppText size="sm">{x.text}</AppText>
++              </View>
++            ))}
++          </View>
++        )}
++        {turns.length ? (
++          <SettingsRow
++            title={t('waClearHistory')}
++            danger
++            onPress={() => Alert.alert(t('waClearHistory'), undefined, [{ text: t('cancel'), style: 'cancel' }, { text: t('delete'), style: 'destructive', onPress: clearHistory }])}
++          />
++        ) : null}
++      </SettingsGroup>
++    </SettingsPage>
++  );
++}
++
++function Stat({ label, value }: { label: string; value: string }): React.JSX.Element {
++  const theme = useTheme();
++  const styles = makeStyles(theme);
++  return (
++    <View style={styles.stat}>
++      <AppText size="xs" color="textSecondary">
++        {label}
++      </AppText>
++      <AppText size="md" weight="semibold">
++        {value}
++      </AppText>
++    </View>
++  );
++}
++
++const makeStyles = (theme: Theme) =>
++  StyleSheet.create({
++    stats: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: theme.spacing.sm, gap: theme.spacing.sm },
++    stat: { flex: 1, gap: 2 },
++    turns: { gap: theme.spacing.sm, paddingVertical: theme.spacing.sm },
++    bubble: { padding: theme.spacing.sm, borderRadius: theme.radius.md, gap: 2 },
++    bubbleUser: { backgroundColor: theme.colors.primarySoft },
++    bubbleAgent: { backgroundColor: theme.colors.accentSoft },
++  });
++

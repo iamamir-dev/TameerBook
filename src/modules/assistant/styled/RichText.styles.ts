@@ -6,6 +6,7 @@ export const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     wrap: { gap: 3 },
     gap: { height: theme.spacing.xs },
+    rule: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, marginVertical: theme.spacing.sm },
     headingWrap: { marginTop: theme.spacing.sm, marginBottom: theme.spacing.xs },
     /** Each new section starts after a clear gap and a hairline, so blocks never run together. */
     headingRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border, paddingTop: theme.spacing.md, marginTop: theme.spacing.lg },
@@ -15,13 +16,17 @@ export const makeStyles = (theme: Theme) =>
     tableScrollContent: { flexGrow: 0 },
     bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.xs },
     dot: { lineHeight: theme.typography.lineHeights.sm, minWidth: 14 },
+    /** Emoji column: fixed so the text beside every marker starts on the same line. */
+    emoji: { lineHeight: theme.typography.lineHeights.sm, width: 24 },
     bulletText: { flexShrink: 1, minWidth: 0 },
     /** Compact table inside a bubble. */
     /** Tables wear the message tint (no shadow, no outline); plain text around them has no fill. */
     /** At least the bubble width; wider when the columns need it (then the ScrollView scrolls). */
     table: {
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.primarySoft,
+      backgroundColor: 'transparent',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.border,
       overflow: 'hidden',
     },
     tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.sm, minHeight: 38 },

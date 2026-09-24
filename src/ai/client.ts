@@ -1,8 +1,20 @@
-import * as FileSystem from 'expo-file-system/legacy';
-
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
-import { GROQ_TEXT_FALLBACKS, GROQ_VISION_MODELS, GROQ_WHISPER, IMAGE_REQUEST_TIMEOUT_MS, MAX_OUTPUT_TOKENS, PROVIDERS, REQUEST_TIMEOUT_MS, TOOL_MAX_TOKENS, type AiProviderId } from './providers';
+import { anthropicHeaders, parseAnthropicResponse, toAnthropicBody } from './anthropic';
+import { lostToolCall, parseOpenAiResponse, toOpenAiBody } from './openai';
+import {
+  aiConfigured,
+  IMAGE_REQUEST_TIMEOUT_MS,
+  isClaudeModel,
+  MAX_OUTPUT_TOKENS,
+  MWAPI_BASE_URL,
+  OPENAI_BASE_URL,
+  OPENAI_TRANSCRIBE_MODEL,
+  PROVIDERS,
+  REQUEST_TIMEOUT_MS,
+  TOOL_MAX_TOKENS,
+  type AiProviderId,
+} from './providers';
 import {
   AiError,
   type AiChatMessage,
@@ -10,7 +22,6 @@ import {
   type AudioFile,
   type ChatOptions,
   type ChatToolsResult,
-  type ToolCall,
   type ToolSpec,
   type TranscribeOptions,
 } from './types';
@@ -19,14 +30,15 @@ export { chatJson, extractJson } from './json';
 
 /**
  * The one door to any AI provider. Settings pick the provider, key, model and
- * (for proxy / custom) the base URL; this builds the matching transport:
+ * (for the proxy) the base URL; this builds the matching transport:
  *
- *   groq | openrouter | custom | proxy → OpenAI-compatible chat completions
- *   gemini                             → Gemini native generateContent
+ *   claude          → Messages API (MWAPI gateway or api.anthropic.com)
+ *   openai          → chat completions
+ *   proxy           → the Worker, which speaks both shapes; the model id
+ *                     decides the route (claude-* → /v1/messages)
  *
- * Voice: Groq Whisper (Groq or proxy) or Gemini audio. Other providers fall
- * back to a Groq key when one is saved, else AiError('noVoice').
- * Nothing here touches the database.
+ * Voice is always OpenAI transcription: with the OpenAI key directly, or
+ * through the proxy. Nothing here touches the database.
  */
 
 export interface AiAvailability {
@@ -40,11 +52,11 @@ export interface AiAvailability {
 export function aiAvailability(): AiAvailability {
   const s = useSettingsStore.getState();
   const info = PROVIDERS[s.aiProvider];
-  const key = s.aiKeys[s.aiProvider] ?? '';
-  const url = s.aiProvider === 'proxy' ? s.aiProxyUrl : s.aiProvider === 'custom' ? s.aiCustomBaseUrl : info.baseUrl;
-  const configured = (!info.needsKey || !!key) && (!info.needsUrl || !!url);
-  return { enabled: s.aiEnabled, provider: s.aiProvider, configured, voice: info.voice || !!s.aiKeys.groq };
+  return { enabled: s.aiEnabled, provider: s.aiProvider, configured: aiConfigured(s), voice: info.voice || !!s.aiKeys.openai };
 }
+
+/** Where speech goes: OpenAI directly, or the proxy's audio route. */
+type VoiceRoute = { base: string; headers: Record<string, string> } | null;
 
 /** Resolve the configured transport or throw a coded error. */
 export function getAiTransport(): AiTransport {
@@ -54,42 +66,25 @@ export function getAiTransport(): AiTransport {
   const info = PROVIDERS[provider];
   const key = s.aiKeys[provider] ?? '';
   const model = s.aiModel[provider] || info.defaultModel;
-  const groqKey = s.aiKeys.groq ?? '';
+  const openaiKey = s.aiKeys.openai ?? '';
+  const openaiVoice: VoiceRoute = openaiKey ? { base: OPENAI_BASE_URL, headers: { Authorization: `Bearer ${openaiKey}` } } : null;
   switch (provider) {
-    case 'gemini':
-      if (!key) throw new AiError('noProvider');
-      return new GeminiTransport(key, model, groqKey || null);
-    case 'proxy':
+    case 'proxy': {
       if (!s.aiProxyUrl) throw new AiError('noProvider');
-      return new OpenAiCompatTransport(
-        'proxy',
-        `${s.aiProxyUrl}/v1`,
-        null,
-        model,
-        { 'x-device-id': s.aiDeviceId, ...(s.aiProxyToken ? { 'x-app-token': s.aiProxyToken } : {}) },
-        { voiceModel: GROQ_WHISPER, fallbackModels: GROQ_TEXT_FALLBACKS.filter((m) => m !== model) }
-      );
-    case 'custom':
-      if (!s.aiCustomBaseUrl) throw new AiError('noProvider');
-      return new OpenAiCompatTransport('custom', s.aiCustomBaseUrl.replace(/\/+$/, ''), key || null, model, {}, { voiceViaGroqKey: groqKey || null });
+      const base = `${s.aiProxyUrl.replace(/\/+$/, '')}/v1`;
+      const headers = { 'x-device-id': s.aiDeviceId, ...(s.aiProxyToken ? { 'x-app-token': s.aiProxyToken } : {}) };
+      const voice: VoiceRoute = { base, headers };
+      return isClaudeModel(model) ? new AnthropicTransport('proxy', base, null, headers, model, voice) : new OpenAiTransport('proxy', base, null, headers, model, voice);
+    }
     case 'openai':
       if (!key) throw new AiError('noProvider');
-      // GPT-5 / o-series reject `max_tokens` and non-default temperature.
-      return new OpenAiCompatTransport('openai', info.baseUrl!, key, model, {}, { voiceModel: 'gpt-4o-mini-transcribe', tokensParam: 'max_completion_tokens', fixedTemperature: true });
-    case 'openrouter':
+      return new OpenAiTransport('openai', OPENAI_BASE_URL, key, {}, model, openaiVoice);
+    case 'claude':
+    default: {
       if (!key) throw new AiError('noProvider');
-      return new OpenAiCompatTransport(
-        'openrouter',
-        info.baseUrl!,
-        key,
-        model,
-        { 'HTTP-Referer': 'https://tameerbook.app', 'X-Title': 'TameerBook' },
-        { voiceViaGroqKey: groqKey || null }
-      );
-    case 'groq':
-    default:
-      if (!key) throw new AiError('noProvider');
-      return new OpenAiCompatTransport('groq', info.baseUrl!, key, model, {}, { voiceModel: GROQ_WHISPER, fallbackModels: GROQ_TEXT_FALLBACKS.filter((m) => m !== model) });
+      const base = (s.aiCustomBaseUrl || MWAPI_BASE_URL).replace(/\/+$/, '');
+      return new AnthropicTransport('claude', base, key, {}, model, openaiVoice);
+    }
   }
 }
 
@@ -118,392 +113,146 @@ async function doFetch(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEO
     const body = await res.text().catch(() => '');
     if (res.status === 401 || res.status === 403) throw new AiError('badkey', body.slice(0, 200));
     if (res.status === 429 || res.status === 402) throw new AiError('quota', body.slice(0, 200));
-    // 5xx / 408: the provider hiccupped. One short pause, one retry, then give up.
+    // 5xx / 408 / 529 (overloaded): the provider hiccupped. One short pause, one retry, then give up.
     if (attempt === 0 && (res.status >= 500 || res.status === 408)) {
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 1200));
       continue;
     }
     throw new AiError('failed', `${res.status} ${body.slice(0, 200)}`);
   }
 }
 
-const parseArgs = (raw: unknown): Record<string, unknown> => {
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
-  if (typeof raw === 'string' && raw.trim()) {
-    try {
-      const v = JSON.parse(raw) as unknown;
-      return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-};
-
-/* -------------------------------------------------------------------------- */
-/*  OpenAI-compatible (Groq, OpenRouter, custom, proxy)                       */
-/* -------------------------------------------------------------------------- */
-
-interface OaMessage {
-  role: string;
-  content: unknown;
-  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
-  tool_call_id?: string;
-  name?: string;
-}
-
-interface OaResponse {
-  choices?: {
-    message?: {
-      content?: string | null;
-      tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[];
-    };
-  }[];
-}
-
-function toOaMessages(messages: AiChatMessage[]): OaMessage[] {
-  return messages.map((m) => {
-    switch (m.role) {
-      case 'assistant':
-        return {
-          role: 'assistant',
-          content: m.content ?? '',
-          ...(m.toolCalls?.length
-            ? { tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function' as const, function: { name: c.name, arguments: JSON.stringify(c.args) } })) }
-            : {}),
-        };
-      case 'tool':
-        return { role: 'tool', tool_call_id: m.toolCallId, name: m.name, content: m.content };
-      case 'user':
-        if (m.images?.length) {
-          return {
-            role: 'user',
-            content: [{ type: 'text', text: m.content || 'See the attached image.' }, ...m.images.map((b64) => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }))],
-          };
-        }
-        return { role: 'user', content: m.content };
-      default:
-        return { role: m.role, content: m.content };
-    }
-  });
-}
-
 const hasImages = (messages: AiChatMessage[]): boolean => messages.some((m) => m.role === 'user' && !!m.images?.length);
-/** Same test on the already-converted OpenAI-shape body. */
-const hasImagePayload = (messages: unknown[]): boolean =>
-  messages.some((m) => Array.isArray((m as { content?: unknown }).content) && ((m as { content: { type?: string }[] }).content).some((p) => p.type === 'image_url'));
 
-interface CompatOptions {
-  /** Whisper model available at `${baseUrl}/audio/transcriptions`. */
-  voiceModel?: string;
-  /** No audio endpoint here: use Groq's with this key when present. */
-  voiceViaGroqKey?: string | null;
-  /** OpenAI's newer models want `max_completion_tokens`. */
-  tokensParam?: 'max_tokens' | 'max_completion_tokens';
-  /** Reasoning models only accept the default temperature. */
-  fixedTemperature?: boolean;
-  /** Models to try in order when the chosen one fails (per-model caps, tool-call glitches). */
-  fallbackModels?: readonly string[];
+/** Speech → text through OpenAI's transcription endpoint (directly or via the proxy). */
+async function transcribeOpenAi(route: VoiceRoute, file: AudioFile, opts: TranscribeOptions): Promise<string> {
+  if (!route) throw new AiError('noVoice');
+  const form = new FormData();
+  form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  form.append('model', OPENAI_TRANSCRIBE_MODEL);
+  form.append('response_format', 'json');
+  if (opts.language) form.append('language', opts.language);
+  if (opts.prompt) form.append('prompt', opts.prompt.slice(0, 1000));
+  const res = await doFetch(`${route.base}/audio/transcriptions`, { method: 'POST', headers: route.headers, body: form });
+  const data = (await res.json()) as { text?: string };
+  if (typeof data.text !== 'string') throw new AiError('failed', 'empty transcript');
+  return data.text.trim();
 }
 
-class OpenAiCompatTransport implements AiTransport {
+/* -------------------------------------------------------------------------- */
+/*  Claude (Messages API)                                                     */
+/* -------------------------------------------------------------------------- */
+
+class AnthropicTransport implements AiTransport {
   constructor(
     readonly kind: string,
     private readonly baseUrl: string,
     private readonly apiKey: string | null,
-    private readonly model: string,
     private readonly extraHeaders: Record<string, string>,
-    private readonly o: CompatOptions
-  ) {}
-
-  private headers(json = true): Record<string, string> {
-    const h: Record<string, string> = { ...this.extraHeaders };
-    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-  }
-
-  private async completion(body: Record<string, unknown>): Promise<OaResponse> {
-    // Normalise the two params providers disagree on.
-    const b: Record<string, unknown> = { ...body };
-    if (this.o.tokensParam === 'max_completion_tokens' && 'max_tokens' in b) {
-      b.max_completion_tokens = b.max_tokens;
-      delete b.max_tokens;
-    }
-    if (this.o.fixedTemperature) delete b.temperature;
-    const timeout = Array.isArray(b.messages) && hasImagePayload(b.messages) ? IMAGE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
-    const post = async (model: unknown): Promise<OaResponse> => {
-      const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ ...b, model }) }, timeout);
-      return (await res.json()) as OaResponse;
-    };
-    try {
-      return await post(b.model);
-    } catch (e) {
-      // Groq free tier: per-model caps (429) and occasional malformed tool
-      // calls (400 tool_use_failed). Walk the fallback chain once each.
-      if (!(e instanceof AiError) || (e.code !== 'quota' && e.code !== 'failed')) throw e;
-      // An image needs a vision model: only those may stand in.
-      const withImage = Array.isArray(b.messages) && hasImagePayload(b.messages);
-      const chain = (this.o.fallbackModels ?? []).filter((m) => m !== b.model && (!withImage || (GROQ_VISION_MODELS as readonly string[]).includes(m)));
-      let last: unknown = e;
-      for (const fb of chain) {
-        try {
-          return await post(fb);
-        } catch (e2) {
-          last = e2;
-          if (e2 instanceof AiError && (e2.code === 'badkey' || e2.code === 'offline' || e2.code === 'timeout')) throw e2;
-        }
-      }
-      throw last;
-    }
-  }
-
-  async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const model = this.modelFor(messages, opts);
-    const reasoning = this.isReasoning(model);
-    const data = await this.completion({
-      model,
-      messages: toOaMessages(messages),
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 4000 : MAX_OUTPUT_TOKENS),
-      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      ...(reasoning ? { reasoning_effort: 'low', ...(this.hidesReasoning(model) ? { reasoning_format: 'hidden' } : {}) } : {}),
-    });
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new AiError('failed', 'empty completion');
-    return content;
-  }
-
-  /**
-   * Groq's gpt-oss models put their chain of thought in `content` unless asked
-   * to hide it, which showed up as leaked reasoning or an empty-looking reply.
-   * `raw` is rejected alongside tools, so `hidden` is the only safe choice.
-   */
-  private hidesReasoning(model: string): boolean {
-    return (this.kind === 'groq' || this.kind === 'proxy') && model.startsWith('openai/gpt-oss');
-  }
-
-  /** Reasoning models (gpt-oss on Groq, GPT-5 / o-series on OpenAI) think inside the completion budget. */
-  private isReasoning(model: string): boolean {
-    return model.startsWith('openai/gpt-oss') || (this.kind === 'openai' && /^(gpt-5|o\d)/.test(model));
-  }
-
-  /** The model to use for this turn: the vision-capable one when an image is attached. */
-  private modelFor(messages: AiChatMessage[], opts: ChatOptions): string {
-    const chosen = opts.model ?? this.model;
-    if (!hasImages(messages)) return chosen;
-    // Groq (and the proxy in front of it): only the Qwen family reads images.
-    if ((this.kind === 'groq' || this.kind === 'proxy') && !chosen.startsWith('qwen/')) return GROQ_VISION_MODELS[0];
-    return chosen;
-  }
-
-  async chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
-    const model = this.modelFor(messages, opts);
-    const reasoning = this.isReasoning(model);
-    const data = await this.completion({
-      model,
-      messages: toOaMessages(messages),
-      temperature: opts.temperature ?? 0,
-      // Reasoning tokens count against this budget: paid reasoning models get
-      // plenty; Groq's free tier stays within its per-minute allowance.
-      max_tokens: opts.maxTokens ?? (reasoning && this.kind === 'openai' ? 6000 : TOOL_MAX_TOKENS),
-      tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
-      tool_choice: 'auto',
-      // Keep the thinking short so the reply fits and arrives fast, and keep
-      // it out of `content` so the chat never shows the model's scratchpad.
-      ...(reasoning ? { reasoning_effort: 'low', ...(this.hidesReasoning(model) ? { reasoning_format: 'hidden' } : {}) } : {}),
-    });
-    const msg = data.choices?.[0]?.message;
-    if (!msg) throw new AiError('failed', 'empty completion');
-    const toolCalls: ToolCall[] = (msg.tool_calls ?? [])
-      .filter((c) => c.function?.name)
-      .map((c, i) => ({ id: c.id ?? `call_${i}`, name: c.function!.name!, args: parseArgs(c.function!.arguments) }));
-    return { content: typeof msg.content === 'string' && msg.content.trim() ? msg.content : null, toolCalls };
-  }
-
-  async transcribe(file: AudioFile, opts: TranscribeOptions = {}): Promise<string> {
-    const base = this.o.voiceModel ? this.baseUrl : this.o.voiceViaGroqKey ? 'https://api.groq.com/openai/v1' : null;
-    if (!base) throw new AiError('noVoice');
-    const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
-    form.append('model', this.o.voiceModel ?? GROQ_WHISPER);
-    form.append('response_format', 'json');
-    form.append('temperature', '0');
-    if (opts.language) form.append('language', opts.language);
-    if (opts.prompt) form.append('prompt', opts.prompt);
-    const headers = this.o.voiceModel ? this.headers(false) : { Authorization: `Bearer ${this.o.voiceViaGroqKey}` };
-    const res = await doFetch(`${base}/audio/transcriptions`, { method: 'POST', headers, body: form });
-    const data = (await res.json()) as { text?: string };
-    if (typeof data.text !== 'string') throw new AiError('failed', 'empty transcript');
-    return data.text.trim();
-  }
-
-  async vision(imageBase64: string, prompt: string, opts: ChatOptions = {}): Promise<string> {
-    const data = await this.completion({
-      model: opts.model ?? this.model,
-      temperature: opts.temperature ?? 0.1,
-      max_tokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
-      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
-          ],
-        },
-      ],
-    });
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new AiError('failed', 'empty completion');
-    return content;
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Gemini native                                                             */
-/* -------------------------------------------------------------------------- */
-
-interface GmPart {
-  text?: string;
-  functionCall?: { name?: string; args?: Record<string, unknown> };
-  functionResponse?: { name: string; response: Record<string, unknown> };
-  inline_data?: { mime_type: string; data: string };
-}
-interface GmResponse {
-  candidates?: { content?: { parts?: GmPart[] } }[];
-  promptFeedback?: { blockReason?: string };
-}
-
-class GeminiTransport implements AiTransport {
-  readonly kind = 'gemini';
-  constructor(
-    private readonly apiKey: string,
     private readonly model: string,
-    private readonly groqKey: string | null
+    private readonly voice: VoiceRoute
   ) {}
 
-  private url(model: string): string {
-    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+  private async messages(messages: AiChatMessage[], opts: ChatOptions, tools?: ToolSpec[]): Promise<ChatToolsResult> {
+    const model = opts.model ?? this.model;
+    const maxTokens = opts.maxTokens ?? (tools ? TOOL_MAX_TOKENS : MAX_OUTPUT_TOKENS);
+    const timeout = hasImages(messages) ? IMAGE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+    const body = toAnthropicBody(messages, { model, maxTokens, temperature: opts.temperature, tools, json: opts.json });
+    const res = await doFetch(`${this.baseUrl}/messages`, { method: 'POST', headers: anthropicHeaders(this.apiKey, this.extraHeaders), body: JSON.stringify(body) }, timeout);
+    const parsed = parseAnthropicResponse(await res.json());
+    // MWAPI's Anthropic route loses a tool_use block whose input is {} (seen
+    // 2026-09-25: stop_reason tool_use, content []). The same gateway's
+    // chat-completions route returns the call intact, so ask it the same thing.
+    if (tools && lostToolCall(parsed)) return this.compat(messages, { ...opts, model, maxTokens }, tools, timeout);
+    return parsed;
   }
 
-  private convert(messages: AiChatMessage[]): { system: string; contents: unknown[] } {
-    const system = messages
-      .filter((m) => m.role === 'system')
-      .map((m) => (m as { content: string }).content)
-      .join('\n\n');
-    const contents: unknown[] = [];
-    for (const m of messages) {
-      if (m.role === 'system') continue;
-      if (m.role === 'user') {
-        const parts: GmPart[] = [{ text: m.content || 'See the attached image.' }];
-        for (const b64 of m.images ?? []) parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
-        contents.push({ role: 'user', parts });
-      }
-      else if (m.role === 'assistant') {
-        const parts: GmPart[] = [];
-        if (m.content) parts.push({ text: m.content });
-        for (const c of m.toolCalls ?? []) parts.push({ functionCall: { name: c.name, args: c.args } });
-        if (parts.length) contents.push({ role: 'model', parts });
-      } else {
-        let response: Record<string, unknown>;
-        try {
-          const v = JSON.parse(m.content) as unknown;
-          response = v && typeof v === 'object' ? (v as Record<string, unknown>) : { result: v };
-        } catch {
-          response = { result: m.content };
-        }
-        contents.push({ role: 'user', parts: [{ functionResponse: { name: m.name, response } }] });
-      }
-    }
-    return { system, contents };
-  }
-
-  private async generate(model: string, body: Record<string, unknown>): Promise<GmPart[]> {
-    const res = await doFetch(this.url(model), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = (await res.json()) as GmResponse;
-    const parts = data.candidates?.[0]?.content?.parts;
-    if (!parts) throw new AiError('failed', data.promptFeedback?.blockReason ?? 'empty completion');
-    return parts;
+  /** The OpenAI-shaped route of the same gateway (`/chat/completions`), bearer auth. */
+  private async compat(messages: AiChatMessage[], opts: ChatOptions & { model: string; maxTokens: number }, tools: ToolSpec[], timeout: number): Promise<ChatToolsResult> {
+    const body = toOpenAiBody(messages, { model: opts.model, maxTokens: opts.maxTokens, temperature: opts.temperature, tools, json: opts.json });
+    const headers = { ...this.extraHeaders, 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) };
+    const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) }, timeout);
+    const r = parseOpenAiResponse(await res.json());
+    if (!r) throw new AiError('failed', 'empty completion');
+    return r;
   }
 
   async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const { system, contents } = this.convert(messages);
-    const parts = await this.generate(opts.model ?? this.model, {
-      ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-      contents,
-      generationConfig: {
-        temperature: opts.temperature ?? 0.2,
-        maxOutputTokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
-        ...(opts.json ? { responseMimeType: 'application/json' } : {}),
-      },
-    });
-    const text = parts.map((p) => p.text ?? '').join('').trim();
-    if (!text) throw new AiError('failed', 'empty completion');
-    return text;
+    const r = await this.messages(messages, { temperature: 0.2, ...opts });
+    if (!r.content) throw new AiError('failed', 'empty completion');
+    return r.content;
   }
 
   async chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
-    const { system, contents } = this.convert(messages);
-    const parts = await this.generate(opts.model ?? this.model, {
-      ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-      contents,
-      tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }],
-      generationConfig: { temperature: opts.temperature ?? 0, maxOutputTokens: opts.maxTokens ?? TOOL_MAX_TOKENS },
-    });
-    const toolCalls: ToolCall[] = parts
-      .filter((p) => p.functionCall?.name)
-      .map((p, i) => ({ id: `call_${i}`, name: p.functionCall!.name!, args: parseArgs(p.functionCall!.args) }));
-    const content = parts.map((p) => p.text ?? '').join('').trim();
-    return { content: content || null, toolCalls };
+    const r = await this.messages(messages, { temperature: 0, ...opts }, tools);
+    return { content: r.content, toolCalls: r.toolCalls, usage: r.usage };
   }
 
-  async transcribe(file: AudioFile, opts: TranscribeOptions = {}): Promise<string> {
-    const data = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
-    const lang =
-      opts.language === 'ur'
-        ? 'The speaker is speaking Urdu; write Urdu in Urdu script.'
-        : 'The speaker mixes Urdu and English (Roman Urdu is fine).';
-    try {
-      const parts = await this.generate(this.model, {
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { inline_data: { mime_type: file.type === 'audio/m4a' ? 'audio/mp4' : file.type, data } },
-              { text: `Transcribe this short voice note verbatim. ${lang} Output only the transcript, no quotes.${opts.prompt ? ` Names that may appear: ${opts.prompt}` : ''}` },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0, maxOutputTokens: 200 },
-      });
-      return parts.map((p) => p.text ?? '').join('').trim();
-    } catch (e) {
-      // Gemini audio failed: try Groq Whisper when a key is saved.
-      if (!this.groqKey) throw e;
-      const t = new OpenAiCompatTransport('groq', 'https://api.groq.com/openai/v1', this.groqKey, this.model, {}, { voiceModel: GROQ_WHISPER });
-      return t.transcribe(file, opts);
-    }
+  transcribe(file: AudioFile, opts: TranscribeOptions = {}): Promise<string> {
+    return transcribeOpenAi(this.voice, file, opts);
   }
 
   async vision(imageBase64: string, prompt: string, opts: ChatOptions = {}): Promise<string> {
-    const parts = await this.generate(opts.model ?? this.model, {
-      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: opts.maxTokens ?? MAX_OUTPUT_TOKENS,
-        ...(opts.json ? { responseMimeType: 'application/json' } : {}),
-      },
-    });
-    const text = parts.map((p) => p.text ?? '').join('').trim();
-    if (!text) throw new AiError('failed', 'empty completion');
-    return text;
+    return this.chat([{ role: 'user', content: prompt, images: [imageBase64] }], { temperature: 0.1, ...opts });
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  OpenAI (chat completions)                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** GPT-5 / o-series: rename the token cap, fixed temperature, reasoning inside the budget. */
+const isReasoningModel = (model: string): boolean => /^(gpt-5|o\d)/.test(model);
+
+class OpenAiTransport implements AiTransport {
+  constructor(
+    readonly kind: string,
+    private readonly baseUrl: string,
+    private readonly apiKey: string | null,
+    private readonly extraHeaders: Record<string, string>,
+    private readonly model: string,
+    private readonly voice: VoiceRoute
+  ) {}
+
+  private async completion(messages: AiChatMessage[], opts: ChatOptions, tools?: ToolSpec[]): Promise<ChatToolsResult> {
+    const model = opts.model ?? this.model;
+    const b = toOpenAiBody(messages, { model, maxTokens: opts.maxTokens ?? (tools ? TOOL_MAX_TOKENS : MAX_OUTPUT_TOKENS), temperature: opts.temperature, tools, json: opts.json });
+    if (isReasoningModel(model)) {
+      // Reasoning tokens come out of the same budget; give them room and keep them short.
+      b.max_completion_tokens = Math.max(Number(b.max_tokens ?? 0), 6000);
+      delete b.max_tokens;
+      delete b.temperature;
+      b.reasoning_effort = 'low';
+    }
+    const headers = { ...this.extraHeaders, 'Content-Type': 'application/json', ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}) };
+    const res = await doFetch(`${this.baseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(b) }, hasImages(messages) ? IMAGE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+    const r = parseOpenAiResponse(await res.json());
+    if (!r) throw new AiError('failed', 'empty completion');
+    return r;
+  }
+
+  async chat(messages: AiChatMessage[], opts: ChatOptions = {}): Promise<string> {
+    const r = await this.completion(messages, { temperature: 0.2, ...opts });
+    if (!r.content) throw new AiError('failed', 'empty completion');
+    return r.content;
+  }
+
+  chatTools(messages: AiChatMessage[], tools: ToolSpec[], opts: ChatOptions = {}): Promise<ChatToolsResult> {
+    return this.completion(messages, { temperature: 0, ...opts }, tools);
+  }
+
+  transcribe(file: AudioFile, opts: TranscribeOptions = {}): Promise<string> {
+    return transcribeOpenAi(this.voice, file, opts);
+  }
+
+  async vision(imageBase64: string, prompt: string, opts: ChatOptions = {}): Promise<string> {
+    return this.chat([{ role: 'user', content: prompt, images: [imageBase64] }], { temperature: 0.1, ...opts });
   }
 }
 
 /** A one-line round trip to verify a provider setup from Settings. */
 export async function testConnection(): Promise<string> {
   const t = getAiTransport();
-  const reply = await t.chat([{ role: 'user', content: 'Reply with exactly: OK' }], { maxTokens: 5, temperature: 0 });
+  const reply = await t.chat([{ role: 'user', content: 'Reply with exactly: OK' }], { maxTokens: 16, temperature: 0 });
   return reply.trim().slice(0, 40);
 }
